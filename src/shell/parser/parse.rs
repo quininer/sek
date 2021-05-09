@@ -2,7 +2,7 @@ use std::mem;
 use bumpalo::Bump;
 use bumpalo::boxed::Box;
 use bumpalo::collections::Vec;
-use logos::{ Logos, Source, Span };
+use logos::{ Logos, Span };
 use scopeguard::guard;
 use if_chain::if_chain;
 use crate::shell::parser::token::{ Token, TOKEN_KIND };
@@ -40,8 +40,7 @@ macro_rules! lookup {
 struct State<'i> {
     lex: logos::Lexer<'i, Token>,
     last: Token,
-    is_subshell: bool,
-    point: usize
+    is_subshell: bool
 }
 
 enum Action {
@@ -54,6 +53,16 @@ fn bad(state: &State<'_>) -> ParseFailed {
         token: state.last,
         span: state.lex.span()
     }
+}
+
+pub fn parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c>, ParseFailed> {
+    let mut state = State {
+        lex: Token::lexer(input),
+        last: Token::Unknown,
+        is_subshell: false
+    };
+
+    Command::parse_in(bump, &mut state)
 }
 
 impl<'c> Command<'c> {
@@ -72,7 +81,11 @@ impl<'c> Command<'c> {
                 | Token::Text => |bump, state, cmd|
             {
                 cmd.args.push(Argument::parse_in(bump, state)?);
-                Ok(Action::Continue)
+                Ok(if state.is_subshell && Token::ShellClose == state.last {
+                    Action::Break
+                } else {
+                    Action::Continue
+                })
             },
             Token::Pipe
                 | Token::Then
@@ -93,7 +106,9 @@ impl<'c> Command<'c> {
             },
             Token::Comment => |_, _, _| Ok(Action::Break),
             Token::Empty => |_, _, _| Ok(Action::Continue),
-            _ => |_, state, _| Err(bad(state))
+            _ => |_, state, _| {
+                Err(bad(state))
+            }
         };
 
         let mut cmd = Command {
@@ -119,10 +134,23 @@ impl<'c> SubShell<'c> {
         let prev_substate = mem::replace(&mut state.is_subshell, true);
         let mut state = guard(state, |state| state.is_subshell = prev_substate);
 
+        let span = state.lex.span();
         let cmd = Command::parse_in(bump, &mut state)?;
         let cmd = Box::new_in(cmd, bump);
 
-        Ok((SubShell(cmd)))
+        if state.last == Token::ShellClose {
+            Ok(SubShell(cmd))
+        } else {
+            Err(ParseFailed { token: Token::ShellOpen, span })
+        }
+    }
+}
+
+impl<'c> ChainShell<'c> {
+    fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
+        let cmd = Command::parse_in(bump, state)?;
+        let cmd = Box::new_in(cmd, bump);
+        Ok(ChainShell(cmd))
     }
 }
 
@@ -130,14 +158,18 @@ impl<'c> Chain<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
         let kind = state.last;
         let span = state.lex.span();
-        let subshell = SubShell::parse_in(bump, state)?;
+        let subshell = ChainShell::parse_in(bump, state)?;
 
-        match kind {
-            Token::Pipe => Ok(Chain::Pipe(subshell)),
-            Token::Then => Ok(Chain::Then(subshell)),
-            Token::AndIf => Ok(Chain::AndIf(subshell)),
-            Token::OrIf => Ok(Chain::OrIf(subshell)),
-            token => Err(ParseFailed { token, span }),
+        if !subshell.0.args.is_empty() {
+            match kind {
+                Token::Pipe => Ok(Chain::Pipe(subshell)),
+                Token::Then => Ok(Chain::Then(subshell)),
+                Token::AndIf => Ok(Chain::AndIf(subshell)),
+                Token::OrIf => Ok(Chain::OrIf(subshell)),
+                token => Err(ParseFailed { token, span }),
+            }
+        } else {
+            Err(ParseFailed { token: kind, span })
         }
     }
 }
@@ -215,6 +247,7 @@ impl<'c> DoubleStr<'c> {
         }
 
         let mut string = DoubleStr(Vec::with_capacity_in(8, bump));
+        let span = state.lex.span();
 
         while let Some(token) = state.lex.next() {
             state.last = token;
@@ -224,7 +257,11 @@ impl<'c> DoubleStr<'c> {
             }
         }
 
-        Ok(string)
+        if state.last == Token::DoubleQuote {
+            Ok(string)
+        } else {
+            Err(ParseFailed { token: Token::DoubleQuote, span })
+        }
     }
 }
 
@@ -247,6 +284,11 @@ impl<'c> Argument<'c> {
             Token::ShellOpen => |bump, state, arg| {
                 arg.0.push(ArgSlice::SubShell(SubShell::parse_in(bump, state)?));
                 Ok(Action::Continue)
+            },
+            Token::ShellClose => |bump, state, arg| if state.is_subshell {
+                Ok(Action::Break)
+            } else {
+                Err(bad(state))
             },
             Token::Env => |_, state, arg| {
                 arg.0.push(ArgSlice::Env(Env(state.lex.span())));
@@ -304,7 +346,13 @@ impl<'c> Redirect<'c> {
         }
 
         let (ty, append) = parse_redirect(state.lex.slice()).ok_or_else(|| bad(state))?;
+        let span = state.lex.span();
         let value = Argument::parse_in(bump, state)?;
-        Ok(Redirect { ty, append, value })
+
+        if !value.0.is_empty() {
+            Ok(Redirect { ty, append, value })
+        } else {
+            Err(ParseFailed { token: Token::Redirect, span })
+        }
     }
 }

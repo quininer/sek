@@ -1,4 +1,4 @@
-use logos::{ Logos, Source, Span };
+use logos::Logos;
 
 
 pub const TOKEN_KIND: &[Token; 15] = &[
@@ -64,8 +64,6 @@ pub enum Token {
 
 #[cfg(test)]
 mod test {
-    use bstr::ByteSlice;
-    use logos::Lexer;
     use super::*;
 
     #[test]
@@ -204,7 +202,7 @@ mod test {
 
         let expected = vec![
             (Token::Text, "exe"),
-            (Token::Empty, ""),
+            (Token::Empty, " "),
             (Token::Env, "$HOME"),
             (Token::Text, "/path/foo"),
         ];

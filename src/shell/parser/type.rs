@@ -20,11 +20,14 @@ pub struct Env(pub Span);
 pub struct SubShell<'c>(pub Box<'c, Command<'c>>);
 
 #[derive(Debug)]
+pub struct ChainShell<'c>(pub Box<'c, Command<'c>>);
+
+#[derive(Debug)]
 pub enum Chain<'c> {
-    Pipe(SubShell<'c>),
-    Then(SubShell<'c>),
-    AndIf(SubShell<'c>),
-    OrIf(SubShell<'c>)
+    Pipe(ChainShell<'c>),
+    Then(ChainShell<'c>),
+    AndIf(ChainShell<'c>),
+    OrIf(ChainShell<'c>)
 }
 
 #[derive(Debug)]
