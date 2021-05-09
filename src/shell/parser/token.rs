@@ -16,7 +16,7 @@ pub const TOKEN_KIND: &[Token; 15] = &[
     Token::Env,
     Token::Text,
     Token::Empty,
-    Token::Error
+    Token::Unknown
 ];
 
 #[derive(Logos, Debug, PartialEq, Copy, Clone)]
@@ -59,7 +59,7 @@ pub enum Token {
     Empty,
 
     #[error]
-    Error
+    Unknown
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ use bumpalo::boxed::Box;
 use bumpalo::collections::Vec;
 use logos::{ Logos, Source, Span };
 use scopeguard::guard;
+use if_chain::if_chain;
 use crate::shell::parser::token::{ Token, TOKEN_KIND };
 use crate::shell::parser::type_::*;
 
@@ -38,7 +39,7 @@ macro_rules! lookup {
 
 struct State<'i> {
     lex: logos::Lexer<'i, Token>,
-    last: Option<Token>,
+    last: Token,
     is_subshell: bool,
     point: usize
 }
@@ -46,6 +47,13 @@ struct State<'i> {
 enum Action {
     Continue,
     Break
+}
+
+fn bad(state: &State<'_>) -> ParseFailed {
+    ParseFailed {
+        token: state.last,
+        span: state.lex.span()
+    }
 }
 
 impl<'c> Command<'c> {
@@ -81,11 +89,11 @@ impl<'c> Command<'c> {
             Token::ShellClose => |_, state, _| if state.is_subshell {
                 Ok(Action::Break)
             } else {
-                todo!()
+                Err(bad(state))
             },
             Token::Comment => |_, _, _| Ok(Action::Break),
             Token::Empty => |_, _, _| Ok(Action::Continue),
-            _ => |_, _, _| todo!()
+            _ => |_, state, _| Err(bad(state))
         };
 
         let mut cmd = Command {
@@ -94,10 +102,8 @@ impl<'c> Command<'c> {
             redirect: Vec::new_in(bump)
         };
 
-        while let Some(token) = state.last.take()
-            .or_else(|| state.lex.next())
-        {
-            state.last = Some(token);
+        while let Some(token) = state.lex.next() {
+            state.last = token;
             match LUT[token as usize](bump, state, &mut cmd)? {
                 Action::Continue => (),
                 Action::Break => break
@@ -113,7 +119,6 @@ impl<'c> SubShell<'c> {
         let prev_substate = mem::replace(&mut state.is_subshell, true);
         let mut state = guard(state, |state| state.is_subshell = prev_substate);
 
-        state.last = None;
         let cmd = Command::parse_in(bump, &mut state)?;
         let cmd = Box::new_in(cmd, bump);
 
@@ -124,25 +129,26 @@ impl<'c> SubShell<'c> {
 impl<'c> Chain<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
         let kind = state.last;
+        let span = state.lex.span();
         let subshell = SubShell::parse_in(bump, state)?;
 
         match kind {
-            Some(Token::Pipe) => Ok(Chain::Pipe(subshell)),
-            Some(Token::Then) => Ok(Chain::Then(subshell)),
-            Some(Token::AndIf) => Ok(Chain::AndIf(subshell)),
-            Some(Token::OrIf) => Ok(Chain::OrIf(subshell)),
-            _ => todo!(),
+            Token::Pipe => Ok(Chain::Pipe(subshell)),
+            Token::Then => Ok(Chain::Then(subshell)),
+            Token::AndIf => Ok(Chain::AndIf(subshell)),
+            Token::OrIf => Ok(Chain::OrIf(subshell)),
+            token => Err(ParseFailed { token, span }),
         }
     }
 }
 
 impl SingleStr {
     fn parse_in<'c, 'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        let start = state.lex.span().end;
+        let span = state.lex.span();
         let mut end = None;
 
         while let Some(token) = state.lex.next() {
-            state.last = Some(token);
+            state.last = token;
 
             if let Token::SingleQuote = token {
                 end = Some(state.lex.span().start);
@@ -151,9 +157,9 @@ impl SingleStr {
         }
 
         if let Some(end) = end {
-            Ok(SingleStr(start..end))
+            Ok(SingleStr(span.end..end))
         } else {
-            todo!()
+            Err(ParseFailed { token: Token::SingleQuote, span })
         }
     }
 }
@@ -166,26 +172,52 @@ impl<'c> DoubleStr<'c> {
         lookup!{
             static LUT = [Lookup; TOKEN_KIND.len()];
 
-            Token::SingleQuote => |bump, state, string| todo!(),
+            Token::SingleQuote
+                | Token::Text
+                | Token::Empty
+                | Token::ShellClose
+                | Token::Comment
+                | Token::Pipe
+                | Token::Then
+                | Token::AndIf
+                | Token::OrIf
+                | Token::Redirect => |_, state, string|
+            {
+                let span = state.lex.span();
+
+                if_chain!{
+                    if let Some(StrSlice::Str(Literal(prev))) = string.0.last_mut();
+                    if prev.end == span.start;
+                    then {
+                        prev.end = span.end;
+                    } else {
+                        string.0.push(StrSlice::Str(Literal(state.lex.span())));
+                    }
+                }
+
+                Ok(Action::Continue)
+            },
             Token::DoubleQuote => |_, _, _| Ok(Action::Break),
-            Token::ShellOpen => |bump, state, string| todo!(),
-            Token::Env => |bump, state, string| {
+            Token::ShellOpen => |bump, state, string| {
+                string.0.push(StrSlice::SubShell(SubShell::parse_in(bump, state)?));
+                Ok(Action::Continue)
+            },
+            Token::Env => |_, state, string| {
                 string.0.push(StrSlice::Env(Env(state.lex.span())));
                 Ok(Action::Continue)
             },
-            Token::Text => |bump, state, string| {
+            Token::Backslash => |_, state, string| {
+                let _token = state.lex.next();
                 string.0.push(StrSlice::Str(Literal(state.lex.span())));
                 Ok(Action::Continue)
             },
-            Token::Empty => |_, _, _| Ok(Action::Break),
-            Token::Backslash => |_, _, _| todo!(),
-            _ => |_, _, _| todo!()
+            _ => |_, state, _| Err(bad(state))
         }
 
         let mut string = DoubleStr(Vec::with_capacity_in(8, bump));
 
         while let Some(token) = state.lex.next() {
-            state.last = Some(token);
+            state.last = token;
             match LUT[token as usize](bump, state, &mut string)? {
                 Action::Continue => (),
                 Action::Break => break
@@ -216,25 +248,39 @@ impl<'c> Argument<'c> {
                 arg.0.push(ArgSlice::SubShell(SubShell::parse_in(bump, state)?));
                 Ok(Action::Continue)
             },
-            Token::Env => |bump, state, arg| {
+            Token::Env => |_, state, arg| {
                 arg.0.push(ArgSlice::Env(Env(state.lex.span())));
                 Ok(Action::Continue)
             },
-            Token::Text => |bump, state, arg| {
-                arg.0.push(ArgSlice::Str(Literal(state.lex.span())));
+            Token::Text => |_, state, arg| {
+                let span = state.lex.span();
+
+                if_chain!{
+                    if let Some(ArgSlice::Str(Literal(prev))) = arg.0.last_mut();
+                    if prev.end == span.start;
+                    then {
+                        prev.end = span.end;
+                    } else {
+                        arg.0.push(ArgSlice::Str(Literal(state.lex.span())));
+                    }
+                }
+
                 Ok(Action::Continue)
             },
             Token::Empty => |_, _, _| Ok(Action::Break),
-            Token::Backslash => |_, _, _| todo!(),
-            _ => |_, _, _| todo!()
+            Token::Backslash => |_, state, arg| {
+                let _token = state.lex.next();
+                arg.0.push(ArgSlice::Str(Literal(state.lex.span())));
+                Ok(Action::Continue)
+            },
+            _ => |_, state, _| Err(bad(state))
         }
 
         let mut arg = Argument(Vec::with_capacity_in(8, bump));
+        let mut last = Some(state.last);
 
-        while let Some(token) = state.last.take()
-            .or_else(|| state.lex.next())
-        {
-            state.last = Some(token);
+        while let Some(token) = last.take().or_else(|| state.lex.next()) {
+            state.last = token;
             match LUT[token as usize](bump, state, &mut arg)? {
                 Action::Continue => (),
                 Action::Break => break
@@ -257,11 +303,8 @@ impl<'c> Redirect<'c> {
             }
         }
 
-        let (ty, append) = parse_redirect(state.lex.slice())
-            .ok_or_else(|| todo!())?;
-
+        let (ty, append) = parse_redirect(state.lex.slice()).ok_or_else(|| bad(state))?;
         let value = Argument::parse_in(bump, state)?;
-
         Ok(Redirect { ty, append, value })
     }
 }
