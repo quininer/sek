@@ -1,24 +1,6 @@
 use logos::Logos;
 
 
-pub const TOKEN_KIND: &[Token; 15] = &[
-    Token::SingleQuote,
-    Token::DoubleQuote,
-    Token::ShellOpen,
-    Token::ShellClose,
-    Token::Comment,
-    Token::Backslash,
-    Token::Pipe,
-    Token::Then,
-    Token::AndIf,
-    Token::OrIf,
-    Token::Redirect,
-    Token::Env,
-    Token::Text,
-    Token::Empty,
-    Token::Unknown
-];
-
 #[derive(Logos, Debug, PartialEq, Copy, Clone)]
 pub enum Token {
     #[token("'")]
@@ -60,6 +42,30 @@ pub enum Token {
 
     #[error]
     Unknown
+}
+
+impl Token {
+    pub const fn size() -> usize {
+        const TOKEN_KIND: &[Token; 15] = &[
+            Token::SingleQuote,
+            Token::DoubleQuote,
+            Token::ShellOpen,
+            Token::ShellClose,
+            Token::Comment,
+            Token::Backslash,
+            Token::Pipe,
+            Token::Then,
+            Token::AndIf,
+            Token::OrIf,
+            Token::Redirect,
+            Token::Env,
+            Token::Text,
+            Token::Empty,
+            Token::Unknown
+        ];
+
+        TOKEN_KIND.len()
+    }
 }
 
 #[cfg(test)]

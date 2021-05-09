@@ -12,6 +12,7 @@ use scopeguard::defer;
 use directories::ProjectDirs;
 use getrandom::getrandom;
 use crossterm::terminal;
+use shell::Shell;
 
 
 pub struct Global {
@@ -64,11 +65,8 @@ async fn main() -> anyhow::Result<()> {
             Err(err)
         })?;
 
-//    let mut shell = Shell::new(&global)?;
-//
-//    if let Some(config) = Config::open(&global)? {
-//        config.execute(&mut shell).await?;
-//    }
+    let mut shell = Shell::new(&global)?;
+    shell::config::load(&global, &mut shell).await?;
 
     terminal::enable_raw_mode()?;
 

@@ -33,7 +33,7 @@ fn test_parse_command() -> anyhow::Result<()> {
     // subshell
     bump.reset();
     {
-        let input = r#"exe $(exe2 hello world) "$(exe3)" subshell"#;
+        let input = r#"exe $(exe2 hello world) "$(exe3)" $()"#;
         let cmd = parse_in(&bump, input).unwrap();
 
         eprintln!("{:?}", &cmd);

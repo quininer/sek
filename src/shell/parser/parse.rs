@@ -5,7 +5,7 @@ use bumpalo::collections::Vec;
 use logos::{ Logos, Span };
 use scopeguard::guard;
 use if_chain::if_chain;
-use crate::shell::parser::token::{ Token, TOKEN_KIND };
+use crate::shell::parser::Token;
 use crate::shell::parser::type_::*;
 
 
@@ -71,7 +71,7 @@ impl<'c> Command<'c> {
             -> Result<Action, ParseFailed>;
 
         lookup!{
-            static LUT = [Lookup; TOKEN_KIND.len()];
+            static LUT = [Lookup; Token::size()];
 
             Token::SingleQuote
                 | Token::DoubleQuote
@@ -202,7 +202,7 @@ impl<'c> DoubleStr<'c> {
             -> Result<Action, ParseFailed>;
 
         lookup!{
-            static LUT = [Lookup; TOKEN_KIND.len()];
+            static LUT = [Lookup; Token::size()];
 
             Token::SingleQuote
                 | Token::Text
@@ -271,7 +271,7 @@ impl<'c> Argument<'c> {
             -> Result<Action, ParseFailed>;
 
         lookup!{
-            static LUT = [Lookup; TOKEN_KIND.len()];
+            static LUT = [Lookup; Token::size()];
 
             Token::SingleQuote => |bump, state, arg| {
                 arg.0.push(ArgSlice::Single(SingleStr::parse_in(bump, state)?));

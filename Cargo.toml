@@ -45,5 +45,9 @@ memmap = "0.7"
 bumpalo = { version = "3", features = [ "collections", "boxed" ] }
 serde_cbor = "0.11"
 
+# config
+serde_json = "1"
+serde-tuple-vec-map = "1"
+
 # glob
 glob = "0.3"
