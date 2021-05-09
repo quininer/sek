@@ -1,5 +1,3 @@
 pub mod token;
 pub mod parse;
-
-#[path = "type.rs"]
-pub mod type_;
+#[path = "type.rs"] pub mod type_;

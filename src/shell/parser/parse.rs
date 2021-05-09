@@ -1,6 +1,9 @@
+use std::mem;
 use bumpalo::Bump;
+use bumpalo::boxed::Box;
 use bumpalo::collections::Vec;
 use logos::{ Logos, Source, Span };
+use scopeguard::guard;
 use crate::shell::parser::token::{ Token, TOKEN_KIND };
 use crate::shell::parser::type_::*;
 
@@ -36,6 +39,7 @@ macro_rules! lookup {
 struct State<'i> {
     lex: logos::Lexer<'i, Token>,
     last: Option<Token>,
+    is_subshell: bool,
     point: usize
 }
 
@@ -74,6 +78,11 @@ impl<'c> Command<'c> {
                 cmd.redirect.push(Redirect::parse_in(bump, state)?);
                 Ok(Action::Continue)
             },
+            Token::ShellClose => |_, state, _| if state.is_subshell {
+                Ok(Action::Break)
+            } else {
+                todo!()
+            },
             Token::Comment => |_, _, _| Ok(Action::Break),
             Token::Empty => |_, _, _| Ok(Action::Continue),
             _ => |_, _, _| todo!()
@@ -101,25 +110,89 @@ impl<'c> Command<'c> {
 
 impl<'c> SubShell<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        todo!()
+        let prev_substate = mem::replace(&mut state.is_subshell, true);
+        let mut state = guard(state, |state| state.is_subshell = prev_substate);
+
+        state.last = None;
+        let cmd = Command::parse_in(bump, &mut state)?;
+        let cmd = Box::new_in(cmd, bump);
+
+        Ok((SubShell(cmd)))
     }
 }
 
 impl<'c> Chain<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        todo!()
+        let kind = state.last;
+        let subshell = SubShell::parse_in(bump, state)?;
+
+        match kind {
+            Some(Token::Pipe) => Ok(Chain::Pipe(subshell)),
+            Some(Token::Then) => Ok(Chain::Then(subshell)),
+            Some(Token::AndIf) => Ok(Chain::AndIf(subshell)),
+            Some(Token::OrIf) => Ok(Chain::OrIf(subshell)),
+            _ => todo!(),
+        }
     }
 }
 
 impl SingleStr {
     fn parse_in<'c, 'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        todo!()
+        let start = state.lex.span().end;
+        let mut end = None;
+
+        while let Some(token) = state.lex.next() {
+            state.last = Some(token);
+
+            if let Token::SingleQuote = token {
+                end = Some(state.lex.span().start);
+                break
+            }
+        }
+
+        if let Some(end) = end {
+            Ok(SingleStr(start..end))
+        } else {
+            todo!()
+        }
     }
 }
 
 impl<'c> DoubleStr<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        todo!()
+        type Lookup = for<'c, 'i> fn(&'c Bump, &mut State<'i>, &mut DoubleStr<'c>)
+            -> Result<Action, ParseFailed>;
+
+        lookup!{
+            static LUT = [Lookup; TOKEN_KIND.len()];
+
+            Token::SingleQuote => |bump, state, string| todo!(),
+            Token::DoubleQuote => |_, _, _| Ok(Action::Break),
+            Token::ShellOpen => |bump, state, string| todo!(),
+            Token::Env => |bump, state, string| {
+                string.0.push(StrSlice::Env(Env(state.lex.span())));
+                Ok(Action::Continue)
+            },
+            Token::Text => |bump, state, string| {
+                string.0.push(StrSlice::Str(Literal(state.lex.span())));
+                Ok(Action::Continue)
+            },
+            Token::Empty => |_, _, _| Ok(Action::Break),
+            Token::Backslash => |_, _, _| todo!(),
+            _ => |_, _, _| todo!()
+        }
+
+        let mut string = DoubleStr(Vec::with_capacity_in(8, bump));
+
+        while let Some(token) = state.lex.next() {
+            state.last = Some(token);
+            match LUT[token as usize](bump, state, &mut string)? {
+                Action::Continue => (),
+                Action::Break => break
+            }
+        }
+
+        Ok(string)
     }
 }
 
@@ -156,7 +229,7 @@ impl<'c> Argument<'c> {
             _ => |_, _, _| todo!()
         }
 
-        let mut arg = Argument(Vec::with_capacity_in(4, bump));
+        let mut arg = Argument(Vec::with_capacity_in(8, bump));
 
         while let Some(token) = state.last.take()
             .or_else(|| state.lex.next())
