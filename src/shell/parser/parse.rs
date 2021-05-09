@@ -15,6 +15,11 @@ pub struct ParseFailed {
     pub span: Span
 }
 
+enum Action {
+    Continue,
+    Break
+}
+
 macro_rules! lookup {
     (
         static $name:ident = [$ty:ty ; $size:expr];
@@ -41,11 +46,6 @@ struct State<'i> {
     lex: logos::Lexer<'i, Token>,
     last: Token,
     is_subshell: bool
-}
-
-enum Action {
-    Continue,
-    Break
 }
 
 fn bad(state: &State<'_>) -> ParseFailed {

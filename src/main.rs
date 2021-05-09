@@ -1,6 +1,8 @@
 // we never spawn
 #![allow(clippy::await_holding_refcell_ref)]
 
+mod util;
+mod editor;
 mod shell;
 
 use std::{ fs, io };

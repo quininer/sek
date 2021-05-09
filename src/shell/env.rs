@@ -21,10 +21,10 @@ impl Env {
 
         let cd = env::current_dir()?;
 
-        self.set("PWD".as_ref(), cd.into());
-
         #[cfg(windows)]
-        self.set("CD".as_ref(), cd.into());
+        self.set("CD".as_ref(), cd.clone().into());
+
+        self.set("PWD".as_ref(), cd.into());
 
         Ok(())
     }
