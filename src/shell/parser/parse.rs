@@ -175,7 +175,7 @@ impl<'c> Chain<'c> {
 }
 
 impl SingleStr {
-    fn parse_in<'c, 'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
+    fn parse_in<'c, 'i>(_bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
         let span = state.lex.span();
         let mut end = None;
 
@@ -285,7 +285,7 @@ impl<'c> Argument<'c> {
                 arg.0.push(ArgSlice::SubShell(SubShell::parse_in(bump, state)?));
                 Ok(Action::Continue)
             },
-            Token::ShellClose => |bump, state, arg| if state.is_subshell {
+            Token::ShellClose => |_, state, _| if state.is_subshell {
                 Ok(Action::Break)
             } else {
                 Err(bad(state))
@@ -347,6 +347,20 @@ impl<'c> Redirect<'c> {
 
         let (ty, append) = parse_redirect(state.lex.slice()).ok_or_else(|| bad(state))?;
         let span = state.lex.span();
+        let mut eof = true;
+
+        while let Some(token) = state.lex.next() {
+            if token != Token::Empty {
+                state.last = token;
+                eof = false;
+                break
+            }
+        }
+
+        if eof {
+            return Err(ParseFailed { token: Token::Redirect, span });
+        }
+
         let value = Argument::parse_in(bump, state)?;
 
         if !value.0.is_empty() {

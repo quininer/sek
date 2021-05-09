@@ -1,4 +1,3 @@
-use std::io;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::borrow::Cow;
@@ -38,7 +37,7 @@ pub async fn load(global: &Global, shell: &mut Shell) -> anyhow::Result<()> {
     let config: Config = serde_json::from_slice(&output.stdout)?;
 
     for (key, val) in config.set_env {
-        shell.env.set(&key, val.into());
+        shell.env.set(&key, val.into_owned());
     }
 
     for key in config.unset_env {

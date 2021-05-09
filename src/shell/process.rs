@@ -2,7 +2,6 @@ use std::{ io, mem };
 use std::rc::Rc;
 use std::ffi::OsStr;
 use std::cell::RefCell;
-use std::path::{ Path, PathBuf };
 use std::process::{ Stdio, ExitStatus };
 use tokio::process::{ Command, Child as TokioChild, ChildStdout };
 use anyhow::Context;

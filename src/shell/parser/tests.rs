@@ -5,6 +5,9 @@ use crate::shell::parser::type_::*;
 
 #[test]
 fn test_parse_command() -> anyhow::Result<()> {
+    use Output::*;
+    use Kind::*;
+
     let mut bump = Bump::new();
 
     // simple
@@ -12,22 +15,12 @@ fn test_parse_command() -> anyhow::Result<()> {
     {
         let input = "exe 123";
         let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
 
-        assert_eq!(cmd.args.len(), 2);
-
-        assert_eq!(cmd.args[0].0.len(), 1);
-        if let ArgSlice::Str(Literal(span)) = &cmd.args[0].0[0] {
-            assert_eq!(&input[span.clone()], "exe");
-        } else {
-            panic!()
-        }
-
-        assert_eq!(cmd.args[1].0.len(), 1);
-        if let ArgSlice::Str(Literal(span)) = &cmd.args[1].0[0] {
-            assert_eq!(&input[span.clone()], "123");
-        } else {
-            panic!()
-        }
+        assert_eq!(output, Vec(Kind::Command, vec![
+            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Vec(Argument, vec![Item(Literal, "123".into())])
+        ]));
     }
 
     // subshell
@@ -35,20 +28,240 @@ fn test_parse_command() -> anyhow::Result<()> {
     {
         let input = r#"exe $(exe2 hello world) "$(exe3)" $()"#;
         let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
 
-        eprintln!("{:?}", &cmd);
+        assert_eq!(output, Vec(Command, vec![
+            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Vec(Argument, vec![One(
+                SubShell,
+                Box::new(Vec(Command, vec![
+                    Vec(Argument, vec![Item(Literal, "exe2".into())]),
+                    Vec(Argument, vec![Item(Literal, "hello".into())]),
+                    Vec(Argument, vec![Item(Literal, "world".into())])
+                ])),
+            )]),
+            Vec(Argument, vec![Vec(
+                DoubleStr,
+                vec![One(SubShell, Box::new(Vec(
+                    Command,
+                    vec![Vec(Argument, vec![Item(Literal, "exe3".into())])]
+                )))]
+            )]),
+            Vec(Argument, vec![One(
+                SubShell,
+                Box::new(Vec(Command, vec![]))
+            )])
+        ]));
+    }
 
-        assert_eq!(cmd.args.len(), 4);
+    // env
+    bump.reset();
+    {
+        let input = r#"$EXE $HOME/.config "hello $EXE3 world" $($EXE4 "$EXE5")"#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
 
-        assert_eq!(cmd.args[0].0.len(), 1);
-        if let ArgSlice::Str(Literal(span)) = &cmd.args[0].0[0] {
-            assert_eq!(&input[span.clone()], "exe");
-        } else {
-            panic!()
-        }
+        assert_eq!(output, Vec(Command, vec![
+            Vec(Argument, vec![Item(Env, "$EXE".into())]),
+            Vec(Argument, vec![
+                Item(Env, "$HOME".into()),
+                Item(Literal, "/.config".into()),
+            ]),
+            Vec(Argument, vec![Vec(DoubleStr, vec![
+                Item(Literal, "hello ".into()),
+                Item(Env, "$EXE3".into()),
+                Item(Literal, " world".into())
+            ])]),
+            Vec(Argument, vec![One(SubShell, Box::new(Vec(Command, vec![
+                Vec(Argument, vec![Item(Env, "$EXE4".into())]),
+                Vec(Argument, vec![Vec(DoubleStr, vec![Item(Env, "$EXE5".into())])])
+            ])))])
+        ]));
+    }
 
-        // ...
+    // double string
+    bump.reset();
+    {
+        let input = r#"exe a"b"c""d "#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Vec(Argument, vec![
+                Item(Literal, "a".into()),
+                Vec(DoubleStr, vec![Item(Literal, "b".into())]),
+                Item(Literal, "c".into()),
+                Vec(DoubleStr, vec![]),
+                Item(Literal, "d".into())
+            ])
+        ]));
+    }
+
+    // single string
+    bump.reset();
+    {
+        let input = r#"exe '\' '>> #$()'"#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Vec(Argument, vec![Item(SingleStr, "\\".into())]),
+            Vec(Argument, vec![Item(SingleStr, ">> #$()".into())])
+        ]));
+    }
+
+    // pipe
+    bump.reset();
+    {
+        let input = r#"exe | exe2 a | $(exe3 b) && exe4"#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            One(Pipe, Box::new(Vec(Command, vec![
+                Vec(Argument, vec![Item(Literal, "exe2".into())]),
+                Vec(Argument, vec![Item(Literal, "a".into())]),
+                One(Pipe, Box::new(Vec(Command, vec![
+                    Vec(Argument, vec![One(SubShell, Box::new(Vec(Command, vec![
+                        Vec(Argument, vec![Item(Literal, "exe3".into())]),
+                        Vec(Argument, vec![Item(Literal, "b".into())])
+                    ])))]),
+                    One(AndIf, Box::new(Vec(Command, vec![
+                        Vec(Argument, vec![Item(Literal, "exe4".into())])
+                    ])))
+                ])))
+            ])))
+        ]));
+    }
+
+    // redirect
+    bump.reset();
+    {
+        let input = r#"exe > a 2>> b"#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            One(RedirectOut, Box::new(Vec(Argument, vec![
+                Item(Literal, "a".into())
+            ]))),
+            One(RedirectErrAppend, Box::new(Vec(Argument, vec![
+                Item(Literal, "b".into())
+            ])))
+        ]));
     }
 
     Ok(())
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum Kind {
+    Command,
+    Literal,
+    Env,
+    SubShell,
+    Pipe,
+    Then,
+    AndIf,
+    OrIf,
+    SingleStr,
+    DoubleStr,
+    Argument,
+    RedirectOut,
+    RedirectOutAppend,
+    RedirectErr,
+    RedirectErrAppend,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum Output {
+    Item(Kind, String),
+    One(Kind, Box<Output>),
+    Vec(Kind, Vec<Output>)
+}
+
+trait Fix {
+    fn fix(&self, input: &str) -> Output;
+}
+
+impl Fix for Command<'_> {
+    fn fix(&self, input: &str) -> Output {
+        let mut output = Vec::new();
+        for arg in &self.args {
+            output.push(arg.fix(input));
+        }
+        if let Some(chain) = self.chain.as_ref() {
+            output.push(chain.fix(input));
+        }
+        for redirect in &self.redirect {
+            output.push(redirect.fix(input));
+        }
+        Output::Vec(Kind::Command, output)
+    }
+}
+
+impl Fix for Argument<'_> {
+    fn fix(&self, input: &str) -> Output {
+        let mut output = Vec::new();
+        for arg in &self.0 {
+            match arg {
+                ArgSlice::Str(Literal(span)) =>
+                    output.push(Output::Item(Kind::Literal, input[span.clone()].into())),
+                ArgSlice::Env(Env(span)) =>
+                    output.push(Output::Item(Kind::Env, input[span.clone()].into())),
+                ArgSlice::Single(SingleStr(span)) =>
+                    output.push(Output::Item(Kind::SingleStr, input[span.clone()].into())),
+                ArgSlice::Double(arg) =>
+                    output.push(arg.fix(input)),
+                ArgSlice::SubShell(arg) =>
+                    output.push(Output::One(Kind::SubShell, Box::new(arg.0.fix(input))))
+            }
+        }
+        Output::Vec(Kind::Argument, output)
+    }
+}
+
+impl Fix for DoubleStr<'_> {
+    fn fix(&self, input: &str) -> Output {
+        let mut output = Vec::new();
+        for arg in &self.0 {
+            match arg {
+                StrSlice::Str(Literal(span)) =>
+                    output.push(Output::Item(Kind::Literal, input[span.clone()].into())),
+                StrSlice::Env(Env(span)) =>
+                    output.push(Output::Item(Kind::Env, input[span.clone()].into())),
+                StrSlice::SubShell(arg) =>
+                    output.push(Output::One(Kind::SubShell, Box::new(arg.0.fix(input))))
+            }
+        }
+        Output::Vec(Kind::DoubleStr, output)
+    }
+}
+
+impl Fix for Chain<'_> {
+    fn fix(&self, input: &str) -> Output {
+        match self {
+            Chain::Pipe(subshell) => Output::One(Kind::Pipe, Box::new(subshell.0.fix(input))),
+            Chain::Then(subshell) => Output::One(Kind::Then, Box::new(subshell.0.fix(input))),
+            Chain::AndIf(subshell) => Output::One(Kind::AndIf, Box::new(subshell.0.fix(input))),
+            Chain::OrIf(subshell) => Output::One(Kind::OrIf, Box::new(subshell.0.fix(input)))
+        }
+    }
+}
+
+impl Fix for Redirect<'_> {
+    fn fix(&self, input: &str) -> Output {
+        let kind = match (self.ty, self.append) {
+            (StdioType::Out, false) => Kind::RedirectOut,
+            (StdioType::Out, true) => Kind::RedirectOutAppend,
+            (StdioType::Err, false) => Kind::RedirectErr,
+            (StdioType::Err, true) => Kind::RedirectErrAppend
+        };
+
+        Output::One(kind, Box::new(self.value.fix(input)))
+    }
 }
