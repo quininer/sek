@@ -17,6 +17,7 @@ use crate::shell::env::Env;
 use crate::shell::config::Theme;
 use crate::shell::process::Morgue;
 use crate::editor::Editor;
+pub use crate::shell::parser::colour;
 
 
 pub struct Shell {

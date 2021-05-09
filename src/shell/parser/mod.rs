@@ -1,7 +1,7 @@
 mod token;
-pub mod parse;
+mod parse;
+mod highlight;
 #[path = "type.rs"] pub mod type_;
-pub mod highlight;
 
 #[cfg(test)]
 mod tests;

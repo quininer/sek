@@ -45,7 +45,8 @@ macro_rules! lookup {
 struct State<'i> {
     lex: logos::Lexer<'i, Token>,
     last: Token,
-    is_subshell: bool
+    is_subshell: bool,
+    incomplete: bool
 }
 
 fn bad(state: &State<'_>) -> ParseFailed {
@@ -59,7 +60,19 @@ pub fn parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c>, ParseFai
     let mut state = State {
         lex: Token::lexer(input),
         last: Token::Unknown,
-        is_subshell: false
+        is_subshell: false,
+        incomplete: false
+    };
+
+    Command::parse_in(bump, &mut state)
+}
+
+pub fn incomplete_parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c>, ParseFailed> {
+    let mut state = State {
+        lex: Token::lexer(input),
+        last: Token::Unknown,
+        is_subshell: false,
+        incomplete: true
     };
 
     Command::parse_in(bump, &mut state)
@@ -106,9 +119,7 @@ impl<'c> Command<'c> {
             },
             Token::Comment => |_, _, _| Ok(Action::Break),
             Token::Empty => |_, _, _| Ok(Action::Continue),
-            _ => |_, state, _| {
-                Err(bad(state))
-            }
+            _ => |_, state, _| Err(bad(state))
         };
 
         let mut cmd = Command {
@@ -138,7 +149,7 @@ impl<'c> SubShell<'c> {
         let cmd = Command::parse_in(bump, &mut state)?;
         let cmd = Box::new_in(cmd, bump);
 
-        if state.last == Token::ShellClose {
+        if state.incomplete || state.last == Token::ShellClose {
             Ok(SubShell(cmd))
         } else {
             Err(ParseFailed { token: Token::ShellOpen, span })
@@ -160,7 +171,7 @@ impl<'c> Chain<'c> {
         let span = state.lex.span();
         let subshell = ChainShell::parse_in(bump, state)?;
 
-        if !subshell.0.args.is_empty() {
+        if state.incomplete || !subshell.0.args.is_empty() {
             match kind {
                 Token::Pipe => Ok(Chain::Pipe(subshell)),
                 Token::Then => Ok(Chain::Then(subshell)),
@@ -189,6 +200,9 @@ impl SingleStr {
         }
 
         if let Some(end) = end {
+            Ok(SingleStr(span.end..end))
+        } else if state.incomplete {
+            let end = state.lex.span().end;
             Ok(SingleStr(span.end..end))
         } else {
             Err(ParseFailed { token: Token::SingleQuote, span })
@@ -257,7 +271,7 @@ impl<'c> DoubleStr<'c> {
             }
         }
 
-        if state.last == Token::DoubleQuote {
+        if state.incomplete || state.last == Token::DoubleQuote {
             Ok(string)
         } else {
             Err(ParseFailed { token: Token::DoubleQuote, span })
@@ -357,13 +371,13 @@ impl<'c> Redirect<'c> {
             }
         }
 
-        if eof {
+        if !state.incomplete && eof {
             return Err(ParseFailed { token: Token::Redirect, span });
         }
 
         let value = Argument::parse_in(bump, state)?;
 
-        if !value.0.is_empty() {
+        if state.incomplete || !value.0.is_empty() {
             Ok(Redirect { ty, append, value })
         } else {
             Err(ParseFailed { token: Token::Redirect, span })
