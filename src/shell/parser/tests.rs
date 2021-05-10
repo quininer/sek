@@ -161,7 +161,7 @@ fn test_parse_command() -> anyhow::Result<()> {
 
 #[test]
 fn test_bad_command() -> anyhow::Result<()> {
-    use crate::shell::parser::{ error, Token };
+    use crate::shell::parser::{ ErrorKind, Token };
     use Output::*;
     use Kind::*;
 
@@ -174,7 +174,7 @@ fn test_bad_command() -> anyhow::Result<()> {
         let err = parse_in(&bump, input).unwrap_err();
         assert_eq!(err.token, Token::Env);
         assert_eq!(&input[err.span], "$CC");
-        assert_eq!(err.msg, error::FIRST_ARGS_MUST_LITERAL);
+        assert_eq!(err.kind, ErrorKind::FirstArgMustLiteral);
     }
 
     Ok(())
