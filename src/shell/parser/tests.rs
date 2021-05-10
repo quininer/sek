@@ -177,6 +177,76 @@ fn test_bad_command() -> anyhow::Result<()> {
         assert_eq!(err.kind, ErrorKind::FirstArgMustLiteral);
     }
 
+    // empty
+    bump.reset();
+    {
+        let input = " ";
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Empty);
+        assert_eq!(&input[err.span], " ");
+        assert_eq!(err.kind, ErrorKind::EmptyCommand);
+    }
+
+    // unexpected close
+    bump.reset();
+    {
+        let input = "exe )";
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::ShellClose);
+        assert_eq!(&input[err.span], ")");
+        assert_eq!(err.kind, ErrorKind::UnexpectedClose);
+    }
+
+    // unsupported redirect type
+    bump.reset();
+    {
+        let input = "exe 3> a";
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Redirect);
+        assert_eq!(&input[err.span], "3>");
+        assert_eq!(err.kind, ErrorKind::UnsupportedRedirectType);
+    }
+
+    // unclosed subshell
+    bump.reset();
+    {
+        let input = "exe $(exe3";
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::ShellOpen);
+        assert_eq!(&input[err.span], "$(");
+        assert_eq!(err.kind, ErrorKind::UnclosedSubShell);
+    }
+
+    // unclosed single quote
+    bump.reset();
+    {
+        let input = "exe 'text";
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::SingleQuote);
+        assert_eq!(&input[err.span], "'");
+        assert_eq!(err.kind, ErrorKind::UnclosedSingleQuote);
+    }
+
+    // unclosed double quote
+    bump.reset();
+    {
+        let input = "exe \"text";
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::DoubleQuote);
+        assert_eq!(&input[err.span], "\"");
+        assert_eq!(err.kind, ErrorKind::UnclosedDoubleQuote);
+    }
+
+    // redirect no target
+    bump.reset();
+    {
+        let input = r#"exe >"#;
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Redirect);
+        assert_eq!(&input[err.span], ">");
+        assert_eq!(err.kind, ErrorKind::RedirectNoTarget);
+    }
+
     Ok(())
 }
 

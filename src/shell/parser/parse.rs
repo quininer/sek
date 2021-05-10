@@ -146,6 +146,7 @@ impl<'c> Command<'c> {
         };
 
         let mut cmd = None;
+        let start = state.lex.span().start;
 
         while let Some(token) = state.lex.next() {
             state.last = token;
@@ -155,7 +156,11 @@ impl<'c> Command<'c> {
             }
         }
 
-        cmd.ok_or_else(|| bad(state, ErrorKind::EmptyCommand))
+        cmd.ok_or_else(|| ParseFailed {
+            token: state.last,
+            kind: ErrorKind::EmptyCommand,
+            span: start..state.lex.span().end
+        })
     }
 }
 
