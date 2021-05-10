@@ -52,7 +52,7 @@ fn test_parse_command() -> anyhow::Result<()> {
     // env
     bump.reset();
     {
-        let input = r#"exe $EXE $HOME/.config "hello $EXE3 world" $(exe2 $EXE4 "$EXE5")"#;
+        let input = r#"exe $EXE $HOME/.config "hello$EXE3 world" $(exe2 $EXE4 "$EXE5"a)"#;
         let cmd = parse_in(&bump, input).unwrap();
         let output = cmd.fix(input);
 
@@ -64,14 +64,17 @@ fn test_parse_command() -> anyhow::Result<()> {
                 Item(Literal, "/.config".into()),
             ]),
             Vec(Argument, vec![Vec(DoubleStr, vec![
-                Item(Literal, "hello ".into()),
+                Item(Literal, "hello".into()),
                 Item(Env, "$EXE3".into()),
                 Item(Literal, " world".into())
             ])]),
             Vec(Argument, vec![One(SubShell, Box::new(Vec(Command, vec![
                 Item(Literal, "exe2".into()),
                 Vec(Argument, vec![Item(Env, "$EXE4".into())]),
-                Vec(Argument, vec![Vec(DoubleStr, vec![Item(Env, "$EXE5".into())])])
+                Vec(Argument, vec![
+                    Vec(DoubleStr, vec![Item(Env, "$EXE5".into())]),
+                    Item(Literal, "a".into())
+                ])
             ])))])
         ]));
     }
