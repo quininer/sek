@@ -10,9 +10,7 @@ use crate::shell::Shell;
 
 pub struct ShellCommand {
     cmd: Command,
-    stdin: Option<Stdio>,
-    stdout: Option<Stdio>,
-    stderr: Option<Stdio>
+    redirect_stdout: bool,
 }
 
 pub struct Child {
@@ -29,9 +27,7 @@ impl ShellCommand {
     pub fn new(exe: &OsStr) -> ShellCommand {
         ShellCommand {
             cmd: Command::new(exe),
-            stdin: None,
-            stdout: None,
-            stderr: None
+            redirect_stdout: false
         }
     }
 
@@ -40,35 +36,24 @@ impl ShellCommand {
     }
 
     pub fn stdin(&mut self, stdio: Stdio) {
-        self.stdin = Some(stdio);
+        self.cmd.stdin(stdio);
     }
 
     pub fn stdout(&mut self, stdio: Stdio) {
-        self.stdout = Some(stdio);
+        self.cmd.stdout(stdio);
+        self.redirect_stdout = true;
     }
 
     pub fn stderr(&mut self, stdio: Stdio) {
-        self.stderr = Some(stdio);
+        self.cmd.stderr(stdio);
     }
 
     pub fn is_stdout_available(&self) -> bool {
-        self.stdout.is_none()
+        !self.redirect_stdout
     }
 
     pub fn spawn(&mut self, shell: &mut Shell) -> anyhow::Result<Child> {
         self.cmd.envs(&shell.env.0);
-
-        if let Some(stdio) = self.stdin.take() {
-            self.cmd.stdin(stdio);
-        }
-
-        if let Some(stdio) = self.stdout.take() {
-            self.cmd.stdout(stdio);
-        }
-
-        if let Some(stdio) = self.stderr.take() {
-            self.cmd.stderr(stdio);
-        }
 
         let child = self.cmd.spawn()
             .context("Command execute failed")?;
@@ -106,6 +91,8 @@ impl Child {
     #[cfg(windows)]
     pub fn start_kill(&mut self) -> io::Result<()> {
         let inner = self.inner.as_mut().unwrap();
+
+        // TODO send ctrl-c event
         inner.start_kill()
     }
 
