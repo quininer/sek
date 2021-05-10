@@ -2,6 +2,7 @@ pub mod env;
 pub mod parser;
 pub mod config;
 pub mod process;
+pub mod execute;
 
 use std::io;
 use std::rc::Rc;
@@ -27,6 +28,7 @@ pub struct Shell {
     pub theme: Theme,
     pub morgue: Morgue,
     pub userdir: UserDirs,
+    pub strbuf: String,
 }
 
 pub enum Action {
@@ -45,7 +47,8 @@ impl Shell {
             theme: Theme::default(),
             morgue: Morgue::default(),
             userdir: UserDirs::new()
-                .context("Unable to retrieve user path from system")?
+                .context("Unable to retrieve user path from system")?,
+            strbuf: String::new()
         })
     }
 
