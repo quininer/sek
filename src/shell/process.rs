@@ -8,9 +8,8 @@ use anyhow::Context;
 use crate::shell::Shell;
 
 
-#[derive(Default)]
 pub struct ShellCommand {
-    cmd: Option<Command>,
+    cmd: Command,
     stdin: Option<Stdio>,
     stdout: Option<Stdio>,
     stderr: Option<Stdio>
@@ -27,13 +26,17 @@ pub struct Morgue {
 }
 
 impl ShellCommand {
-    pub fn push(&mut self, arg: &OsStr) {
-        match self.cmd.as_mut() {
-            Some(cmd) => {
-                cmd.arg(arg);
-            },
-            None => self.cmd = Some(Command::new(arg))
+    pub fn new(exe: &OsStr) -> ShellCommand {
+        ShellCommand {
+            cmd: Command::new(exe),
+            stdin: None,
+            stdout: None,
+            stderr: None
         }
+    }
+
+    pub fn push(&mut self, arg: &OsStr) {
+        self.cmd.arg(arg);
     }
 
     pub fn stdin(&mut self, stdio: Stdio) {
@@ -48,33 +51,26 @@ impl ShellCommand {
         self.stderr = Some(stdio);
     }
 
-    pub fn is_ready(&self) -> bool {
-        self.cmd.is_some()
-    }
-
     pub fn is_stdout_available(&self) -> bool {
         self.stdout.is_none()
     }
 
     pub fn spawn(&mut self, shell: &mut Shell) -> anyhow::Result<Child> {
-        let mut cmd = self.cmd.take()
-            .context("The command was empty")?;
-
-        cmd.envs(&shell.env.0);
+        self.cmd.envs(&shell.env.0);
 
         if let Some(stdio) = self.stdin.take() {
-            cmd.stdin(stdio);
+            self.cmd.stdin(stdio);
         }
 
         if let Some(stdio) = self.stdout.take() {
-            cmd.stdout(stdio);
+            self.cmd.stdout(stdio);
         }
 
         if let Some(stdio) = self.stderr.take() {
-            cmd.stderr(stdio);
+            self.cmd.stderr(stdio);
         }
 
-        let child = cmd.spawn()
+        let child = self.cmd.spawn()
             .context("Command execute failed")?;
 
         Ok(Child {

@@ -1,9 +1,9 @@
 use std::fs;
 use std::pin::Pin;
 use std::future::Future;
-use std::task::{ Context, Poll };
 use std::ffi::{ OsStr, OsString };
 use std::process::{ Stdio, ExitStatus };
+use anyhow::Context as AnyhowContext;
 use tokio::io::AsyncReadExt;
 use if_chain::if_chain;
 use crate::shell::Shell;
@@ -59,7 +59,14 @@ impl Env {
 
 impl<'c> SubShell<'c> {
     pub async fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
-        let mut shell_cmd = ShellCommand::default();
+        let mut shell_cmd = None;
+        let mut cmd_new = |osstr: &OsStr| {
+            shell_cmd = Some(ShellCommand::new(osstr));
+            Ok(())
+        };
+        self.0.exe.eval(shell, line, &mut cmd_new)?;
+
+        let mut shell_cmd = shell_cmd.context("The expanded command was empty")?;
 
         let mut cmd_push = |osstr: &OsStr| {
             shell_cmd.push(osstr);
@@ -203,7 +210,14 @@ impl<'c> Chain<'c> {
             Chain::OrIf(subshell) => subshell,
         };
 
-        let mut shell_cmd = ShellCommand::default();
+        let mut shell_cmd = None;
+        let mut cmd_new = |osstr: &OsStr| {
+            shell_cmd = Some(ShellCommand::new(osstr));
+            Ok(())
+        };
+        subshell.0.exe.eval(shell, line, &mut cmd_new)?;
+
+        let mut shell_cmd = shell_cmd.context("The expanded command was empty")?;
 
         let mut cmd_push = |osstr: &OsStr| {
             shell_cmd.push(osstr);

@@ -99,8 +99,8 @@ impl<'c> Command<'c> {
                 *cmd = Some(Command {
                     exe: Literal(state.lex.span()),
                     args: Vec::with_capacity_in(8, bump),
+                    redirect: Vec::new_in(bump),
                     chain: None,
-                    redirect: Vec::new_in(bump)
                 });
                 Ok(Action::Continue)
             },

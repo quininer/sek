@@ -7,8 +7,8 @@ use logos::Span;
 pub struct Command<'c> {
     pub exe: Literal,
     pub args: Vec<'c, Argument<'c>>,
-    pub chain: Option<Chain<'c>>,
     pub redirect: Vec<'c, Redirect<'c>>,
+    pub chain: Option<Chain<'c>>,
 }
 
 #[derive(Debug)]
