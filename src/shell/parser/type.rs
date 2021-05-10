@@ -5,6 +5,7 @@ use logos::Span;
 
 #[derive(Debug)]
 pub struct Command<'c> {
+    pub exe: Literal,
     pub args: Vec<'c, Argument<'c>>,
     pub chain: Option<Chain<'c>>,
     pub redirect: Vec<'c, Redirect<'c>>,

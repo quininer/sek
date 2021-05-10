@@ -7,5 +7,5 @@ mod highlight;
 mod tests;
 
 pub use token::Token;
-pub use parse::parse_in;
+pub use parse::{ parse_in, error };
 pub use highlight::colour;

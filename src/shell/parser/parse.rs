@@ -12,7 +12,20 @@ use crate::shell::parser::type_::*;
 #[derive(Debug)]
 pub struct ParseFailed {
     pub token: Token,
-    pub span: Span
+    pub span: Span,
+    pub msg: &'static str
+}
+
+pub mod error {
+    pub const FIRST_ARGS_MUST_LITERAL: &str = "The first arguments must be a literal";
+    pub const EMPTY_COMMAND: &str = "Command was empty";
+    pub const UNEXPECTED_TOKEN: &str = "Unexpected token";
+    pub const UNEXPECTED_CLOSE: &str = "Unexpected close token";
+    pub const UNSUPPORTED_REDIRECT_TYPE: &str = "Unsupported redirect type";
+    pub const UNCLOSED_SUBSHELL: &str = "Unclosed subshell";
+    pub const UNCLOSED_SINGLE_QUOTE: &str = "Unclosed single quote";
+    pub const UNCLOSED_DOUBLE_QUOTE: &str = "Unclosed double quote";
+    pub const REDIRECT_NO_TARGET: &str = "Redirect has no target";
 }
 
 enum Action {
@@ -49,10 +62,11 @@ struct State<'i> {
     incomplete: bool
 }
 
-fn bad(state: &State<'_>) -> ParseFailed {
+fn bad(state: &State<'_>, msg: &'static str) -> ParseFailed {
     ParseFailed {
         token: state.last,
-        span: state.lex.span()
+        span: state.lex.span(),
+        msg
     }
 }
 
@@ -80,53 +94,70 @@ pub fn incomplete_parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c
 
 impl<'c> Command<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        type Lookup = for<'c, 'i> fn(&'c Bump, &mut State<'i>, &mut Command<'c>)
+        type Lookup = for<'c, 'i> fn(&'c Bump, &mut State<'i>, &mut Option<Command<'c>>)
             -> Result<Action, ParseFailed>;
 
         lookup!{
             static LUT = [Lookup; Token::size()];
 
-            Token::SingleQuote
-                | Token::DoubleQuote
-                | Token::ShellOpen
-                | Token::Backslash
-                | Token::Env
-                | Token::Text => |bump, state, cmd|
-            {
+            Token::Text => |bump, state, cmd| if let Some(cmd) = cmd {
                 cmd.args.push(Argument::parse_in(bump, state)?);
                 Ok(if state.is_subshell && Token::ShellClose == state.last {
                     Action::Break
                 } else {
                     Action::Continue
                 })
+            } else {
+                *cmd = Some(Command {
+                    exe: Literal(state.lex.span()),
+                    args: Vec::with_capacity_in(8, bump),
+                    chain: None,
+                    redirect: Vec::new_in(bump)
+                });
+                Ok(Action::Continue)
+            },
+            Token::SingleQuote
+                | Token::DoubleQuote
+                | Token::ShellOpen
+                | Token::Backslash
+                | Token::Env => |bump, state, cmd|
+            if let Some(cmd) = cmd.as_mut() {
+                cmd.args.push(Argument::parse_in(bump, state)?);
+                Ok(if state.is_subshell && Token::ShellClose == state.last {
+                    Action::Break
+                } else {
+                    Action::Continue
+                })
+            } else {
+                Err(bad(state, error::FIRST_ARGS_MUST_LITERAL))
             },
             Token::Pipe
                 | Token::Then
                 | Token::AndIf
                 | Token::OrIf => |bump, state, cmd|
-            {
+            if let Some(cmd) = cmd.as_mut() {
                 cmd.chain = Some(Chain::parse_in(bump, state)?);
                 Ok(Action::Break)
+            } else {
+                Err(bad(state, error::FIRST_ARGS_MUST_LITERAL))
             },
-            Token::Redirect => |bump, state, cmd| {
+            Token::Redirect => |bump, state, cmd| if let Some(cmd) = cmd.as_mut() {
                 cmd.redirect.push(Redirect::parse_in(bump, state)?);
                 Ok(Action::Continue)
+            } else {
+                Err(bad(state, error::FIRST_ARGS_MUST_LITERAL))
             },
-            Token::ShellClose => |_, state, _| if state.is_subshell {
+            Token::ShellClose => |_, state, cmd| if state.is_subshell && cmd.is_some() {
                 Ok(Action::Break)
             } else {
-                Err(bad(state))
+                Err(bad(state, error::FIRST_ARGS_MUST_LITERAL))
             },
             Token::Comment => |_, _, _| Ok(Action::Break),
             Token::Empty => |_, _, _| Ok(Action::Continue),
-            _ => |_, state, _| Err(bad(state))
+            _ => |_, state, _| Err(bad(state, error::UNEXPECTED_TOKEN))
         };
 
-        let mut cmd = Command {
-            args: Vec::with_capacity_in(8, bump),
-            chain: None,
-            redirect: Vec::new_in(bump)
-        };
+        let mut cmd = None;
 
         while let Some(token) = state.lex.next() {
             state.last = token;
@@ -136,7 +167,7 @@ impl<'c> Command<'c> {
             }
         }
 
-        Ok(cmd)
+        cmd.ok_or_else(|| bad(state, error::EMPTY_COMMAND))
     }
 }
 
@@ -152,7 +183,11 @@ impl<'c> SubShell<'c> {
         if state.incomplete || state.last == Token::ShellClose {
             Ok(SubShell(cmd))
         } else {
-            Err(ParseFailed { token: Token::ShellOpen, span })
+            Err(ParseFailed {
+                token: Token::ShellOpen,
+                msg: error::UNCLOSED_SUBSHELL,
+                span
+            })
         }
     }
 }
@@ -171,16 +206,12 @@ impl<'c> Chain<'c> {
         let span = state.lex.span();
         let subshell = ChainShell::parse_in(bump, state)?;
 
-        if state.incomplete || !subshell.0.args.is_empty() {
-            match kind {
-                Token::Pipe => Ok(Chain::Pipe(subshell)),
-                Token::Then => Ok(Chain::Then(subshell)),
-                Token::AndIf => Ok(Chain::AndIf(subshell)),
-                Token::OrIf => Ok(Chain::OrIf(subshell)),
-                token => Err(ParseFailed { token, span }),
-            }
-        } else {
-            Err(ParseFailed { token: kind, span })
+        match kind {
+            Token::Pipe => Ok(Chain::Pipe(subshell)),
+            Token::Then => Ok(Chain::Then(subshell)),
+            Token::AndIf => Ok(Chain::AndIf(subshell)),
+            Token::OrIf => Ok(Chain::OrIf(subshell)),
+            token => panic!("Unexpected token: {:?}", token),
         }
     }
 }
@@ -205,7 +236,11 @@ impl SingleStr {
             let end = state.lex.span().end;
             Ok(SingleStr(span.end..end))
         } else {
-            Err(ParseFailed { token: Token::SingleQuote, span })
+            Err(ParseFailed {
+                token: Token::SingleQuote,
+                msg: error::UNCLOSED_SINGLE_QUOTE,
+                span
+            })
         }
     }
 }
@@ -257,7 +292,7 @@ impl<'c> DoubleStr<'c> {
                 string.0.push(StrSlice::Str(Literal(state.lex.span())));
                 Ok(Action::Continue)
             },
-            _ => |_, state, _| Err(bad(state))
+            _ => |_, state, _| Err(bad(state, error::UNEXPECTED_TOKEN))
         }
 
         let mut string = DoubleStr(Vec::with_capacity_in(8, bump));
@@ -274,7 +309,11 @@ impl<'c> DoubleStr<'c> {
         if state.incomplete || state.last == Token::DoubleQuote {
             Ok(string)
         } else {
-            Err(ParseFailed { token: Token::DoubleQuote, span })
+            Err(ParseFailed {
+                token: Token::DoubleQuote,
+                msg: error::UNCLOSED_DOUBLE_QUOTE,
+                span
+            })
         }
     }
 }
@@ -299,10 +338,10 @@ impl<'c> Argument<'c> {
                 arg.0.push(ArgSlice::SubShell(SubShell::parse_in(bump, state)?));
                 Ok(Action::Continue)
             },
-            Token::ShellClose => |_, state, _| if state.is_subshell {
+            Token::ShellClose => |_, state, arg| if state.is_subshell {
                 Ok(Action::Break)
             } else {
-                Err(bad(state))
+                Err(bad(state, error::UNEXPECTED_CLOSE))
             },
             Token::Env => |_, state, arg| {
                 arg.0.push(ArgSlice::Env(Env(state.lex.span())));
@@ -329,7 +368,7 @@ impl<'c> Argument<'c> {
                 arg.0.push(ArgSlice::Str(Literal(state.lex.span())));
                 Ok(Action::Continue)
             },
-            _ => |_, state, _| Err(bad(state))
+            _ => |_, state, _| Err(bad(state, error::UNEXPECTED_TOKEN))
         }
 
         let mut arg = Argument(Vec::with_capacity_in(8, bump));
@@ -359,7 +398,8 @@ impl<'c> Redirect<'c> {
             }
         }
 
-        let (ty, append) = parse_redirect(state.lex.slice()).ok_or_else(|| bad(state))?;
+        let (ty, append) = parse_redirect(state.lex.slice())
+            .ok_or_else(|| bad(state, error::UNSUPPORTED_REDIRECT_TYPE))?;
         let span = state.lex.span();
         let mut eof = true;
 
@@ -372,7 +412,12 @@ impl<'c> Redirect<'c> {
         }
 
         if !state.incomplete && eof {
-            return Err(ParseFailed { token: Token::Redirect, span });
+            let end = state.lex.span().end;
+            return Err(ParseFailed {
+                token: Token::Redirect,
+                span: span.start..end,
+                msg: error::REDIRECT_NO_TARGET
+            });
         }
 
         let value = Argument::parse_in(bump, state)?;
@@ -380,7 +425,12 @@ impl<'c> Redirect<'c> {
         if state.incomplete || !value.0.is_empty() {
             Ok(Redirect { ty, append, value })
         } else {
-            Err(ParseFailed { token: Token::Redirect, span })
+            let end = state.lex.span().end;
+            Err(ParseFailed {
+                token: Token::Redirect,
+                span: span.start..end,
+                msg: error::REDIRECT_NO_TARGET
+            })
         }
     }
 }

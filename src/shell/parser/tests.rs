@@ -18,7 +18,7 @@ fn test_parse_command() -> anyhow::Result<()> {
         let output = cmd.fix(input);
 
         assert_eq!(output, Vec(Kind::Command, vec![
-            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Item(Literal, "exe".into()),
             Vec(Argument, vec![Item(Literal, "123".into())])
         ]));
     }
@@ -26,42 +26,38 @@ fn test_parse_command() -> anyhow::Result<()> {
     // subshell
     bump.reset();
     {
-        let input = r#"exe $(exe2 hello world) "$(exe3)" $()"#;
+        let input = r#"exe $(exe2 hello world) "$(exe3)""#;
         let cmd = parse_in(&bump, input).unwrap();
         let output = cmd.fix(input);
 
         assert_eq!(output, Vec(Command, vec![
-            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Item(Literal, "exe".into()),
             Vec(Argument, vec![One(
                 SubShell,
                 Box::new(Vec(Command, vec![
-                    Vec(Argument, vec![Item(Literal, "exe2".into())]),
+                    Item(Literal, "exe2".into()),
                     Vec(Argument, vec![Item(Literal, "hello".into())]),
                     Vec(Argument, vec![Item(Literal, "world".into())])
                 ])),
             )]),
             Vec(Argument, vec![Vec(
                 DoubleStr,
-                vec![One(SubShell, Box::new(Vec(
-                    Command,
-                    vec![Vec(Argument, vec![Item(Literal, "exe3".into())])]
-                )))]
+                vec![One(SubShell,
+                    Box::new(Vec(Command,vec![Item(Literal, "exe3".into())]))
+                )]
             )]),
-            Vec(Argument, vec![One(
-                SubShell,
-                Box::new(Vec(Command, vec![]))
-            )])
         ]));
     }
 
     // env
     bump.reset();
     {
-        let input = r#"$EXE $HOME/.config "hello $EXE3 world" $($EXE4 "$EXE5")"#;
+        let input = r#"exe $EXE $HOME/.config "hello $EXE3 world" $(exe2 $EXE4 "$EXE5")"#;
         let cmd = parse_in(&bump, input).unwrap();
         let output = cmd.fix(input);
 
         assert_eq!(output, Vec(Command, vec![
+            Item(Literal, "exe".into()),
             Vec(Argument, vec![Item(Env, "$EXE".into())]),
             Vec(Argument, vec![
                 Item(Env, "$HOME".into()),
@@ -73,6 +69,7 @@ fn test_parse_command() -> anyhow::Result<()> {
                 Item(Literal, " world".into())
             ])]),
             Vec(Argument, vec![One(SubShell, Box::new(Vec(Command, vec![
+                Item(Literal, "exe2".into()),
                 Vec(Argument, vec![Item(Env, "$EXE4".into())]),
                 Vec(Argument, vec![Vec(DoubleStr, vec![Item(Env, "$EXE5".into())])])
             ])))])
@@ -87,7 +84,7 @@ fn test_parse_command() -> anyhow::Result<()> {
         let output = cmd.fix(input);
 
         assert_eq!(output, Vec(Command, vec![
-            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Item(Literal, "exe".into()),
             Vec(Argument, vec![
                 Item(Literal, "a".into()),
                 Vec(DoubleStr, vec![Item(Literal, "b".into())]),
@@ -106,7 +103,7 @@ fn test_parse_command() -> anyhow::Result<()> {
         let output = cmd.fix(input);
 
         assert_eq!(output, Vec(Command, vec![
-            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Item(Literal, "exe".into()),
             Vec(Argument, vec![Item(SingleStr, "\\".into())]),
             Vec(Argument, vec![Item(SingleStr, ">> #$()".into())])
         ]));
@@ -115,22 +112,23 @@ fn test_parse_command() -> anyhow::Result<()> {
     // pipe
     bump.reset();
     {
-        let input = r#"exe | exe2 a | $(exe3 b) && exe4"#;
+        let input = r#"exe | exe2 a | exe3 $(exe4 b) && exe5"#;
         let cmd = parse_in(&bump, input).unwrap();
         let output = cmd.fix(input);
 
         assert_eq!(output, Vec(Command, vec![
-            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Item(Literal, "exe".into()),
             One(Pipe, Box::new(Vec(Command, vec![
-                Vec(Argument, vec![Item(Literal, "exe2".into())]),
+                Item(Literal, "exe2".into()),
                 Vec(Argument, vec![Item(Literal, "a".into())]),
                 One(Pipe, Box::new(Vec(Command, vec![
+                    Item(Literal, "exe3".into()),
                     Vec(Argument, vec![One(SubShell, Box::new(Vec(Command, vec![
-                        Vec(Argument, vec![Item(Literal, "exe3".into())]),
+                        Item(Literal, "exe4".into()),
                         Vec(Argument, vec![Item(Literal, "b".into())])
                     ])))]),
                     One(AndIf, Box::new(Vec(Command, vec![
-                        Vec(Argument, vec![Item(Literal, "exe4".into())])
+                        Item(Literal, "exe5".into())
                     ])))
                 ])))
             ])))
@@ -140,19 +138,43 @@ fn test_parse_command() -> anyhow::Result<()> {
     // redirect
     bump.reset();
     {
-        let input = r#"exe > a 2>> b"#;
+        let input = r#"exe >a 2>> b 2>        c"#;
         let cmd = parse_in(&bump, input).unwrap();
         let output = cmd.fix(input);
 
         assert_eq!(output, Vec(Command, vec![
-            Vec(Argument, vec![Item(Literal, "exe".into())]),
+            Item(Literal, "exe".into()),
             One(RedirectOut, Box::new(Vec(Argument, vec![
                 Item(Literal, "a".into())
             ]))),
             One(RedirectErrAppend, Box::new(Vec(Argument, vec![
                 Item(Literal, "b".into())
+            ]))),
+            One(RedirectErr, Box::new(Vec(Argument, vec![
+                Item(Literal, "c".into())
             ])))
         ]));
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_bad_command() -> anyhow::Result<()> {
+    use crate::shell::parser::{ error, Token };
+    use Output::*;
+    use Kind::*;
+
+    let mut bump = Bump::new();
+
+    // no literal command
+    bump.reset();
+    {
+        let input = "$CC ab.c";
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Env);
+        assert_eq!(&input[err.span], "$CC");
+        assert_eq!(err.msg, error::FIRST_ARGS_MUST_LITERAL);
     }
 
     Ok(())
@@ -191,6 +213,7 @@ trait Fix {
 impl Fix for Command<'_> {
     fn fix(&self, input: &str) -> Output {
         let mut output = Vec::new();
+        output.push(Output::Item(Kind::Literal, input[self.exe.0.clone()].into()));
         for arg in &self.args {
             output.push(arg.fix(input));
         }
