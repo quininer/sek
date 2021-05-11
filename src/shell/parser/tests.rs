@@ -193,8 +193,6 @@ fn test_parse_command() -> anyhow::Result<()> {
         ]));
     }
 
-    dbg!();
-
     // subshell and empty
     bump.reset();
     {
@@ -252,6 +250,23 @@ fn test_parse_command() -> anyhow::Result<()> {
                     Item(Literal, "fd6".into())
                 ])))
             ]))),
+        ]));
+    }
+
+    // subshell and comment
+    bump.reset();
+    {
+        let input = r#"exe $(exe2)#"#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+            Item(Literal, "exe".into()),
+            Vec(Argument, vec![
+                One(SubShell, Box::new(Vec(Command, vec![
+                    Item(Literal, "exe2".into())
+                ])))
+            ])
         ]));
     }
 

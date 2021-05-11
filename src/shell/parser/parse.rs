@@ -378,7 +378,7 @@ impl<'c> Argument<'c> {
 
                 Ok(Action::Continue)
             },
-            Token::Empty => |_, _, _| Ok(Action::Break),
+            Token::Empty | Token::Comment => |_, _, _| Ok(Action::Break),
             Token::Backslash => |_, state, arg| {
                 let start = state.lex.span().start;
                 let _token = state.lex.next();
