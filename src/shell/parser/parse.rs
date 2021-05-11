@@ -390,8 +390,8 @@ impl<'c> Redirect<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
         fn parse_redirect(token: &str) -> Option<(StdioType, bool)> {
             match token {
-                ">" => Some((StdioType::Out, false)),
-                ">>" => Some((StdioType::Out, true)),
+                ">" | "1>" => Some((StdioType::Out, false)),
+                ">>" | "1>>" => Some((StdioType::Out, true)),
                 "2>" => Some((StdioType::Err, false)),
                 "2>>" => Some((StdioType::Err, true)),
                 _ => None

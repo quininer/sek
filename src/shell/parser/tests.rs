@@ -141,7 +141,7 @@ fn test_parse_command() -> anyhow::Result<()> {
     // redirect
     bump.reset();
     {
-        let input = r#"exe >a 2>> b 2>        c"#;
+        let input = r#"exe >a 2>> b 2>        c 1>> d"#;
         let cmd = parse_in(&bump, input).unwrap();
         let output = cmd.fix(input);
 
@@ -155,6 +155,9 @@ fn test_parse_command() -> anyhow::Result<()> {
             ]))),
             One(RedirectErr, Box::new(Vec(Argument, vec![
                 Item(Literal, "c".into())
+            ]))),
+            One(RedirectOutAppend, Box::new(Vec(Argument, vec![
+                Item(Literal, "d".into())
             ])))
         ]));
     }
