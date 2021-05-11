@@ -107,7 +107,9 @@ impl<'c> SubShell<'c> {
 
 impl SingleStr {
     pub fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
-        push(line[self.0.clone()].as_ref())
+        let start = self.0.start + 1;
+        let end = self.0.end - 1;
+        push(line[start..end].as_ref())
     }
 }
 
@@ -122,7 +124,7 @@ impl<'c> DoubleStr<'c> {
             Ok(())
         };
 
-        for item in self.0.iter() {
+        for item in self.list.iter() {
             match item {
                 StrSlice::Str(val) => val.eval(shell, line, &mut push2)?,
                 StrSlice::Env(val) => val.eval(shell, line, &mut push2)?,

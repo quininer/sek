@@ -107,8 +107,8 @@ fn test_parse_command() -> anyhow::Result<()> {
 
         assert_eq!(output, Vec(Command, vec![
             Item(Literal, "exe".into()),
-            Vec(Argument, vec![Item(SingleStr, "\\".into())]),
-            Vec(Argument, vec![Item(SingleStr, ">> #$()".into())])
+            Vec(Argument, vec![Item(SingleStr, "'\\'".into())]),
+            Vec(Argument, vec![Item(SingleStr, "'>> #$()'".into())])
         ]));
     }
 
@@ -181,7 +181,7 @@ fn test_parse_command() -> anyhow::Result<()> {
                 Item(Escape, "\\c".into())
             ]),
             Vec(Argument, vec![
-                Item(SingleStr, "\\".into())
+                Item(SingleStr, "'\\'".into())
             ]),
             Vec(Argument, vec![
                 Vec(DoubleStr, vec![Item(Escape, "\\\"".into())])
@@ -383,7 +383,7 @@ impl Fix for Argument<'_> {
 impl Fix for DoubleStr<'_> {
     fn fix(&self, input: &str) -> Output {
         let mut output = Vec::new();
-        for arg in &self.0 {
+        for arg in &self.list {
             match arg {
                 StrSlice::Str(Literal(span)) =>
                     output.push(Output::Item(Kind::Literal, input[span.clone()].into())),

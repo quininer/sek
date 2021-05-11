@@ -221,16 +221,16 @@ impl SingleStr {
             state.last = token;
 
             if let Token::SingleQuote = token {
-                end = Some(state.lex.span().start);
+                end = Some(state.lex.span().end);
                 break
             }
         }
 
         if let Some(end) = end {
-            Ok(SingleStr(span.end..end))
+            Ok(SingleStr(span.start..end))
         } else if state.incomplete {
             let end = state.lex.span().end;
-            Ok(SingleStr(span.end..end))
+            Ok(SingleStr(span.start..end))
         } else {
             Err(ParseFailed {
                 token: Token::SingleQuote,
@@ -243,7 +243,7 @@ impl SingleStr {
 
 impl<'c> DoubleStr<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        type Lookup = for<'c, 'i> fn(&'c Bump, &mut State<'i>, &mut DoubleStr<'c>)
+        type Lookup = for<'c, 'i> fn(&'c Bump, &mut State<'i>, &mut Vec<'c, StrSlice<'c>>)
             -> Result<Action, ParseFailed>;
 
         lookup!{
@@ -258,54 +258,58 @@ impl<'c> DoubleStr<'c> {
                 | Token::Then
                 | Token::AndIf
                 | Token::OrIf
-                | Token::Redirect => |_, state, string|
+                | Token::Redirect => |_, state, list|
             {
                 let span = state.lex.span();
 
                 if_chain!{
-                    if let Some(StrSlice::Str(Literal(prev))) = string.0.last_mut();
+                    if let Some(StrSlice::Str(Literal(prev))) = list.last_mut();
                     if prev.end == span.start;
                     then {
                         prev.end = span.end;
                     } else {
-                        string.0.push(StrSlice::Str(Literal(state.lex.span())));
+                        list.push(StrSlice::Str(Literal(state.lex.span())));
                     }
                 }
 
                 Ok(Action::Continue)
             },
             Token::DoubleQuote => |_, _, _| Ok(Action::Break),
-            Token::ShellOpen => |bump, state, string| {
-                string.0.push(StrSlice::SubShell(SubShell::parse_in(bump, state)?));
+            Token::ShellOpen => |bump, state, list| {
+                list.push(StrSlice::SubShell(SubShell::parse_in(bump, state)?));
                 Ok(Action::Continue)
             },
-            Token::Env => |_, state, string| {
-                string.0.push(StrSlice::Env(Env(state.lex.span())));
+            Token::Env => |_, state, list| {
+                list.push(StrSlice::Env(Env(state.lex.span())));
                 Ok(Action::Continue)
             },
-            Token::Backslash => |_, state, string| {
+            Token::Backslash => |_, state, list| {
                 let start = state.lex.span().start;
                 let _token = state.lex.next();
                 let end = state.lex.span().end;
-                string.0.push(StrSlice::Escape(Escape(start..end)));
+                list.push(StrSlice::Escape(Escape(start..end)));
                 Ok(Action::Continue)
             },
             _ => |_, state, _| Err(bad(state, ErrorKind::UnexpectedToken))
         }
 
-        let mut string = DoubleStr(Vec::with_capacity_in(8, bump));
+        let mut list = Vec::with_capacity_in(8, bump);
         let span = state.lex.span();
 
         while let Some(token) = state.lex.next() {
             state.last = token;
-            match LUT[token as usize](bump, state, &mut string)? {
+            match LUT[token as usize](bump, state, &mut list)? {
                 Action::Continue => (),
                 Action::Break => break
             }
         }
 
         if state.incomplete || state.last == Token::DoubleQuote {
-            Ok(string)
+            let end = state.lex.span().end;
+            Ok(DoubleStr {
+                span: span.start..end,
+                list
+            })
         } else {
             Err(ParseFailed {
                 token: Token::DoubleQuote,
