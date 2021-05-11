@@ -1,18 +1,19 @@
 use std::fs;
 use std::pin::Pin;
 use std::future::Future;
-use std::ffi::{ OsStr, OsString };
 use std::process::{ Stdio, ExitStatus };
 use anyhow::Context as AnyhowContext;
+use bstr::{ ByteSlice, ByteVec };
+use bumpalo::collections::Vec;
 use tokio::io::AsyncReadExt;
 use if_chain::if_chain;
 use crate::shell::Shell;
 use crate::shell::parser::type_::*;
 use crate::shell::process::{ ShellCommand, to_stdio };
-use crate::util::arg_max;
+use crate::util::{ arg_max, read_to_end };
 
 
-type Push<'a> = &'a mut dyn FnMut(&OsStr) -> anyhow::Result<()>;
+type Push<'a> = &'a mut dyn FnMut(&[u8]) -> anyhow::Result<()>;
 
 /// TODO replace it with bumpalo::collections::Box
 ///
@@ -29,12 +30,15 @@ impl Literal {
         let value = &line[self.0.clone()];
 
         if let Some(path) = value.strip_prefix('~') {
-            let home = shell.userdir.home_dir();
-
             if path.is_empty() {
-                push(home.as_ref())
+                let home = shell.userdir.home_dir();
+                let home = <[u8]>::from_path(&home).context("invalid home path")?;
+                push(home)
             } else if path.starts_with('/') {
-                push(home.join(path.trim_start_matches('/')).as_ref())
+                let home = shell.userdir.home_dir();
+                let newpath = home.join(path.trim_start_matches('/'));
+                let newpath = <[u8]>::from_path(&newpath).context("invalid path")?;
+                push(newpath)
             } else {
                 push(value.as_ref())
             }
@@ -50,6 +54,7 @@ impl Env {
             .strip_prefix('$')
             .and_then(|name| shell.env.get(name.as_ref()))
         {
+            let val = <[u8]>::from_os_str(&val).context("invalid env value")?;
             push(val)?;
         }
 
@@ -60,18 +65,15 @@ impl Env {
 impl<'c> SubShell<'c> {
     pub async fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
         let mut shell_cmd = None;
-        let mut cmd_new = |osstr: &OsStr| {
-            shell_cmd = Some(ShellCommand::new(osstr));
+        let mut cmd_new = |osstr: &[u8]| {
+            shell_cmd = Some(ShellCommand::new(osstr)?);
             Ok(())
         };
         self.0.exe.eval(shell, line, &mut cmd_new)?;
 
-        let mut shell_cmd = shell_cmd.context("The expanded command was empty")?;
+        let mut shell_cmd = shell_cmd.context("the expanded command was empty")?;
 
-        let mut cmd_push = |osstr: &OsStr| {
-            shell_cmd.push(osstr);
-            Ok(())
-        };
+        let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in self.0.args.iter() {
             boxed_await!(arg.eval(shell, line, &mut cmd_push))?;
@@ -97,41 +99,18 @@ impl<'c> SubShell<'c> {
 
 impl SingleStr {
     pub fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
-        let value = &line[self.0.clone()];
-
-        if !value.contains('\\') {
-            push(value.as_ref())
-        } else {
-            shell.strbuf.clear();
-
-            let mut backslash: Option<()> = None;
-            for val in value.split_terminator('\\') {
-                if backslash.take().is_some() {
-                    if val.is_empty() {
-                        shell.strbuf.push('\\');
-                    } else if val.starts_with('\'') {
-                        shell.strbuf.push_str(val);
-                    } else {
-                        shell.strbuf.push('\\');
-                        shell.strbuf.push_str(val);
-                    }
-                } else if val.is_empty() {
-                    backslash = Some(());
-                } else {
-                    shell.strbuf.push_str(val);
-                }
-            }
-
-            push(shell.strbuf.as_ref())
-        }
+        push(line[self.0.clone()].as_ref())
     }
 }
 
 impl<'c> DoubleStr<'c> {
     pub async fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
-        let mut osbuf = OsString::new();
-        let mut push2 = |osstr: &OsStr| {
-            osbuf.push(osstr);
+        let bump = shell.bump.clone();
+        let bump = bump.borrow();
+
+        let mut osbuf = Vec::new_in(&bump);
+        let mut push2 = |osstr: &[u8]| {
+            osbuf.extend_from_slice(osstr);
             Ok(())
         };
 
@@ -149,9 +128,12 @@ impl<'c> DoubleStr<'c> {
 
 impl<'c> Argument<'c> {
     pub async fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
-        let mut osbuf = OsString::new();
-        let mut push2 = |osstr: &OsStr| {
-            osbuf.push(osstr);
+        let bump = shell.bump.clone();
+        let bump = bump.borrow();
+
+        let mut osbuf = Vec::new_in(&bump);
+        let mut push2 = |osstr: &[u8]| {
+            osbuf.extend_from_slice(osstr);
             Ok(())
         };
 
@@ -173,21 +155,16 @@ impl<'c> Redirect<'c> {
     pub async fn redirect(&self, shell: &mut Shell, line: &str, cmd: &mut ShellCommand)
         -> anyhow::Result<()>
     {
-        let mut stdio_want: Option<()> = Some(());
-        let mut push = |osstr: &OsStr| {
-            if stdio_want.take().is_some() {
-                let fd = fs::OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .append(self.append)
-                    .open(osstr)?;
+        let mut push = |osstr: &[u8]| {
+            let fd = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(self.append)
+                .open(osstr.to_path()?)?;
 
-                match self.ty {
-                    StdioType::Out => cmd.stdout(fd.into()),
-                    StdioType::Err => cmd.stderr(fd.into())
-                }
-            } else {
-                cmd.push(osstr);
+            match self.ty {
+                StdioType::Out => cmd.stdout(fd.into()),
+                StdioType::Err => cmd.stderr(fd.into())
             }
 
             Ok(())
@@ -211,18 +188,15 @@ impl<'c> Chain<'c> {
         };
 
         let mut shell_cmd = None;
-        let mut cmd_new = |osstr: &OsStr| {
-            shell_cmd = Some(ShellCommand::new(osstr));
+        let mut cmd_new = |osstr: &[u8]| {
+            shell_cmd = Some(ShellCommand::new(osstr)?);
             Ok(())
         };
         subshell.0.exe.eval(shell, line, &mut cmd_new)?;
 
         let mut shell_cmd = shell_cmd.context("The expanded command was empty")?;
 
-        let mut cmd_push = |osstr: &OsStr| {
-            shell_cmd.push(osstr);
-            Ok(())
-        };
+        let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in subshell.0.args.iter() {
             arg.eval(shell, line, &mut cmd_push).await?;
@@ -303,14 +277,19 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &mut Shell, push: &mut Opt
             let mut child = cmd.spawn(shell)?;
 
             if let Some(stdout) = child.take_stdout() {
-                shell.strbuf.clear();
+                let bump = shell.bump.clone();
+                let bump = bump.borrow();
+                let mut tmpbuf = bumpalo::vec![in &bump; 0; 1024];
+                let mut outbuf = Vec::new_in(&bump);
 
                 // The size is limited here just to avoid stdout may occupy memory indefinitely.
-                stdout
-                    .take(arg_max() as u64)
-                    .read_to_string(&mut shell.strbuf).await?;
+                read_to_end(
+                    stdout.take(arg_max() as u64),
+                    &mut tmpbuf,
+                    &mut outbuf
+                ).await?;
 
-                push(shell.strbuf.as_ref())?;
+                push(&outbuf)?;
             }
 
             child.wait().await

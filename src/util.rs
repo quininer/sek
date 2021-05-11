@@ -1,6 +1,9 @@
 use std::{ fs, io, fmt };
-use std::marker::PhantomData;
+use std::marker::{ PhantomData, Unpin };
 use std::ffi::{ OsStr, OsString };
+use bumpalo::boxed::Box;
+use bumpalo::collections::Vec;
+use tokio::io::AsyncRead;
 use serde::de::{ Deserialize, Deserializer, Visitor, MapAccess };
 
 
@@ -105,59 +108,6 @@ pub fn arg_max() -> usize {
     arg_max_limit()
 }
 
-#[derive(Debug, Default)]
-pub struct VecMap<K, V>(pub Vec<(K, V)>);
-
-impl<'de, K, V> Deserialize<'de> for VecMap<K, V>
-where
-    K: Deserialize<'de>,
-    V: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct VecMapVisitor<K, V> {
-            marker: PhantomData<fn() -> VecMap<K, V>>
-        }
-
-        impl<K, V> VecMapVisitor<K, V> {
-            fn new() -> Self {
-                VecMapVisitor {
-                    marker: PhantomData
-                }
-            }
-        }
-
-        impl<'de, K, V> Visitor<'de> for VecMapVisitor<K, V>
-        where
-            K: Deserialize<'de>,
-            V: Deserialize<'de>,
-        {
-            type Value = VecMap<K, V>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a vec map")
-            }
-
-            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
-            where
-                M: MapAccess<'de>,
-            {
-                let mut map = Vec::with_capacity(access.size_hint().unwrap_or(0));
-
-                while let Some((key, value)) = access.next_entry()? {
-                    map.push((key, value));
-                }
-
-                Ok(VecMap(map))
-            }
-        }
-
-        deserializer.deserialize_map(VecMapVisitor::new())
-    }
-}
-
 pub struct DynWriter<'a>(pub &'a mut dyn io::Write);
 
 impl io::Write for DynWriter<'_> {
@@ -175,4 +125,23 @@ impl io::Write for DynWriter<'_> {
     fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
         self.0.write_vectored(bufs)
     }
+}
+
+pub async fn read_to_end<R: AsyncRead + Unpin>(
+    mut reader: R,
+    tmpbuf: &mut [u8],
+    outbuf: &mut Vec<'_, u8>
+) -> io::Result<()> {
+    use tokio::io::AsyncReadExt;
+
+    loop {
+        let n = reader.read(tmpbuf).await?;
+        if n == 0 {
+            break
+        }
+
+        outbuf.extend_from_slice(&tmpbuf[..n]);
+    }
+
+    Ok(())
 }

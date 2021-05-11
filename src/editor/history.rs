@@ -60,7 +60,7 @@ impl<'g> History<'g> {
         if let Some(buf) = fd.metadata()
             .ok()
             .filter(|metadata| metadata.len() != 0)
-            .and_then(|_| unsafe { memmap::Mmap::map(&fd).ok() })
+            .and_then(|_| unsafe { memmap2::Mmap::map(&fd).ok() })
         {
             let iter = serde_cbor::Deserializer::from_slice(&buf)
                 .into_iter::<HistoryLine>();

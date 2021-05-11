@@ -41,7 +41,7 @@ logos = "0.12"
 libc = "0.2"
 
 # history
-memmap = "0.7"
+memmap2 = "0.2"
 bumpalo = { version = "3", features = [ "collections", "boxed" ] }
 serde_cbor = "0.11"
 

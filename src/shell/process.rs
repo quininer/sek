@@ -3,8 +3,9 @@ use std::rc::Rc;
 use std::ffi::OsStr;
 use std::cell::RefCell;
 use std::process::{ Stdio, ExitStatus };
-use tokio::process::{ Command, Child as TokioChild, ChildStdout };
 use anyhow::Context;
+use bstr::ByteSlice;
+use tokio::process::{ Command, Child as TokioChild, ChildStdout };
 use crate::shell::Shell;
 
 
@@ -24,15 +25,16 @@ pub struct Morgue {
 }
 
 impl ShellCommand {
-    pub fn new(exe: &OsStr) -> ShellCommand {
-        ShellCommand {
-            cmd: Command::new(exe),
+    pub fn new(exe: &[u8]) -> anyhow::Result<ShellCommand> {
+        Ok(ShellCommand {
+            cmd: Command::new(exe.to_os_str()?),
             redirect_stdout: false
-        }
+        })
     }
 
-    pub fn push(&mut self, arg: &OsStr) {
-        self.cmd.arg(arg);
+    pub fn push(&mut self, arg: &[u8]) -> anyhow::Result<()> {
+        self.cmd.arg(arg.to_os_str()?);
+        Ok(())
     }
 
     pub fn stdin(&mut self, stdio: Stdio) {
