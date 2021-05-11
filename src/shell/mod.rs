@@ -39,7 +39,6 @@ pub struct Shell {
 
 pub enum Action {
     Continue,
-    NewLine,
     Execute,
     Stop
 }
@@ -72,26 +71,21 @@ impl Shell {
 
             let execute = match action {
                 Action::Continue => false,
-                Action::NewLine => {
-                    let mut term = self.term.lock();
-                    queue!(term, style::Print("\n"))?;
-                    false
-                },
                 Action::Execute => {
                     let bump = self.bump.clone();
                     let bump = bump.borrow();
 
                     let mut line = String::with_capacity_in(editor.line.len(), &bump);
                     editor.line.read_into(&mut line);
+                    let line = line.trim_end();
 
                     execute!(&self.term, style::Print("\r\n"))?;
 
-                    match parser::parse_in(&bump, &line) {
-                        Ok(cmd) => {
-                            self.execute(&line, cmd).await?;
-                        },
-                        Err(err) =>
-                            report(&editor, self, &line, err)?
+                    if !line.is_empty() {
+                        match parser::parse_in(&bump, line) {
+                            Ok(cmd) => self.execute(line, cmd).await?,
+                            Err(err) => report(&editor, self, line, err)?
+                        }
                     }
 
                     true

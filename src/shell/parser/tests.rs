@@ -270,6 +270,28 @@ fn test_parse_command() -> anyhow::Result<()> {
         ]));
     }
 
+    // bad then
+    bump.reset();
+    {
+        let input = r#"exe arg; exe2#"#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+        ]));
+    }
+
+    // arg double quote
+    bump.reset();
+    {
+        let input = r#"exe arg""#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+        ]));
+    }
+
     Ok(())
 }
 

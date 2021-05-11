@@ -69,7 +69,6 @@ impl<'g> Editor<'g> {
                 KeyCode::Delete => self.line.delete(),
                 KeyCode::Left => self.line.move_left(),
                 KeyCode::Right => self.line.move_right(),
-                KeyCode::Enter if self.line.is_empty() => return Ok(Action::NewLine),
                 KeyCode::Enter => return Ok(Action::Execute),
                 _ => ()
             },
