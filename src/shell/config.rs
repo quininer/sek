@@ -45,15 +45,15 @@ pub struct Style {
 impl Default for Theme {
     fn default() -> Theme {
         Theme {
-            exe: Style::new(0),
-            literal: Style::new(0),
-            env: Style::new(0),
-            subshell: Style::new(0),
-            single_str: Style::new(0),
-            double_str: Style::new(0),
-            pipe: Style::new(0),
-            redirect: Style::new(0),
-            error: Style::new(0),
+            exe: Style::new(0x37),
+            literal: Style::new(0x37),
+            env: Style::new(0x37),
+            subshell: Style::new(0x37),
+            single_str: Style::new(0x37),
+            double_str: Style::new(0x37),
+            pipe: Style::new(0x37),
+            redirect: Style::new(0x37),
+            error: Style::new(0x37),
         }
     }
 }

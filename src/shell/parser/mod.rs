@@ -8,7 +8,7 @@ mod tests;
 
 use std::fmt;
 pub use token::Token;
-pub use parse::parse_in;
+pub use parse::{ parse_in, ParseFailed };
 pub use highlight::colour;
 
 
@@ -30,16 +30,16 @@ pub enum ErrorKind {
 impl ErrorKind {
     pub fn as_str(self) -> &'static str {
         const STRINGS: &[&str] = &[
-            "The first argument must be a literal",
-            "Command was empty",
-            "Unexpected token",
-            "Unexpected close token",
-            "Unsupported redirect type",
-            "Unclosed subshell",
-            "Unclosed single quote",
-            "Unclosed double quote",
-            "Redirect has no target",
-            "Unexpected argument"
+            "the first argument must be a literal",
+            "command was empty",
+            "unexpected token",
+            "unexpected close token",
+            "unsupported redirect type",
+            "unclosed subshell",
+            "unclosed single quote",
+            "unclosed double quote",
+            "redirect has no target",
+            "unexpected argument"
         ];
 
         STRINGS[self as usize]

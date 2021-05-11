@@ -19,7 +19,6 @@ use shell::Shell;
 
 pub struct Global {
     bump: Bump,
-    strbuf: RefCell<String>,
     columns: Cell<u16>,
     projdir: ProjectDirs,
     session: u64
@@ -55,7 +54,6 @@ async fn main() -> anyhow::Result<()> {
 
     let global = Global {
         bump: Bump::new(),
-        strbuf: RefCell::new(String::new()),
         columns: Cell::new(size),
         projdir, session
     };
@@ -76,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
         let _ = terminal::disable_raw_mode();
     };
 
-    // shell.runloop(&global).await?;
+    shell.start(&global).await?;
 
     Ok(())
 }

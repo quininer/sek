@@ -71,10 +71,7 @@ impl<'g> Editor<'g> {
                 KeyCode::Left => self.line.move_left(),
                 KeyCode::Right => self.line.move_right(),
                 KeyCode::Enter if self.line.is_empty() => return Ok(Action::NewLine),
-                KeyCode::Enter => {
-                    self.line.read_into(&mut shell.cmdbuf);
-                    return Ok(Action::Execute);
-                },
+                KeyCode::Enter => return Ok(Action::Execute),
                 _ => ()
             },
             // command to command input

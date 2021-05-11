@@ -1,6 +1,6 @@
 use std::{ cmp, fmt };
 use bstr::{ ByteSlice, ByteVec };
-use bumpalo::collections::String as BumpString;
+use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
 use crate::util::Fill;
 
@@ -52,7 +52,7 @@ impl Buffer {
         self.cur = cmp::min(self.cur + 1, self.buf.len());
     }
 
-    pub fn read_into<'a>(&self, buf: &'a mut String) {
+    pub fn read_into<'a>(&self, buf: &'a mut String<'_>) {
         buf.clear();
 
         for &c in &self.buf {
@@ -60,7 +60,7 @@ impl Buffer {
         }
     }
 
-    pub fn ready_render<'a>(&self, buf: &'a mut BumpString<'_>, fillsize: Option<u16>)
+    pub fn ready_render<'a>(&self, buf: &'a mut String<'_>, fillsize: Option<u16>)
         -> (u16, Fill)
     {
         buf.clear();
