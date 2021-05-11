@@ -281,8 +281,10 @@ impl<'c> DoubleStr<'c> {
                 Ok(Action::Continue)
             },
             Token::Backslash => |_, state, string| {
+                let start = state.lex.span().start;
                 let _token = state.lex.next();
-                string.0.push(StrSlice::Str(Literal(state.lex.span())));
+                let end = state.lex.span().end;
+                string.0.push(StrSlice::Escape(Escape(start..end)));
                 Ok(Action::Continue)
             },
             _ => |_, state, _| Err(bad(state, ErrorKind::UnexpectedToken))
@@ -357,8 +359,10 @@ impl<'c> Argument<'c> {
             },
             Token::Empty => |_, _, _| Ok(Action::Break),
             Token::Backslash => |_, state, arg| {
+                let start = state.lex.span().start;
                 let _token = state.lex.next();
-                arg.0.push(ArgSlice::Str(Literal(state.lex.span())));
+                let end = state.lex.span().end;
+                arg.0.push(ArgSlice::Escape(Escape(start..end)));
                 Ok(Action::Continue)
             },
             _ => |_, state, _| Err(bad(state, ErrorKind::UnexpectedToken))

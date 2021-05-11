@@ -159,6 +159,37 @@ fn test_parse_command() -> anyhow::Result<()> {
         ]));
     }
 
+    // backslash
+    bump.reset();
+    {
+        let input = r#"exe a\ b\\ \c '\' "\"" "\ " \>>"#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+            Item(Literal, "exe".into()),
+            Vec(Argument, vec![
+                Item(Literal, "a".into()),
+                Item(Escape, "\\ ".into()),
+                Item(Literal, "b".into()),
+                Item(Escape, "\\\\".into())
+            ]),
+            Vec(Argument, vec![
+                Item(Escape, "\\c".into())
+            ]),
+            Vec(Argument, vec![
+                Item(SingleStr, "\\".into())
+            ]),
+            Vec(Argument, vec![
+                Vec(DoubleStr, vec![Item(Escape, "\\\"".into())])
+            ]),
+            Vec(Argument, vec![
+                Vec(DoubleStr, vec![Item(Escape, "\\ ".into())])
+            ]),
+            Vec(Argument, vec![Item(Escape, "\\>>".into())])
+        ]));
+    }
+
     Ok(())
 }
 
@@ -258,6 +289,7 @@ enum Kind {
     Command,
     Literal,
     Env,
+    Escape,
     SubShell,
     Pipe,
     Then,
@@ -309,6 +341,8 @@ impl Fix for Argument<'_> {
                     output.push(Output::Item(Kind::Literal, input[span.clone()].into())),
                 ArgSlice::Env(Env(span)) =>
                     output.push(Output::Item(Kind::Env, input[span.clone()].into())),
+                ArgSlice::Escape(Escape(span)) =>
+                    output.push(Output::Item(Kind::Escape, input[span.clone()].into())),
                 ArgSlice::Single(SingleStr(span)) =>
                     output.push(Output::Item(Kind::SingleStr, input[span.clone()].into())),
                 ArgSlice::Double(arg) =>
@@ -330,6 +364,8 @@ impl Fix for DoubleStr<'_> {
                     output.push(Output::Item(Kind::Literal, input[span.clone()].into())),
                 StrSlice::Env(Env(span)) =>
                     output.push(Output::Item(Kind::Env, input[span.clone()].into())),
+                StrSlice::Escape(Escape(span)) =>
+                    output.push(Output::Item(Kind::Escape, input[span.clone()].into())),
                 StrSlice::SubShell(arg) =>
                     output.push(Output::One(Kind::SubShell, Box::new(arg.0.fix(input))))
             }

@@ -62,6 +62,14 @@ impl Env {
     }
 }
 
+impl Escape {
+    pub fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
+        let start = self.0.start + 1;
+        let end = self.0.end;
+        push(line[start..end].as_ref())
+    }
+}
+
 impl<'c> SubShell<'c> {
     pub async fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
         let mut shell_cmd = None;
@@ -118,6 +126,7 @@ impl<'c> DoubleStr<'c> {
             match item {
                 StrSlice::Str(val) => val.eval(shell, line, &mut push2)?,
                 StrSlice::Env(val) => val.eval(shell, line, &mut push2)?,
+                StrSlice::Escape(val) => val.eval(shell, line, &mut push2)?,
                 StrSlice::SubShell(cmd) => cmd.eval(shell, line, &mut push2).await?
             }
         }
@@ -141,6 +150,7 @@ impl<'c> Argument<'c> {
             match item {
                 ArgSlice::Str(v) => v.eval(shell, line, &mut push2)?,
                 ArgSlice::Env(v) => v.eval(shell, line, &mut push2)?,
+                ArgSlice::Escape(val) => val.eval(shell, line, &mut push2)?,
                 ArgSlice::Single(v) => v.eval(shell, line, &mut push2)?,
                 ArgSlice::Double(v) => v.eval(shell, line, &mut push2).await?,
                 ArgSlice::SubShell(v) => v.eval(shell, line, &mut push2).await?,

@@ -18,6 +18,9 @@ pub struct Literal(pub Span);
 pub struct Env(pub Span);
 
 #[derive(Debug)]
+pub struct Escape(pub Span);
+
+#[derive(Debug)]
 pub struct SubShell<'c>(pub Box<'c, Command<'c>>);
 
 #[derive(Debug)]
@@ -41,6 +44,7 @@ pub struct DoubleStr<'c>(pub Vec<'c, StrSlice<'c>>);
 pub enum StrSlice<'c> {
     Str(Literal),
     Env(Env),
+    Escape(Escape),
     SubShell(SubShell<'c>)
 }
 
@@ -51,6 +55,7 @@ pub struct Argument<'c>(pub Vec<'c, ArgSlice<'c>>);
 pub enum ArgSlice<'c> {
     Str(Literal),
     Env(Env),
+    Escape(Escape),
     Single(SingleStr),
     Double(DoubleStr<'c>),
     SubShell(SubShell<'c>)

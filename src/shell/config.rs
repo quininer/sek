@@ -1,3 +1,4 @@
+use std::{ io, fmt };
 use std::ffi::OsStr;
 use std::path::Path;
 use std::borrow::Cow;
@@ -19,20 +20,79 @@ struct Config<'a> {
 
 #[derive(Deserialize)]
 pub struct Theme {
-    exe: u8,
-    literal: u8,
-    env: u8,
-    subshell: u8,
-    single_str: u8,
-    double_str: u8,
-    pipe: u8,
-    redirect: u8,
-    error: u8
+    pub exe: Style,
+    pub literal: Style,
+    pub env: Style,
+    pub subshell: Style,
+    pub single_str: Style,
+    pub double_str: Style,
+    pub pipe: Style,
+    pub redirect: Style,
+    pub error: Style
+}
+
+#[derive(Deserialize)]
+pub struct Style {
+    ansi: u8,
+    #[serde(default)]
+    bold: bool,
+    #[serde(default)]
+    dim: bool,
+    #[serde(default)]
+    underlined: bool
 }
 
 impl Default for Theme {
     fn default() -> Theme {
-        todo!()
+        Theme {
+            exe: Style::new(0),
+            literal: Style::new(0),
+            env: Style::new(0),
+            subshell: Style::new(0),
+            single_str: Style::new(0),
+            double_str: Style::new(0),
+            pipe: Style::new(0),
+            redirect: Style::new(0),
+            error: Style::new(0),
+        }
+    }
+}
+
+impl Style {
+    pub fn new(ansi: u8) -> Style {
+        Style {
+            ansi,
+            bold: false,
+            dim: false,
+            underlined: false
+        }
+    }
+
+    pub fn print<D, W>(&self, val: D, mut term: W) -> anyhow::Result<()>
+    where
+        D: fmt::Display + Clone,
+        W: io::Write
+    {
+        use crossterm::queue;
+        use crossterm::style::{ style, Color, Attribute, PrintStyledContent };
+
+        let mut val = style(val).with(Color::AnsiValue(self.ansi));
+
+        if self.bold {
+            val = val.attribute(Attribute::Bold);
+        }
+
+        if self.dim {
+            val = val.attribute(Attribute::Dim);
+        }
+
+        if self.underlined {
+            val = val.attribute(Attribute::Underlined);
+        }
+
+        queue!(term, PrintStyledContent(val))?;
+
+        Ok(())
     }
 }
 
