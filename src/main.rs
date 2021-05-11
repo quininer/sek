@@ -6,7 +6,7 @@ mod editor;
 mod shell;
 
 use std::{ fs, io };
-use std::cell::{ Cell, RefCell };
+use std::cell::Cell;
 use anyhow::Context;
 use bumpalo::Bump;
 use argh::FromArgs;

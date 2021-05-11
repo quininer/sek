@@ -1,6 +1,5 @@
 use std::{ io, mem };
 use std::rc::Rc;
-use std::ffi::OsStr;
 use std::cell::RefCell;
 use std::process::{ Stdio, ExitStatus };
 use anyhow::Context;

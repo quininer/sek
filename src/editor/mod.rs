@@ -4,7 +4,6 @@ pub mod render;
 
 
 use std::cell::Cell;
-use crossterm::{ queue, execute, cursor, style, terminal };
 use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
 use crate::Global;
 use crate::shell::{ Shell, Action };

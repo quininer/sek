@@ -114,7 +114,7 @@ impl<'g> History<'g> {
         serde_cbor::to_writer(&mut self.buf, line)?;
 
         if self.buf.len() <= append_max() {
-            self.fd.write(&self.buf)?;
+            self.fd.write_all(&self.buf)?;
         }
 
         Ok(())

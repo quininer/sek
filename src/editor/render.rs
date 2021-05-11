@@ -1,5 +1,4 @@
 use std::io::Write;
-use if_chain::if_chain;
 use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
 use crossterm::{ queue, execute, cursor, style, terminal };
@@ -80,7 +79,7 @@ pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
     Ok(())
 }
 
-pub fn report(editor: &Editor, shell: &mut Shell, line: &str, err: ParseFailed) -> anyhow::Result<()> {
+pub fn report(_editor: &Editor, shell: &mut Shell, line: &str, err: ParseFailed) -> anyhow::Result<()> {
     let fill = line[..err.span.start].width() as u16;
     let flag = line[err.span.clone()].width() as u16;
 

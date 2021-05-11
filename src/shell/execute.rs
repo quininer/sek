@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::future::Future;
 use std::process::{ Stdio, ExitStatus };
 use anyhow::Context as AnyhowContext;
-use bstr::{ ByteSlice, ByteVec };
+use bstr::ByteSlice;
 use bumpalo::collections::Vec;
 use tokio::io::AsyncReadExt;
 use if_chain::if_chain;
@@ -63,7 +63,7 @@ impl Env {
 }
 
 impl Escape {
-    pub fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
+    pub fn eval(&self, _shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
         let start = self.0.start + 1;
         let end = self.0.end;
         push(line[start..end].as_ref())
@@ -106,7 +106,7 @@ impl<'c> SubShell<'c> {
 }
 
 impl SingleStr {
-    pub fn eval(&self, shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
+    pub fn eval(&self, _shell: &mut Shell, line: &str, push: Push<'_>) -> anyhow::Result<()> {
         let start = self.0.start + 1;
         let end = self.0.end - 1;
         push(line[start..end].as_ref())

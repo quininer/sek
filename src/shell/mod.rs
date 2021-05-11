@@ -58,7 +58,7 @@ impl Shell {
         })
     }
 
-    pub async fn start<'g>(&mut self, global: &'g Global) -> anyhow::Result<()> {
+    pub async fn start(&mut self, global: &Global) -> anyhow::Result<()> {
         let mut reader = EventStream::new();
 
         let mut editor = Editor::new(global)?;

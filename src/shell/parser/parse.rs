@@ -227,7 +227,7 @@ impl<'c> Chain<'c> {
 }
 
 impl SingleStr {
-    fn parse_in<'c, 'i>(_bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
+    fn parse_in(_bump: &Bump, state: &mut State<'_>) -> Result<Self, ParseFailed> {
         let span = state.lex.span();
         let mut end = None;
 
@@ -354,7 +354,7 @@ impl<'c> Argument<'c> {
                 arg.0.push(ArgSlice::SubShell(SubShell::parse_in(bump, state)?));
                 Ok(Action::Continue)
             },
-            Token::ShellClose => |_, state, arg| if state.is_subshell {
+            Token::ShellClose => |_, state, _| if state.is_subshell {
                 Ok(Action::Break)
             } else {
                 Err(bad(state, ErrorKind::UnexpectedClose))
