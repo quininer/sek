@@ -25,7 +25,8 @@ pub fn colour(shell: &Shell, input: &str, term: &mut dyn io::Write, cmd: &Comman
 struct Cursor(usize);
 
 trait Colour {
-    fn push<W: io::Write>(&self, shell: &Shell, input: &str, term: &mut W, cursor: &mut Cursor) -> anyhow::Result<()>;
+    fn push<W: io::Write>(&self, shell: &Shell, input: &str, term: &mut W, cursor: &mut Cursor)
+        -> anyhow::Result<()>;
 }
 
 impl Cursor {
@@ -40,7 +41,9 @@ impl Cursor {
 }
 
 impl Colour for Command<'_> {
-    fn push<W: io::Write>(&self, shell: &Shell, input: &str, mut term: &mut W, cursor: &mut Cursor) -> anyhow::Result<()> {
+    fn push<W: io::Write>(&self, shell: &Shell, input: &str, mut term: &mut W, cursor: &mut Cursor)
+        -> anyhow::Result<()>
+    {
         cursor.fill(self.exe.0.start, &mut *term)?;
         shell.theme.exe.print(&input[self.exe.0.clone()], &mut *term)?;
 

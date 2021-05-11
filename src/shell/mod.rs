@@ -28,7 +28,7 @@ pub struct Shell {
     pub theme: Theme,
     pub morgue: Morgue,
     pub userdir: UserDirs,
-    pub strbuf: String,
+    pub cmdbuf: String,
 }
 
 pub enum Action {
@@ -48,7 +48,7 @@ impl Shell {
             morgue: Morgue::default(),
             userdir: UserDirs::new()
                 .context("Unable to retrieve user path from system")?,
-            strbuf: String::new()
+            cmdbuf: String::new()
         })
     }
 
@@ -57,30 +57,26 @@ impl Shell {
 
         let mut editor = Editor::new(global)?;
 
-        loop {
+        while let Some(event) = reader.next().await {
             self.bump.borrow_mut().reset();
+            self.cmdbuf.clear();
 
-            if let Some(event) = reader.next().await {
-                let action = editor.step(self, event?).await?;
+            let action = editor.step(self, event?).await?;
 
-                match action {
-                    Action::Continue => {
-                        let mut term = self.term.lock();
-                        // render
-                    },
-                    Action::NewLine => {
-                        let mut term = self.term.lock();
-                        queue!(term, style::Print("\n"))?;
-                        // render
-                    },
-                    Action::Execute => {
-                        // execute
-                        // history
-                        // render
-                    },
-                    Action::Stop => break
-                }
+            match action {
+                Action::Continue => (),
+                Action::NewLine => {
+                    let mut term = self.term.lock();
+                    queue!(term, style::Print("\n"))?;
+                },
+                Action::Execute => {
+                    // execute
+                    // history
+                },
+                Action::Stop => break
             }
+
+            // render
         }
 
         Ok(())

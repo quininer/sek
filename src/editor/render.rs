@@ -1,10 +1,27 @@
 use std::io::Write;
 use if_chain::if_chain;
+use bumpalo::collections::String;
 use crossterm::{ queue, execute, cursor, style, terminal };
 use crate::editor::Editor;
 use crate::shell::Shell;
 
 
+
+pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
+    -> anyhow::Result<()>
+{
+    const PROMPT: &str = "~ ";
+
+    let bump = shell.bump.clone();
+    let bump = bump.borrow();
+    let mut buf = String::with_capacity_in(editor.line.len(), &bump);
+
+    let (cursor, _) = editor.line.ready_render(&mut buf, None);
+
+    todo!()
+}
+
+/*
 pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
     -> anyhow::Result<()>
 {
@@ -97,3 +114,4 @@ pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
 
     Ok(())
 }
+*/

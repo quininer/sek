@@ -1,5 +1,6 @@
 use std::{ cmp, fmt };
 use bstr::{ ByteSlice, ByteVec };
+use bumpalo::collections::String as BumpString;
 use unicode_width::UnicodeWidthStr;
 use crate::util::Fill;
 
@@ -13,6 +14,12 @@ pub struct Buffer {
 impl Buffer {
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.buf.iter()
+            .map(|c| c.len_utf8())
+            .sum()
     }
 
     pub fn first(&self) -> Option<char> {
@@ -53,7 +60,9 @@ impl Buffer {
         }
     }
 
-    pub fn ready_render<'a>(&self, buf: &'a mut String, fillsize: Option<u16>) -> (u16, &'a str, Fill) {
+    pub fn ready_render<'a>(&self, buf: &'a mut BumpString<'_>, fillsize: Option<u16>)
+        -> (u16, Fill)
+    {
         buf.clear();
 
         for &c in &self.buf[..self.cur] {
@@ -67,14 +76,14 @@ impl Buffer {
             buf.push(c);
         }
 
-        let filllen = fillsize
+        let len = fillsize
             .and_then(|size| {
                 let strlen = cursor + buf[cursor_bytes..].width() as u16;
                 size.checked_sub(strlen)
             })
             .unwrap_or(0);
 
-        (cursor, buf.as_str(), Fill::empty(filllen))
+        (cursor, Fill::empty(len))
     }
 
     pub fn clear(&mut self) {
@@ -92,7 +101,6 @@ impl fmt::Display for Buffer {
         Ok(())
     }
 }
-
 
 #[test]
 fn test_buffer() {

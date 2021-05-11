@@ -1,6 +1,6 @@
 pub mod buffer;
 pub mod history;
-// pub mod render;
+pub mod render;
 
 
 use std::cell::Cell;
@@ -72,8 +72,7 @@ impl<'g> Editor<'g> {
                 KeyCode::Right => self.line.move_right(),
                 KeyCode::Enter if self.line.is_empty() => return Ok(Action::NewLine),
                 KeyCode::Enter => {
-                    let mut buf = self.global.strbuf.borrow_mut();
-                    self.line.read_into(&mut buf);
+                    self.line.read_into(&mut shell.cmdbuf);
                     return Ok(Action::Execute);
                 },
                 _ => ()
