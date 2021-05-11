@@ -281,6 +281,28 @@ fn test_bad_command() -> anyhow::Result<()> {
         assert_eq!(err.kind, ErrorKind::RedirectNoTarget);
     }
 
+    // redirect no exe
+    bump.reset();
+    {
+        let input = r#"> fd exe"#;
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Redirect);
+        assert_eq!(&input[err.span], ">");
+        assert_eq!(err.kind, ErrorKind::FirstArgMustLiteral);
+    }
+
+    // redirect then args
+    bump.reset();
+    /*
+    {
+        let input = r#"exe > fd arg"#;
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Redirect);
+        assert_eq!(&input[err.span], ">");
+        assert_eq!(err.kind, ErrorKind::FirstArgMustLiteral);
+    }
+    */
+
     Ok(())
 }
 

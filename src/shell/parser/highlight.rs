@@ -1,10 +1,10 @@
-use std::io;
+use std::{ io, mem };
 use bumpalo::Bump;
 use crossterm::{ queue, style };
 use crossterm::style::Color;
 use scopeguard::guard;
 use if_chain::if_chain;
-use crate::util::DynWriter;
+use crate::util::{ Fill, DynWriter };
 use crate::shell::Shell;
 use crate::shell::parser::Token;
 use crate::shell::parser::type_::*;
@@ -28,9 +28,52 @@ trait Colour {
     fn push<W: io::Write>(&self, shell: &Shell, input: &str, term: &mut W, cursor: &mut Cursor) -> anyhow::Result<()>;
 }
 
+impl Cursor {
+    fn fill<W: io::Write>(&mut self, to: usize, term: &mut W) -> anyhow::Result<()> {
+        if self.0 < to {
+            let len = to - mem::replace(&mut self.0, to);
+            queue!(term, style::Print(Fill::empty(len as _)))?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Colour for Command<'_> {
+    fn push<W: io::Write>(&self, shell: &Shell, input: &str, mut term: &mut W, cursor: &mut Cursor) -> anyhow::Result<()> {
+        cursor.fill(self.exe.0.start, &mut *term)?;
+        shell.theme.exe.print(&input[self.exe.0.clone()], &mut *term)?;
+
+        for arg in self.args.iter() {
+            arg.push(shell, input, &mut *term, cursor)?;
+        }
+
+        todo!()
+    }
+}
+
+impl Colour for Argument<'_> {
     fn push<W: io::Write>(&self, shell: &Shell, input: &str, term: &mut W, cursor: &mut Cursor) -> anyhow::Result<()> {
-        shell.theme.exe.print(&input[self.exe.0.clone()], term)?;
+        for slice in self.0.iter() {
+            /*
+            match slice {
+                ArgSlice::Str(val) => val.push(shell, input, term, cursor)?,
+                ArgSlice::Env(val) => val.push(shell, input, term, cursor)?,
+                ArgSlice::Escape(val) => val.push(shell, input, term, cursor)?,
+                ArgSlice::SingleStr(val) => val.push(shell, input, term, cursor)?,
+                ArgSlice::DoubleStr(val) => val.push(shell, input, term, cursor)?,
+                ArgSlice::SubShell(val) => val.push(shell, input, term, cursor)?,
+            }
+            */
+        }
+
+        Ok(())
+    }
+}
+
+impl Colour for Literal {
+    fn push<W: io::Write>(&self, shell: &Shell, input: &str, term: &mut W, cursor: &mut Cursor) -> anyhow::Result<()> {
+        cursor.fill(self.0.start, term)?;
 
         todo!()
     }

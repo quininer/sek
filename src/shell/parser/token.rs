@@ -19,7 +19,7 @@ pub enum Token {
     #[token(r"\")]
     Backslash,
 
-    #[token("|")]
+    #[regex(r"[12*]?\|")]
     Pipe,
     #[token(";")]
     Then,
@@ -117,6 +117,31 @@ mod test {
             (Token::Text, "fd3"),
             (Token::Then, ";"),
             (Token::Text, "exe3")
+        ];
+
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_pipe_12star_kind() {
+        let input = "exe | exe1 1| exe2 2| exe3 *| exe4";
+
+        let result = Token::lexer(input)
+            .spanned()
+            .filter(|(token, _)| token != &Token::Empty)
+            .map(|(token, span)| (token, &input[span]))
+            .collect::<std::vec::Vec<_>>();
+
+        let expected = vec![
+            (Token::Text, "exe"),
+            (Token::Pipe, "|"),
+            (Token::Text, "exe1"),
+            (Token::Pipe, "1|"),
+            (Token::Text, "exe2"),
+            (Token::Pipe, "2|"),
+            (Token::Text, "exe3"),
+            (Token::Pipe, "*|"),
+            (Token::Text, "exe4")
         ];
 
         assert_eq!(expected, result);

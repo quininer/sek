@@ -47,6 +47,7 @@ struct State<'i> {
     lex: logos::Lexer<'i, Token>,
     last: Token,
     is_subshell: bool,
+    is_redirect: bool,
     incomplete: bool
 }
 
@@ -63,6 +64,7 @@ pub fn parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c>, ParseFai
         lex: Token::lexer(input),
         last: Token::Unknown,
         is_subshell: false,
+        is_redirect: false,
         incomplete: false
     };
 
@@ -74,6 +76,7 @@ pub fn incomplete_parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c
         lex: Token::lexer(input),
         last: Token::Unknown,
         is_subshell: false,
+        is_redirect: false,
         incomplete: true
     };
 
@@ -166,8 +169,8 @@ impl<'c> Command<'c> {
 
 impl<'c> SubShell<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        let prev_substate = mem::replace(&mut state.is_subshell, true);
-        let mut state = guard(state, |state| state.is_subshell = prev_substate);
+        let prev_subshell = mem::replace(&mut state.is_subshell, true);
+        let mut state = guard(state, |state| state.is_subshell = prev_subshell);
 
         let span = state.lex.span();
         let cmd = Command::parse_in(bump, &mut state)?;
@@ -395,6 +398,8 @@ impl<'c> Redirect<'c> {
             }
         }
 
+        let mut state = state;
+
         let (ty, append) = parse_redirect(state.lex.slice())
             .ok_or_else(|| bad(state, ErrorKind::UnsupportedRedirectType))?;
         let span = state.lex.span();
@@ -416,7 +421,7 @@ impl<'c> Redirect<'c> {
             });
         }
 
-        let value = Argument::parse_in(bump, state)?;
+        let value = Argument::parse_in(bump, &mut *state)?;
 
         if state.incomplete || !value.0.is_empty() {
             Ok(Redirect { ty, append, value })
