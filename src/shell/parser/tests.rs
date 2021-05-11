@@ -193,6 +193,68 @@ fn test_parse_command() -> anyhow::Result<()> {
         ]));
     }
 
+    dbg!();
+
+    // subshell and empty
+    bump.reset();
+    {
+        let input = r#"exe $(exe2 > fd) "#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+            Item(Literal, "exe".into()),
+            Vec(Argument, vec![
+                One(SubShell, Box::new(Vec(Command, vec![
+                    Item(Literal, "exe2".into()),
+                    One(RedirectOut, Box::new(Vec(Argument, vec![
+                        Item(Literal, "fd".into())
+                    ])))
+                ])))
+            ])
+        ]));
+    }
+
+    // redirect and subshell
+    bump.reset();
+    {
+        let input = r#"exe > $(exe1 2> fd1) | exe2 $(exe3 2>> fd4 | exe4 > fd5) > fd6"#;
+        let cmd = parse_in(&bump, input).unwrap();
+        let output = cmd.fix(input);
+
+        assert_eq!(output, Vec(Command, vec![
+            Item(Literal, "exe".into()),
+            One(RedirectOut, Box::new(Vec(Argument, vec![
+                One(SubShell, Box::new(Vec(Command, vec![
+                    Item(Literal, "exe1".into()),
+                    One(RedirectErr, Box::new(Vec(Argument, vec![
+                        Item(Literal, "fd1".into())
+                    ])))
+                ])))
+            ]))),
+            One(Pipe, Box::new(Vec(Command, vec![
+                Item(Literal, "exe2".into()),
+                Vec(Argument, vec![
+                    One(SubShell, Box::new(Vec(Command, vec![
+                        Item(Literal, "exe3".into()),
+                        One(RedirectErrAppend, Box::new(Vec(Argument, vec![
+                            Item(Literal, "fd4".into())
+                        ]))),
+                        One(Pipe, Box::new(Vec(Command, vec![
+                            Item(Literal, "exe4".into()),
+                            One(RedirectOut, Box::new(Vec(Argument, vec![
+                                Item(Literal, "fd5".into())
+                            ])))
+                        ]))),
+                    ])))
+                ]),
+                One(RedirectOut, Box::new(Vec(Argument, vec![
+                    Item(Literal, "fd6".into())
+                ])))
+            ]))),
+        ]));
+    }
+
     Ok(())
 }
 
@@ -296,15 +358,13 @@ fn test_bad_command() -> anyhow::Result<()> {
 
     // redirect then args
     bump.reset();
-    /*
     {
         let input = r#"exe > fd arg"#;
         let err = parse_in(&bump, input).unwrap_err();
-        assert_eq!(err.token, Token::Redirect);
-        assert_eq!(&input[err.span], ">");
-        assert_eq!(err.kind, ErrorKind::FirstArgMustLiteral);
+        assert_eq!(err.token, Token::Text);
+        assert_eq!(&input[err.span], "arg");
+        assert_eq!(err.kind, ErrorKind::UnexpectedArgument);
     }
-    */
 
     Ok(())
 }
@@ -347,11 +407,11 @@ impl Fix for Command<'_> {
         for arg in &self.args {
             output.push(arg.fix(input));
         }
-        if let Some(chain) = self.chain.as_ref() {
-            output.push(chain.fix(input));
-        }
         for redirect in &self.redirect {
             output.push(redirect.fix(input));
+        }
+        if let Some(chain) = self.chain.as_ref() {
+            output.push(chain.fix(input));
         }
         Output::Vec(Kind::Command, output)
     }

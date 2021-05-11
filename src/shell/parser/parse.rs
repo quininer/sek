@@ -47,7 +47,7 @@ struct State<'i> {
     lex: logos::Lexer<'i, Token>,
     last: Token,
     is_subshell: bool,
-    is_redirect: bool,
+    has_redirect: bool,
     incomplete: bool
 }
 
@@ -64,7 +64,7 @@ pub fn parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c>, ParseFai
         lex: Token::lexer(input),
         last: Token::Unknown,
         is_subshell: false,
-        is_redirect: false,
+        has_redirect: false,
         incomplete: false
     };
 
@@ -76,7 +76,7 @@ pub fn incomplete_parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c
         lex: Token::lexer(input),
         last: Token::Unknown,
         is_subshell: false,
-        is_redirect: false,
+        has_redirect: false,
         incomplete: true
     };
 
@@ -91,7 +91,9 @@ impl<'c> Command<'c> {
         lookup!{
             static LUT = [Lookup; Token::size()];
 
-            Token::Text => |bump, state, cmd| if let Some(cmd) = cmd {
+            Token::Text => |bump, state, cmd| if state.has_redirect {
+                Err(bad(state, ErrorKind::UnexpectedArgument))
+            } else if let Some(cmd) = cmd {
                 cmd.args.push(Argument::parse_in(bump, state)?);
                 Ok(if state.is_subshell && Token::ShellClose == state.last {
                     Action::Break
@@ -112,7 +114,9 @@ impl<'c> Command<'c> {
                 | Token::ShellOpen
                 | Token::Backslash
                 | Token::Env => |bump, state, cmd|
-            if let Some(cmd) = cmd.as_mut() {
+            if state.has_redirect {
+                Err(bad(state, ErrorKind::UnexpectedArgument))
+            } else if let Some(cmd) = cmd.as_mut() {
                 cmd.args.push(Argument::parse_in(bump, state)?);
                 Ok(if state.is_subshell && Token::ShellClose == state.last {
                     Action::Break
@@ -134,7 +138,12 @@ impl<'c> Command<'c> {
             },
             Token::Redirect => |bump, state, cmd| if let Some(cmd) = cmd.as_mut() {
                 cmd.redirect.push(Redirect::parse_in(bump, state)?);
-                Ok(Action::Continue)
+
+                if !state.is_subshell || state.last != Token::ShellClose {
+                    Ok(Action::Continue)
+                } else {
+                    Ok(Action::Break)
+                }
             } else {
                 Err(bad(state, ErrorKind::FirstArgMustLiteral))
             },
@@ -170,7 +179,11 @@ impl<'c> Command<'c> {
 impl<'c> SubShell<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
         let prev_subshell = mem::replace(&mut state.is_subshell, true);
-        let mut state = guard(state, |state| state.is_subshell = prev_subshell);
+        let prev_redirect = mem::replace(&mut state.has_redirect, false);
+        let mut state = guard(state, |state| {
+            state.is_subshell = prev_subshell;
+            state.has_redirect = prev_redirect;
+        });
 
         let span = state.lex.span();
         let cmd = Command::parse_in(bump, &mut state)?;
@@ -190,6 +203,7 @@ impl<'c> SubShell<'c> {
 
 impl<'c> ChainShell<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
+        state.has_redirect = false;
         let cmd = Command::parse_in(bump, state)?;
         let cmd = Box::new_in(cmd, bump);
         Ok(ChainShell(cmd))
@@ -402,7 +416,7 @@ impl<'c> Redirect<'c> {
             }
         }
 
-        let mut state = state;
+        state.has_redirect = true;
 
         let (ty, append) = parse_redirect(state.lex.slice())
             .ok_or_else(|| bad(state, ErrorKind::UnsupportedRedirectType))?;
@@ -425,7 +439,7 @@ impl<'c> Redirect<'c> {
             });
         }
 
-        let value = Argument::parse_in(bump, &mut *state)?;
+        let value = Argument::parse_in(bump, state)?;
 
         if state.incomplete || !value.0.is_empty() {
             Ok(Redirect { ty, append, value })
