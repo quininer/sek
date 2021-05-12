@@ -24,7 +24,8 @@ pub enum ErrorKind {
     UnclosedSingleQuote,
     UnclosedDoubleQuote,
     RedirectNoTarget,
-    UnexpectedArgument
+    UnexpectedArgument,
+    IncompleteEscape
 }
 
 impl ErrorKind {
@@ -39,7 +40,8 @@ impl ErrorKind {
             "unclosed single quote",
             "unclosed double quote",
             "redirect has no target",
-            "unexpected argument"
+            "unexpected argument",
+            "incomplete escape"
         ];
 
         STRINGS[self as usize]

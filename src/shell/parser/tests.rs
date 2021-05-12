@@ -409,6 +409,16 @@ fn test_bad_command() -> anyhow::Result<()> {
         assert_eq!(err.kind, ErrorKind::UnclosedDoubleQuote);
     }
 
+    // escape incomplete
+    bump.reset();
+    {
+        let input = r#"exe \"#;
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Backslash);
+        assert_eq!(&input[err.span], "\\");
+        assert_eq!(err.kind, ErrorKind::IncompleteEscape);
+    }
+
     Ok(())
 }
 

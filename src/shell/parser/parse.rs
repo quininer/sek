@@ -302,11 +302,19 @@ impl<'c> DoubleStr<'c> {
                 Ok(Action::Continue)
             },
             Token::Backslash => |_, state, list| {
-                let start = state.lex.span().start;
-                let _token = state.lex.next();
-                let end = state.lex.span().end;
-                list.push(StrSlice::Escape(Escape(start..end)));
-                Ok(Action::Continue)
+                let span = state.lex.span();
+                if let Some(token) = state.lex.next() {
+                    state.last = token;
+                    let end = state.lex.span().end;
+                    list.push(StrSlice::Escape(Escape(span.start..end)));
+                    Ok(Action::Continue)
+                } else {
+                    Err(ParseFailed {
+                        token: Token::Backslash,
+                        kind: ErrorKind::IncompleteEscape,
+                        span
+                    })
+                }
             },
             _ => |_, state, _| Err(bad(state, ErrorKind::UnexpectedToken))
         }
@@ -394,19 +402,27 @@ impl<'c> Argument<'c> {
                 Ok(Action::Break)
             },
             Token::Backslash => |_, state, arg| {
-                let start = state.lex.span().start;
-                let _token = state.lex.next();
-                let end = state.lex.span().end;
-                arg.0.push(ArgSlice::Escape(Escape(start..end)));
-                Ok(Action::Continue)
+                let span = state.lex.span();
+                if let Some(token) = state.lex.next() {
+                    state.last = token;
+                    let end = state.lex.span().end;
+                    arg.0.push(ArgSlice::Escape(Escape(span.start..end)));
+                    Ok(Action::Continue)
+                } else {
+                    Err(ParseFailed {
+                        token: Token::Backslash,
+                        kind: ErrorKind::IncompleteEscape,
+                        span
+                    })
+                }
             },
             _ => |_, state, _| Err(bad(state, ErrorKind::UnexpectedToken))
         }
 
         let mut arg = Argument(Vec::with_capacity_in(8, bump));
-        let mut last = state.again.take();
+        let mut again = state.again.take();
 
-        while let Some(token) = last.take().or_else(|| state.lex.next()) {
+        while let Some(token) = again.take().or_else(|| state.lex.next()) {
             state.last = token;
             match LUT[token as usize](bump, state, &mut arg)? {
                 Action::Continue => (),
@@ -438,6 +454,7 @@ impl<'c> Redirect<'c> {
         let span = state.lex.span();
 
         while let Some(token) = state.lex.next() {
+            state.last = token;
             if token != Token::Empty {
                 state.again = Some(token);
                 break
