@@ -1,4 +1,4 @@
-use std::{ io, fmt };
+use std::{ fs, io, fmt };
 use std::ffi::OsStr;
 use std::path::Path;
 use std::borrow::Cow;
@@ -98,23 +98,28 @@ impl Style {
 
 pub async fn load(global: &Global, shell: &mut Shell) -> anyhow::Result<()> {
     let path = global.projdir.config_dir().join("config");
+    let path2 = global.projdir.config_dir().join("config.json");
 
-    if !path.exists() {
+    let buf = if path.exists() {
+        let child = Command::new(path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()?;
+
+        let output = child.wait_with_output().await?;
+
+        if !output.status.success() {
+            return Err(anyhow::format_err!("bad exit status: {}", output.status));
+        }
+
+        output.stdout
+    } else if path.exists() {
+        fs::read(path2)?
+    } else {
         return Ok(());
-    }
+    };
 
-    let child = Command::new(path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()?;
-
-    let output = child.wait_with_output().await?;
-
-    if !output.status.success() {
-        return Err(anyhow::format_err!("bad exit status: {}", output.status));
-    }
-
-    let config: Config = serde_json::from_slice(&output.stdout)?;
+    let config: Config = serde_json::from_slice(&buf)?;
 
     for (key, val) in config.set_env {
         shell.env.set(&key, val.into_owned());
