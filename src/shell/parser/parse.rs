@@ -46,6 +46,7 @@ macro_rules! lookup {
 struct State<'i> {
     lex: logos::Lexer<'i, Token>,
     last: Token,
+    again: Option<Token>,
     is_subshell: bool,
     has_redirect: bool,
     incomplete: bool
@@ -63,6 +64,7 @@ pub fn parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c>, ParseFai
     let mut state = State {
         lex: Token::lexer(input),
         last: Token::Unknown,
+        again: None,
         is_subshell: false,
         has_redirect: false,
         incomplete: false
@@ -75,6 +77,7 @@ pub fn incomplete_parse_in<'c>(bump: &'c Bump, input: &str) -> Result<Command<'c
     let mut state = State {
         lex: Token::lexer(input),
         last: Token::Unknown,
+        again: None,
         is_subshell: false,
         has_redirect: false,
         incomplete: true
@@ -94,6 +97,7 @@ impl<'c> Command<'c> {
             Token::Text => |bump, state, cmd| if state.has_redirect {
                 Err(bad(state, ErrorKind::UnexpectedArgument))
             } else if let Some(cmd) = cmd {
+                state.again = Some(state.last);
                 cmd.args.push(Argument::parse_in(bump, state)?);
                 Ok(if state.is_subshell && Token::ShellClose == state.last {
                     Action::Break
@@ -117,6 +121,7 @@ impl<'c> Command<'c> {
             if state.has_redirect {
                 Err(bad(state, ErrorKind::UnexpectedArgument))
             } else if let Some(cmd) = cmd.as_mut() {
+                state.again = Some(state.last);
                 cmd.args.push(Argument::parse_in(bump, state)?);
                 Ok(if state.is_subshell && Token::ShellClose == state.last {
                     Action::Break
@@ -160,7 +165,7 @@ impl<'c> Command<'c> {
         let mut cmd = None;
         let start = state.lex.span().start;
 
-        while let Some(token) = state.lex.next() {
+        while let Some(token) = state.again.take().or_else(|| state.lex.next()) {
             state.last = token;
             match LUT[token as usize](bump, state, &mut cmd)? {
                 Action::Continue => (),
@@ -233,7 +238,6 @@ impl SingleStr {
 
         while let Some(token) = state.lex.next() {
             state.last = token;
-
             if let Token::SingleQuote = token {
                 end = Some(state.lex.span().end);
                 break
@@ -318,7 +322,9 @@ impl<'c> DoubleStr<'c> {
             }
         }
 
-        if state.incomplete || state.last == Token::DoubleQuote {
+        if state.incomplete ||
+            (state.last == Token::DoubleQuote && span.end < state.lex.span().end)
+        {
             let end = state.lex.span().end;
             Ok(DoubleStr {
                 span: span.start..end,
@@ -379,6 +385,14 @@ impl<'c> Argument<'c> {
                 Ok(Action::Continue)
             },
             Token::Empty | Token::Comment => |_, _, _| Ok(Action::Break),
+            Token::Pipe
+                | Token::Then
+                | Token::AndIf
+                | Token::OrIf => |_, state, _|
+            {
+                state.again = Some(state.last);
+                Ok(Action::Break)
+            },
             Token::Backslash => |_, state, arg| {
                 let start = state.lex.span().start;
                 let _token = state.lex.next();
@@ -390,7 +404,7 @@ impl<'c> Argument<'c> {
         }
 
         let mut arg = Argument(Vec::with_capacity_in(8, bump));
-        let mut last = Some(state.last);
+        let mut last = state.again.take();
 
         while let Some(token) = last.take().or_else(|| state.lex.next()) {
             state.last = token;
@@ -417,21 +431,20 @@ impl<'c> Redirect<'c> {
         }
 
         state.has_redirect = true;
+        state.again = None;
 
         let (ty, append) = parse_redirect(state.lex.slice())
             .ok_or_else(|| bad(state, ErrorKind::UnsupportedRedirectType))?;
         let span = state.lex.span();
-        let mut eof = true;
 
         while let Some(token) = state.lex.next() {
             if token != Token::Empty {
-                state.last = token;
-                eof = false;
+                state.again = Some(token);
                 break
             }
         }
 
-        if !state.incomplete && eof {
+        if !state.incomplete && state.again.is_none() {
             return Err(ParseFailed {
                 token: Token::Redirect,
                 kind: ErrorKind::RedirectNoTarget,

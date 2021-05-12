@@ -278,17 +278,13 @@ fn test_parse_command() -> anyhow::Result<()> {
         let output = cmd.fix(input);
 
         assert_eq!(output, Vec(Command, vec![
-        ]));
-    }
-
-    // arg double quote
-    bump.reset();
-    {
-        let input = r#"exe arg""#;
-        let cmd = parse_in(&bump, input).unwrap();
-        let output = cmd.fix(input);
-
-        assert_eq!(output, Vec(Command, vec![
+            Item(Literal, "exe".into()),
+            Vec(Argument, vec![
+                Item(Literal, "arg".into())
+            ]),
+            One(Then, Box::new(Vec(Command, vec![
+                Item(Literal, "exe2".into())
+            ])))
         ]));
     }
 
@@ -401,6 +397,16 @@ fn test_bad_command() -> anyhow::Result<()> {
         assert_eq!(err.token, Token::Text);
         assert_eq!(&input[err.span], "arg");
         assert_eq!(err.kind, ErrorKind::UnexpectedArgument);
+    }
+
+    // arg double quote
+    bump.reset();
+    {
+        let input = r#"exe arg""#;
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::DoubleQuote);
+        assert_eq!(&input[err.span], "\"");
+        assert_eq!(err.kind, ErrorKind::UnclosedDoubleQuote);
     }
 
     Ok(())
