@@ -20,8 +20,7 @@ use shell::Shell;
 pub struct Global {
     bump: Bump,
     columns: Cell<u16>,
-    projdir: ProjectDirs,
-    session: u64
+    projdir: ProjectDirs
 }
 
 /// Sek Shell
@@ -46,16 +45,11 @@ async fn main() -> anyhow::Result<()> {
         .context("Unable to retrieve project path from system")?;
 
     let (size, _) = terminal::size()?;
-    let session = {
-        let mut buf = [0; 8];
-        getrandom(&mut buf)?;
-        u64::from_le_bytes(buf)
-    };
 
     let global = Global {
         bump: Bump::new(),
         columns: Cell::new(size),
-        projdir, session
+        projdir
     };
 
     fs::create_dir_all(global.projdir.data_local_dir())

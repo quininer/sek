@@ -54,7 +54,7 @@ impl ShellCommand {
     }
 
     pub fn spawn(&mut self, shell: &mut Shell) -> anyhow::Result<Child> {
-        self.cmd.envs(&shell.env.0);
+        self.cmd.envs(shell.env.as_map());
 
         let child = self.cmd.spawn()
             .context("Command execute failed")?;

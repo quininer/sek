@@ -8,11 +8,13 @@ use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
 use crate::Global;
 use crate::shell::{ Shell, Action };
 use crate::editor::buffer::Buffer;
+use crate::editor::history::BufPool;
 
 pub struct Editor<'g> {
     pub global: &'g Global,
     pub line: Buffer,
     pub cmd: Buffer,
+    pub bufpool: BufPool,
     ready: Option<char>,
     cursor_line: Cell<u16>,
     state: State
@@ -32,6 +34,7 @@ impl<'g> Editor<'g> {
             global,
             line: Buffer::default(),
             cmd: Buffer::default(),
+            bufpool: BufPool::default(),
             ready: None,
             cursor_line: Cell::new(0),
             state: State::Edit
@@ -113,14 +116,18 @@ impl<'g> Editor<'g> {
                 },
                 (None, KeyCode::Char('h')) => self.line.move_left(),
                 (None, KeyCode::Char('l')) => self.line.move_right(),
-                (None, KeyCode::Char('j')) => todo!(),
-                (None, KeyCode::Char('k')) => todo!(),
+                (None, KeyCode::Char('j')) => self.line.history.down(),
+                (None, KeyCode::Char('k')) => self.line.history.up(),
                 (None, KeyCode::Char('d')) => self.ready = Some('d'),
+                (None, KeyCode::Char('z')) => self.ready = Some('z'),
                 (None, KeyCode::Backspace) => self.line.move_left(),
                 (None, KeyCode::Left) => self.line.move_left(),
                 (None, KeyCode::Right) => self.line.move_right(),
                 (None, KeyCode::Esc) => self.ready = None,
                 (Some('d'), KeyCode::Char('d')) => self.line.clear(),
+                (Some('z'), KeyCode::Char('c')) => shell.env.cd("..".as_ref())?,
+                (Some('z'), KeyCode::Char('j')) => shell.env.go_back()?,
+                (Some('z'), KeyCode::Char('h')) => shell.env.go_home()?,
                 _ => ()
             },
             _ => ()

@@ -12,7 +12,6 @@ use bumpalo::Bump;
 use bumpalo::collections::String;
 use tokio::signal;
 use tokio_stream::StreamExt;
-use directories::UserDirs;
 use scopeguard::defer;
 use crossterm::{ execute, queue, style, terminal };
 use crossterm::event::EventStream;
@@ -33,7 +32,6 @@ pub struct Shell {
     pub env: Env,
     pub theme: Theme,
     pub morgue: Morgue,
-    pub userdir: UserDirs,
     pub last_status: bool
 }
 
@@ -48,11 +46,9 @@ impl Shell {
         Ok(Shell {
             bump: Rc::new(RefCell::new(Bump::new())),
             term: io::stdout(),
-            env: Env::default(),
+            env: Env::new()?,
             theme: Theme::default(),
             morgue: Morgue::default(),
-            userdir: UserDirs::new()
-                .context("Unable to retrieve user path from system")?,
             last_status: true
         })
     }
@@ -86,6 +82,8 @@ impl Shell {
                             Ok(cmd) => self.execute(line, cmd).await?,
                             Err(err) => report(&editor, self, line, err)?
                         }
+
+                        editor.line.history.push(&mut editor.bufpool, line);
                     }
 
                     true

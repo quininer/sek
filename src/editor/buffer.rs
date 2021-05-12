@@ -3,12 +3,14 @@ use bstr::{ ByteSlice, ByteVec };
 use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
 use crate::util::Fill;
+use crate::editor::history::History;
 
 
 #[derive(Default)]
 pub struct Buffer {
     buf: Vec<char>,
-    cur: usize
+    cur: usize,
+    pub history: History
 }
 
 impl Buffer {

@@ -31,11 +31,11 @@ impl Literal {
 
         if let Some(path) = value.strip_prefix('~') {
             if path.is_empty() {
-                let home = shell.userdir.home_dir();
+                let home = shell.env.home();
                 let home = <[u8]>::from_path(&home).context("invalid home path")?;
                 push(home)
             } else if path.starts_with('/') {
-                let home = shell.userdir.home_dir();
+                let home = shell.env.home();
                 let newpath = home.join(path.trim_start_matches('/'));
                 let newpath = <[u8]>::from_path(&newpath).context("invalid path")?;
                 push(newpath)

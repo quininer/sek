@@ -2,38 +2,80 @@ use std::{ io, env, mem };
 use std::collections::HashMap;
 use std::path::{ Path, PathBuf };
 use std::ffi::{ OsStr, OsString };
+use anyhow::Context;
+use directories::UserDirs;
 
-pub struct Env(pub HashMap<OsString, OsString>);
-
-impl Default for Env {
-    fn default() -> Env {
-        Env(env::vars_os().collect())
-    }
+pub struct Env {
+    map: HashMap<OsString, OsString>,
+    userdir: UserDirs,
+    prev_pwd: Option<PathBuf>,
+    pwd: PathBuf,
 }
 
 impl Env {
+    pub fn new() -> anyhow::Result<Env> {
+        let map = env::vars_os().collect();
+        let pwd = env::current_dir()?;
+        Ok(Env {
+            map, pwd,
+            userdir: UserDirs::new()
+                .context("Unable to retrieve user path from system")?,
+            prev_pwd: None
+        })
+    }
+
     pub fn get(&self, name: &OsStr) -> Option<&OsStr> {
-        self.0.get(name).map(std::ops::Deref::deref)
+        self.map.get(name).map(std::ops::Deref::deref)
     }
 
     pub fn cd(&mut self, path: &Path) -> io::Result<()> {
         env::set_current_dir(path)?;
 
-        let cd = env::current_dir()?;
+        self.prev_pwd =
+            Some(mem::replace(&mut self.pwd, env::current_dir()?));
 
         #[cfg(windows)]
-        self.set("CD".as_ref(), cd.clone().into());
+        self.set("CD".as_ref(), self.pwd.clone().into());
 
-        self.set("PWD".as_ref(), cd.into());
+        self.set("PWD".as_ref(), self.pwd.clone().into());
+
+        Ok(())
+    }
+
+    pub fn go_home(&mut self) -> io::Result<()> {
+        self.prev_pwd =
+            Some(mem::replace(&mut self.pwd, self.userdir.home_dir().into()));
+
+        env::set_current_dir(&self.pwd)?;
+
+        #[cfg(windows)]
+        self.set("CD".as_ref(), self.pwd.clone().into());
+
+        self.set("PWD".as_ref(), self.pwd.clone().into());
+
+        Ok(())
+    }
+
+    pub fn go_back(&mut self) -> io::Result<()> {
+        if let Some(pwd) = self.prev_pwd.take() {
+            self.prev_pwd = Some(mem::replace(&mut self.pwd, pwd));
+
+            env::set_current_dir(&self.pwd)?;
+
+            #[cfg(windows)]
+            self.set("CD".as_ref(), self.pwd.clone().into());
+
+            self.set("PWD".as_ref(), self.pwd.clone().into());
+        }
 
         Ok(())
     }
 
     pub fn set(&mut self, name: &OsStr, val: OsString) -> Option<OsString> {
-        if let Some(value) = self.0.get_mut(name) {
+        if let Some(value) = self.map.get_mut(name) {
             Some(mem::replace(value, val))
         } else {
-            self.0.insert(name.into(), val)
+            self.map.insert(name.into(), val)
         }
     }
 
@@ -49,6 +91,14 @@ impl Env {
     }
 
     pub fn remove(&mut self, name: &OsStr) -> Option<OsString> {
-        self.0.remove(name)
+        self.map.remove(name)
+    }
+
+    pub fn home(&self) -> &Path {
+        self.userdir.home_dir()
+    }
+
+    pub fn as_map(&self) -> &HashMap<OsString, OsString> {
+        &self.map
     }
 }
