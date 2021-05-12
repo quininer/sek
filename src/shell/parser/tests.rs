@@ -419,6 +419,16 @@ fn test_bad_command() -> anyhow::Result<()> {
         assert_eq!(err.kind, ErrorKind::IncompleteEscape);
     }
 
+    // bad then
+    bump.reset();
+    {
+        let input = r#"exe;"#;
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Then);
+        assert_eq!(&input[err.span], ";");
+        assert_eq!(err.kind, ErrorKind::EmptyCommand);
+    }
+
     Ok(())
 }
 

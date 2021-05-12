@@ -77,7 +77,7 @@ impl Shell {
 
                     let mut line = String::with_capacity_in(editor.line.len(), &bump);
                     editor.line.read_into(&mut line);
-                    let line = line.trim_end();
+                    let line = line.trim_end().trim_end_matches(';');
 
                     execute!(&self.term, style::Print("\r\n"))?;
 
