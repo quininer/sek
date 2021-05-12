@@ -143,3 +143,13 @@ pub async fn read_to_end<R: AsyncRead + Unpin>(
 
     Ok(())
 }
+
+pub fn hash(name: &[u8]) -> u64 {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{ BuildHasherDefault, Hasher, BuildHasher };
+
+    let state = RandomState::new();
+    let mut hasher = state.build_hasher();
+    hasher.write(name);
+    hasher.finish()
+}

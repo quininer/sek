@@ -100,7 +100,7 @@ impl<'g> Editor<'g> {
                 KeyCode::Right => self.cmd.move_right(),
                 KeyCode::Esc => self.cmd.clear(),
                 KeyCode::Enter => {
-                    todo!()
+                    // TODO
                 },
                 _ => ()
             },

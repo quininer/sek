@@ -12,7 +12,6 @@ use bumpalo::Bump;
 use argh::FromArgs;
 use scopeguard::defer;
 use directories::ProjectDirs;
-use getrandom::getrandom;
 use crossterm::terminal;
 use shell::Shell;
 

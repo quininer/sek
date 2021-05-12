@@ -17,8 +17,7 @@ bstr = { version = "0.2", features = [ "serde1" ] }
 serde = { version = "1", features = [ "derive" ] }
 scopeguard = "1"
 if_chain = "1"
-intrusive-collections = "0.9"
-getrandom = { version = "0.2", features = [ "std" ] }
+bumpalo = { version = "3", features = [ "collections", "boxed" ] }
 
 # runtime
 tokio = { version = "1", features = [ "rt", "signal", "process", "io-util", "macros", "parking_lot" ] }
@@ -40,14 +39,9 @@ logos = "0.12"
 # process
 libc = "0.2"
 
-# history
-memmap2 = "0.2"
-bumpalo = { version = "3", features = [ "collections", "boxed" ] }
-serde_cbor = "0.11"
-
 # config
 serde_json = "1"
 serde-tuple-vec-map = "1"
 
-# glob
-glob = "0.3"
+# highlight
+xorf = "0.7"
