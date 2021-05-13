@@ -280,8 +280,10 @@ impl<'c> Chain<'c> {
 async fn spawn_and_push(mut cmd: ShellCommand, shell: &mut Shell, push: &mut Option<Push<'_>>)
     -> anyhow::Result<ExitStatus>
 {
-    if_chain! {
-        if let Some(push) = push;
+    let mut is_push = false;
+
+    let ret = if_chain! {
+        if let Some(push) = push.as_mut();
         if cmd.is_stdout_available();
         then {
             cmd.stdout(Stdio::piped());
@@ -302,6 +304,7 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &mut Shell, push: &mut Opt
                 ).await?;
 
                 push(&outbuf)?;
+                is_push = true;
             }
 
             child.wait().await
@@ -311,5 +314,11 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &mut Shell, push: &mut Opt
                 .wait().await
                 .map_err(Into::into)
         }
+    };
+
+    if let Some(push) = push.as_mut().filter(|_| !is_push) {
+        push(b"")?;
     }
+
+    ret
 }

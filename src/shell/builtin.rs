@@ -48,8 +48,6 @@ macro_rules! async_fn {
 
 async_fn!{
     async fn cd(shell, line, cmd) {
-        use std::path::PathBuf;
-
         if cmd.args.len() != 1
             || !cmd.redirect.is_empty()
             || cmd.chain.is_some()
