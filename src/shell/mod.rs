@@ -3,6 +3,7 @@ pub mod parser;
 pub mod config;
 pub mod process;
 pub mod execute;
+pub mod builtin;
 
 use std::io;
 use std::rc::Rc;
@@ -136,6 +137,10 @@ impl Shell {
 async fn shell_execute(shell: &mut Shell, line: &str, cmd: &Command<'_>)
     -> anyhow::Result<bool>
 {
+    if builtin::try_command(shell, line, cmd).await? {
+        return Ok(true);
+    }
+
     let mut shell_cmd = None;
     let mut cmd_new = |osstr: &[u8]| {
         shell_cmd = Some(ShellCommand::new(osstr)?);

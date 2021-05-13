@@ -1,6 +1,7 @@
 pub mod buffer;
 pub mod history;
 pub mod render;
+pub mod command;
 
 
 use std::cell::Cell;

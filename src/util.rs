@@ -1,6 +1,5 @@
 use std::{ io, fmt };
 use std::marker::Unpin;
-use std::ffi::{ OsStr, OsString };
 use bumpalo::collections::Vec;
 use tokio::io::AsyncRead;
 
@@ -146,7 +145,7 @@ pub async fn read_to_end<R: AsyncRead + Unpin>(
 
 pub fn hash(name: &[u8]) -> u64 {
     use std::collections::hash_map::RandomState;
-    use std::hash::{ BuildHasherDefault, Hasher, BuildHasher };
+    use std::hash::{ Hasher, BuildHasher };
 
     let state = RandomState::new();
     let mut hasher = state.build_hasher();
