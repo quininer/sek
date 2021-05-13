@@ -83,7 +83,7 @@ impl Shell {
                             Err(err) => report(&editor, self, line, err)?
                         }
 
-                        editor.line.history.push(&mut editor.bufpool, line);
+                        editor.line.history.push(line);
                     }
 
                     true

@@ -22,7 +22,7 @@ impl Env {
         let pwd = env::current_dir()?;
 
         let exe_filter = if let Some(paths) = map.get(OsStr::new("PATH")) {
-            let mut exeset: HashSet<Vec<u8>> = HashSet::with_capacity(256);
+            let mut exeset: HashSet<u64> = HashSet::with_capacity(256);
 
             #[cfg(windows)]
             let path_exts = {
@@ -57,7 +57,7 @@ impl Env {
                         if let Some(name) = path.file_stem()
                             .and_then(<[u8]>::from_os_str)
                         {
-                            exeset.insert(name.into());
+                            exeset.insert(hash(name));
                         }
                     }
                 }
@@ -70,15 +70,13 @@ impl Env {
                         if let Some(name) = path.file_stem()
                             .and_then(<[u8]>::from_os_str)
                         {
-                            exeset.insert(name.into());
+                            exeset.insert(hash(name));
                         }
                     }
                 }
             }
 
-            let exelist = exeset.into_iter()
-                .map(|exe| hash(&exe))
-                .collect::<Vec<_>>();
+            let exelist = exeset.into_iter().collect::<Vec<_>>();
 
             Some(Xor8::from(&exelist))
         } else {

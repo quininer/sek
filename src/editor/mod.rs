@@ -8,13 +8,11 @@ use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
 use crate::Global;
 use crate::shell::{ Shell, Action };
 use crate::editor::buffer::Buffer;
-use crate::editor::history::BufPool;
 
 pub struct Editor<'g> {
     pub global: &'g Global,
     pub line: Buffer,
     pub cmd: Buffer,
-    pub bufpool: BufPool,
     ready: Option<char>,
     cursor_line: Cell<u16>,
     state: State
@@ -34,7 +32,6 @@ impl<'g> Editor<'g> {
             global,
             line: Buffer::default(),
             cmd: Buffer::default(),
-            bufpool: BufPool::default(),
             ready: None,
             cursor_line: Cell::new(0),
             state: State::Edit
@@ -98,6 +95,8 @@ impl<'g> Editor<'g> {
                 KeyCode::Delete => self.cmd.delete(),
                 KeyCode::Left => self.cmd.move_left(),
                 KeyCode::Right => self.cmd.move_right(),
+                KeyCode::Up => self.cmd.history.up(),
+                KeyCode::Down => self.cmd.history.down(),
                 KeyCode::Esc => self.cmd.clear(),
                 KeyCode::Enter => {
                     // TODO
