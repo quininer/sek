@@ -51,7 +51,17 @@ impl Colour for Command<'_> {
             arg.push(shell, input, &mut *term, cursor)?;
         }
 
-        todo!()
+        /*
+        for redirect in self.redirect.iter() {
+            redirect.push(shell, input, &mut *term, cursor)?;
+        }
+
+        if let Some(chain) = self.chain.as_ref() {
+            push.push(shell, input, &mut *term, cursor)?;
+        }
+        */
+
+        Ok(())
     }
 }
 

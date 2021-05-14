@@ -5,8 +5,9 @@ use std::future::Future;
 use anyhow::Context;
 use bstr::{ ByteSlice, ByteVec };
 use bumpalo::collections::Vec as BumpVec;
+use if_chain::if_chain;
 use crate::shell::Shell;
-use crate::shell::parser::type_::Command;
+use crate::shell::parser::type_::{ Command, Argument, ArgSlice, Literal };
 
 
 pub const BUILTIN_COMMANDS: &[(&str, CommandFn)] = &[
@@ -67,7 +68,8 @@ async_fn!{
 
         let path = path.to_path().context("invalid path")?;
 
-        shell.env.cd(path)?;
+        shell.env.cd(path)
+            .with_context(|| format!("{:?}", path))?;
 
         Ok(())
     }
@@ -82,29 +84,23 @@ async_fn!{
             return Err(anyhow::format_err!("bad argument"));
         }
 
+        let name = take_name(line, cmd)?;
+
         let bump = shell.bump.clone();
         let bump = bump.borrow();
-
-        let mut name = BumpVec::with_capacity_in(8, &bump);
-        let mut push = |osstr: &[u8]| {
-            name.extend_from_slice(osstr);
-            Ok(())
-        };
-        cmd.args[0].eval(shell, line, &mut push).await?;
-
         let mut value = Vec::with_capacity(8);
+
         let mut push = |osstr: &[u8]| {
             value.extend_from_slice(osstr);
             Ok(())
         };
         cmd.args[1].eval(shell, line, &mut push).await?;
 
-        let name = name.to_os_str().context("invalid env name")?;
         let value = value.into_os_string()
             .ok()
             .context("invalid value name")?;
 
-        shell.env.set(name, value);
+        shell.env.set(name.as_ref(), value);
 
         Ok(())
     }
@@ -119,19 +115,8 @@ async_fn!{
             return Err(anyhow::format_err!("bad argument"));
         }
 
-        let bump = shell.bump.clone();
-        let bump = bump.borrow();
-
-        let mut name = BumpVec::with_capacity_in(8, &bump);
-        let mut push = |osstr: &[u8]| {
-            name.extend_from_slice(osstr);
-            Ok(())
-        };
-        cmd.args[0].eval(shell, line, &mut push).await?;
-
-        let name = name.to_os_str().context("invalid env name")?;
-
-        shell.env.remove(name);
+        let name = take_name(line, cmd)?;
+        shell.env.remove(name.as_ref());
 
         Ok(())
     }
@@ -178,5 +163,19 @@ async_fn!{
         // TODO
 
         Ok(())
+    }
+}
+
+#[inline]
+fn take_name<'a>(line: &'a str, cmd: &'a Command<'_>) -> anyhow::Result<&'a str> {
+    if_chain!{
+        if let Argument(arg) = &cmd.args[0];
+        if arg.len() == 1;
+        if let ArgSlice::Str(Literal(span)) = &arg[0];
+        then {
+            Ok(&line[span.clone()])
+        } else {
+            Err(anyhow::format_err!("variable name must be literal"))
+        }
     }
 }

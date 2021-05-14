@@ -56,6 +56,8 @@ impl Env {
         {
             let val = <[u8]>::from_os_str(&val).context("invalid env value")?;
             push(val)?;
+        } else {
+            push(b"")?;
         }
 
         Ok(())
