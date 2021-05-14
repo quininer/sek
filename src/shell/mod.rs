@@ -23,7 +23,7 @@ use crate::shell::parser::type_::Command;
 use crate::shell::process::{ ShellCommand, Morgue };
 use crate::editor::Editor;
 use crate::editor::render::{ render, report };
-use crate::util::FmtDebug;
+use crate::util::{ FmtDebug, arg_max };
 pub use crate::shell::parser::colour;
 
 
@@ -32,6 +32,7 @@ pub struct Shell {
     pub term: io::Stdout,
     pub env: Env,
     pub theme: Theme,
+    pub arg_max: usize,
     pub morgue: Morgue,
     pub last_status: bool
 }
@@ -49,6 +50,7 @@ impl Shell {
             term: io::stdout(),
             env: Env::new()?,
             theme: Theme::default(),
+            arg_max: arg_max(),
             morgue: Morgue::default(),
             last_status: true
         })

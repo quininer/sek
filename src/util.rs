@@ -85,16 +85,10 @@ pub fn arg_max() -> usize {
 
     #[cfg(unix)]
     fn arg_max_limit() -> usize {
-        thread_local!{
-            static MAX: usize = unsafe {
-                match libc::sysconf(libc::_SC_ARG_MAX) {
-                    -1 => DEFAULT_MAX_LIMIT,
-                    n => std::cmp::max(n as usize, DEFAULT_MIN_LIMIT)
-                }
-            };
+        match unsafe { libc::sysconf(libc::_SC_ARG_MAX) } {
+            -1 => DEFAULT_MAX_LIMIT,
+            n => std::cmp::max(n as usize, DEFAULT_MIN_LIMIT)
         }
-
-        MAX.with(|&n| n)
     }
 
     #[cfg(windows)]

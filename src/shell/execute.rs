@@ -10,7 +10,7 @@ use if_chain::if_chain;
 use crate::shell::Shell;
 use crate::shell::parser::type_::*;
 use crate::shell::process::{ ShellCommand, to_stdio };
-use crate::util::{ arg_max, read_to_end };
+use crate::util::read_to_end;
 
 
 type Push<'a> = &'a mut dyn FnMut(&[u8]) -> anyhow::Result<()>;
@@ -298,7 +298,7 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &mut Shell, push: &mut Opt
 
                 // The size is limited here just to avoid stdout may occupy memory indefinitely.
                 read_to_end(
-                    stdout.take(arg_max() as u64),
+                    stdout.take(shell.arg_max as u64),
                     &mut tmpbuf,
                     &mut outbuf
                 ).await?;

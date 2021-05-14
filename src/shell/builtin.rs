@@ -14,7 +14,7 @@ pub const BUILTIN_COMMANDS: &[(&str, CommandFn)] = &[
     ("set-env", set_env),
     ("unset-env", unset_env),
     ("push-path", push_path),
-    ("alias", alias)
+    ("alias", alias),
 ];
 
 type CommandFn = for<'a> fn(&'a mut Shell, &'a str, &'a Command<'_>)
