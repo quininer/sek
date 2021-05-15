@@ -1,12 +1,12 @@
 use std::{ io, env, mem };
-use std::collections::{ HashMap, HashSet };
+use std::convert::TryInto;
 use std::path::{ Path, PathBuf };
 use std::ffi::{ OsStr, OsString };
+use std::collections::{ HashMap, HashSet };
 use anyhow::Context;
 use bstr::ByteSlice;
 use directories::UserDirs;
 use xorf::{ Filter, Xor8 };
-use crate::util::hash;
 use crate::shell::builtin::BUILTIN_COMMANDS;
 
 pub struct Env {
@@ -14,7 +14,12 @@ pub struct Env {
     userdir: UserDirs,
     prev_pwd: Option<PathBuf>,
     pwd: PathBuf,
-    exe_filter: Option<Xor8>
+    exe_filter: Option<ExeFilter>
+}
+
+struct ExeFilter {
+    filter: Xor8,
+    keys: (u64, u64)
 }
 
 impl Env {
@@ -23,67 +28,7 @@ impl Env {
         let pwd = env::current_dir()?;
 
         let exe_filter = if let Some(paths) = map.get(OsStr::new("PATH")) {
-            let mut exeset: HashSet<u64> = HashSet::with_capacity(256);
-
-            #[cfg(windows)]
-            let path_exts = {
-                let path_exts = map.get(OsStr::new("PATHEXT"))
-                    .map(|val| &**val)
-                    .unwrap_or(OsStr::new(env::consts::EXE_EXTENSION));
-
-                env::split_paths(&path_exts)
-                    .map(PathBuf::into_os_string)
-                    .collect::<Vec<_>>()
-            };
-
-            for path in env::split_paths(paths)
-                .filter_map(|path| path.read_dir().ok())
-                .flatten()
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-            {
-                let metadata = match path.metadata() {
-                    Ok(e) => e,
-                    Err(_) => continue
-                };
-
-                if !metadata.is_file() {
-                    continue;
-                }
-
-                #[cfg(unix)] {
-                    use std::os::unix::fs::PermissionsExt;
-
-                    if metadata.permissions().mode() & 0o111 != 0 {
-                        if let Some(name) = path.file_stem()
-                            .and_then(<[u8]>::from_os_str)
-                        {
-                            exeset.insert(hash(name));
-                        }
-                    }
-                }
-
-                #[cfg(windows)] {
-                    if path.extension()
-                        .filter(|ext| path_exts.iter().any(|ext2| ext.eq_ignore_ascii_case(ext2)))
-                        .is_some()
-                    {
-                        if let Some(name) = path.file_stem()
-                            .and_then(<[u8]>::from_os_str)
-                        {
-                            exeset.insert(hash(name));
-                        }
-                    }
-                }
-            }
-
-            for (name, _) in BUILTIN_COMMANDS {
-                exeset.insert(hash(name.as_bytes()));
-            }
-
-            let exelist = exeset.into_iter().collect::<Vec<_>>();
-
-            Some(Xor8::from(&exelist))
+            Some(ExeFilter::new(paths)?)
         } else {
             None
         };
@@ -173,11 +118,99 @@ impl Env {
     pub fn exist(&self, name: &[u8]) -> bool {
         self.exe_filter
             .as_ref()
-            .filter(|filter| filter.contains(&hash(name)))
-            .is_some()
+            .map(|filter| filter.exist(name))
+            .unwrap_or(true)
     }
 
     pub fn as_map(&self) -> &HashMap<OsString, OsString> {
         &self.map
     }
+}
+
+impl ExeFilter {
+    fn new(paths: &OsStr) -> anyhow::Result<ExeFilter> {
+        let mut keybuf = [0; 16];
+        getrandom::getrandom(&mut keybuf)?;
+        let key0 = u64::from_le_bytes(keybuf[..8].try_into()?);
+        let key1 = u64::from_le_bytes(keybuf[8..].try_into()?);
+
+        let mut exeset: HashSet<u64> = HashSet::with_capacity(256);
+
+        #[cfg(windows)]
+        let path_exts = {
+            let path_exts = map.get(OsStr::new("PATHEXT"))
+                .map(|val| &**val)
+                .unwrap_or(OsStr::new(env::consts::EXE_EXTENSION));
+
+            env::split_paths(&path_exts)
+                .map(PathBuf::into_os_string)
+                .collect::<Vec<_>>()
+        };
+
+        for path in env::split_paths(paths)
+            .filter_map(|path| path.read_dir().ok())
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+        {
+            let metadata = match path.metadata() {
+                Ok(e) => e,
+                Err(_) => continue
+            };
+
+            if !metadata.is_file() {
+                continue;
+            }
+
+            #[cfg(unix)] {
+                use std::os::unix::fs::PermissionsExt;
+
+                if metadata.permissions().mode() & 0o111 != 0 {
+                    if let Some(name) = path.file_stem()
+                        .and_then(<[u8]>::from_os_str)
+                    {
+                        exeset.insert(hash((key0, key1), name));
+                    }
+                }
+            }
+
+            #[cfg(windows)] {
+                if path.extension()
+                    .filter(|ext| path_exts.iter().any(|ext2| ext.eq_ignore_ascii_case(ext2)))
+                    .is_some()
+                {
+                    if let Some(name) = path.file_stem()
+                        .and_then(<[u8]>::from_os_str)
+                    {
+                        exeset.insert(hash((key0, key1), name));
+                    }
+                }
+            }
+        }
+
+        for (name, _) in BUILTIN_COMMANDS {
+            exeset.insert(hash((key0, key1), name.as_bytes()));
+        }
+
+        let exelist = exeset.into_iter().collect::<Vec<_>>();
+
+        Ok(ExeFilter {
+            filter: Xor8::from(&exelist),
+            keys: (key0, key1)
+        })
+    }
+
+    fn exist(&self, name: &[u8]) -> bool {
+        let val = hash(self.keys, name);
+        self.filter.contains(&val)
+    }
+}
+
+fn hash(keys: (u64, u64), name: &[u8]) -> u64 {
+    use siphasher::sip::SipHasher;
+    use std::hash::Hasher;
+
+    let mut hasher = SipHasher::new_with_keys(keys.0, keys.1);
+    hasher.write(name);
+    hasher.finish()
 }

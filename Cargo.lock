@@ -483,6 +483,7 @@ dependencies = [
  "bumpalo",
  "crossterm",
  "directories",
+ "getrandom 0.2.2",
  "if_chain",
  "libc",
  "log",

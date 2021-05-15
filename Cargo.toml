@@ -19,6 +19,7 @@ scopeguard = "1"
 if_chain = "1"
 bumpalo = { version = "3", features = [ "collections", "boxed" ] }
 siphasher = "0.3"
+getrandom = "0.2"
 
 # runtime
 tokio = { version = "1", features = [ "rt", "signal", "process", "io-util", "macros", "parking_lot" ] }

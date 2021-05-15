@@ -33,7 +33,7 @@ pub struct Theme {
     pub error: Style
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Copy)]
 pub struct Style {
     ansi: u8,
     #[serde(default)]
@@ -93,16 +93,6 @@ impl Style {
         } else {
             None
         }
-    }
-
-    pub fn push<W: io::Write>(&self, mut term: W) -> anyhow::Result<()> {
-        use crossterm::{ queue, style };
-
-        queue!(term, style::SetForegroundColor(self.color()))?;
-        if let Some(attr) = self.attr() {
-            queue!(term, style::SetAttributes(attr))?;
-        }
-        Ok(())
     }
 }
 
