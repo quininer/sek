@@ -155,8 +155,16 @@ impl Literal {
 impl Env {
     fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
         state.fill(self.0.start, term)?;
-        state.start(state.theme.env, term)?;
-        state.push(&line[self.0.clone()], term)?;
+
+        let name = &line[self.0.clone()];
+        let name2 = name.strip_prefix('$').unwrap_or(name);
+        let theme = if state.env.get(name2.as_ref()).is_some() {
+            state.theme.env
+        } else {
+            state.theme.error
+        };
+        state.start(theme, term)?;
+        state.push(name, term)?;
         Ok(())
     }
 }
