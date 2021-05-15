@@ -1,15 +1,11 @@
 use std::{ io, mem };
-use bumpalo::Bump;
 use logos::Span;
 use crossterm::{ queue, style };
 use crossterm::style::{ Color, Attributes };
 use scopeguard::guard;
-use if_chain::if_chain;
-use unicode_width::UnicodeWidthStr;
 use crate::util::{ Fill, DynWriter };
 use crate::shell;
 use crate::shell::config::Style;
-use crate::shell::parser::Token;
 use crate::shell::parser::type_::*;
 
 

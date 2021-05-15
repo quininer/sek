@@ -39,45 +39,6 @@ impl<T: std::fmt::Debug> fmt::Display for FmtDebug<T> {
     }
 }
 
-
-#[inline]
-pub fn append_max() -> usize {
-    // atomic append max value
-    //
-    // https://www.notthewizard.com/2014/06/17/are-files-appends-really-atomic/
-    // https://stackoverflow.com/questions/1154446/is-file-append-atomic-in-unix
-    // https://serverfault.com/questions/599486/what-is-the-size-of-an-atomic-write-to-disk-on-my-system
-    // https://stackoverflow.com/questions/3032482/is-appending-to-a-file-atomic-with-windows-ntfs
-
-    #[cfg(target_os = "linux")]
-    fn append_max_limit() -> usize {
-        0x7ffff000
-    }
-
-    #[cfg(all(unix, not(target_os = "linux")))]
-    fn append_max_limit() -> usize {
-        const DEFAULT_MAX_LIMIT: usize = 256;
-
-        thread_local!{
-            static MAX: usize = unsafe {
-                match libc::sysconf(libc::_SC_SSIZE_MAX) {
-                    -1 => DEFAULT_MAX_LIMIT,
-                    n => n
-                }
-            };
-        }
-
-        MAX.with(|&n| n)
-    }
-
-    #[cfg(windows)]
-    fn append_max_limit() -> usize {
-        1024
-    }
-
-    append_max_limit()
-}
-
 #[inline]
 pub fn arg_max() -> usize {
     const DEFAULT_MAX_LIMIT: usize = 16 * 1024;
@@ -135,13 +96,4 @@ pub async fn read_to_end<R: AsyncRead + Unpin>(
     }
 
     Ok(())
-}
-
-pub fn hash(name: &[u8]) -> u64 {
-    use siphasher::sip::SipHasher;
-    use std::hash::Hasher;
-
-    let mut hasher = SipHasher::new_with_keys(0x1234, 0x5678);
-    hasher.write(name);
-    hasher.finish()
 }

@@ -1,5 +1,4 @@
 use std::{ cmp, fmt };
-use bstr::{ ByteSlice, ByteVec };
 use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
 use crate::util::Fill;

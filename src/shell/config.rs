@@ -1,4 +1,4 @@
-use std::{ fs, io, fmt };
+use std::fs;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::borrow::Cow;
@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use tokio::process::Command;
 use bumpalo::collections::String as BumpString;
-use crossterm::style::{ style, Color, Attribute, Attributes };
+use crossterm::style::{ Color, Attribute, Attributes };
 use crate::Global;
 use crate::shell::Shell;
 

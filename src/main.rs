@@ -12,7 +12,6 @@ use argh::FromArgs;
 use scopeguard::defer;
 use directories::ProjectDirs;
 use crossterm::terminal;
-use shell::Shell;
 
 
 pub struct Global {

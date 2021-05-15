@@ -21,7 +21,7 @@ use crate::shell::parser::type_::Command;
 use crate::shell::process::{ ShellCommand, Morgue };
 use crate::editor::Editor;
 use crate::editor::render::{ render, report };
-use crate::util::{ FmtDebug, arg_max };
+use crate::util::FmtDebug;
 pub use crate::shell::env::Env;
 pub use crate::shell::config::{ Theme, AliasMap };
 
