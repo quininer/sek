@@ -111,10 +111,10 @@ impl Env {
         self.userdir.home_dir()
     }
 
-    pub fn exist(&self, name: &[u8]) -> bool {
+    pub fn exists(&self, name: &[u8]) -> bool {
         self.exe_filter
             .as_ref()
-            .map(|filter| filter.exist(name))
+            .map(|filter| filter.exists(name))
             .unwrap_or(true)
     }
 
@@ -200,7 +200,7 @@ impl ExeFilter {
         })
     }
 
-    fn exist(&self, name: &[u8]) -> bool {
+    fn exists(&self, name: &[u8]) -> bool {
         let val = hash(self.keys, name);
         self.filter.contains(&val)
     }

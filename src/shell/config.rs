@@ -16,10 +16,13 @@ use crate::shell::Shell;
 pub struct Config<'a> {
     #[serde(default)]
     #[serde(with = "tuple_vec_map")]
-    pub set_env: Vec<(Cow<'a, OsStr>, Cow<'a, OsStr>)>,
+    #[serde(rename = "set-env")]
+    pub set_env: Vec<(Cow<'a, str>, String)>,
     #[serde(default)]
-    pub unset_env: Vec<Cow<'a, OsStr>>,
+    #[serde(rename = "unset-env")]
+    pub unset_env: Vec<Cow<'a, str>>,
     #[serde(default)]
+    #[serde(rename = "push-path")]
     pub push_path: Vec<Cow<'a, Path>>,
     #[serde(default)]
     pub alias: HashMap<String, String>,
@@ -139,7 +142,6 @@ pub async fn load(global: &Global) -> anyhow::Result<Shell> {
     use crate::shell::process::Morgue;
 
     let path = global.projdir.config_dir().join("config");
-    let path2 = global.projdir.config_dir().join("config.json");
 
     let config = if path.exists() {
         let child = Command::new(path)
@@ -154,20 +156,23 @@ pub async fn load(global: &Global) -> anyhow::Result<Shell> {
         }
 
         serde_json::from_slice(&output.stdout)?
-    } else if path2.exists() {
-        serde_json::from_slice(&fs::read(path2)?)?
     } else {
-        Config::default()
+        let path = global.projdir.config_dir().join("config.json");
+        if path.exists() {
+            serde_json::from_slice(&fs::read(path)?)?
+        } else {
+            Config::default()
+        }
     };
 
     let mut env = Env::new(&config)?;
 
     for (key, val) in config.set_env {
-        env.set(&key, val.into_owned());
+        env.set(OsStr::new(&*key), val.into());
     }
 
     for key in config.unset_env {
-        env.remove(&key);
+        env.remove(OsStr::new(&*key));
     }
 
     for path in config.push_path {
