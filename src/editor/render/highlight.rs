@@ -142,9 +142,9 @@ impl Literal {
         state.fill(self.0.start, term)?;
 
         let theme = if !state.is_doublestr {
-            state.theme.literal.clone()
+            state.theme.literal
         } else {
-            state.theme.double_str.clone()
+            state.theme.double_str
         };
         state.start(theme, term)?;
         state.push(&line[self.0.clone()], term)?;
@@ -155,7 +155,7 @@ impl Literal {
 impl Env {
     fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
         state.fill(self.0.start, term)?;
-        state.start(state.theme.env.clone(), term)?;
+        state.start(state.theme.env, term)?;
         state.push(&line[self.0.clone()], term)?;
         Ok(())
     }
@@ -164,7 +164,7 @@ impl Env {
 impl Escape {
     fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
         state.fill(self.0.start, term)?;
-        state.start(state.theme.escape.clone(), term)?;
+        state.start(state.theme.escape, term)?;
         state.push(&line[self.0.clone()], term)?;
         Ok(())
     }
@@ -173,7 +173,7 @@ impl Escape {
 impl SingleStr {
     fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
         state.fill(self.0.start, term)?;
-        state.start(state.theme.single_str.clone(), term)?;
+        state.start(state.theme.single_str, term)?;
         state.push(&line[self.0.clone()], term)?;
         Ok(())
     }
@@ -187,14 +187,14 @@ impl SubShell<'_> {
         let mut state = guard(state, |state| state.is_doublestr = prev_mode);
         let state = &mut *state;
 
-        state.start(state.theme.subshell.clone(), term)?;
+        state.start(state.theme.subshell, term)?;
         state.push("$(", term)?;
 
         self.cmd.colour(line, state, term)?;
 
         if self.is_closed {
             state.fill(self.span.end - 1, term)?;
-            state.start(state.theme.subshell.clone(), term)?;
+            state.start(state.theme.subshell, term)?;
             state.push(")", term)?;
         }
 
@@ -210,7 +210,7 @@ impl DoubleStr<'_> {
         let mut state = guard(state, |state| state.is_doublestr = false);
         let state = &mut *state;
 
-        state.start(state.theme.double_str.clone(), term)?;
+        state.start(state.theme.double_str, term)?;
         state.push("\"", term)?;
 
         for slice in self.list.iter() {
@@ -223,7 +223,7 @@ impl DoubleStr<'_> {
         }
 
         if self.is_closed {
-            state.start(state.theme.double_str.clone(), term)?;
+            state.start(state.theme.double_str, term)?;
             state.push("\"", term)?;
         }
 
@@ -252,7 +252,7 @@ impl Redirect<'_> {
     fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
         state.fill(self.span.start, term)?;
 
-        state.start(state.theme.redirect.clone(), term)?;
+        state.start(state.theme.redirect, term)?;
         state.push(&line[self.span.clone()], term)?;
 
         self.value.colour(line, state, term)?;
@@ -265,7 +265,7 @@ impl Chain<'_> {
     fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
         state.fill(self.span.start, term)?;
 
-        state.start(state.theme.chain.clone(), term)?;
+        state.start(state.theme.chain, term)?;
         state.push(&line[self.span.clone()], term)?;
 
         self.shell.0.colour(line, state, term)?;
