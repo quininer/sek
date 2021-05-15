@@ -38,7 +38,7 @@ pub struct Theme {
     pub subshell: Style,
     pub single_str: Style,
     pub double_str: Style,
-    pub pipe: Style,
+    pub chain: Style,
     pub redirect: Style,
     pub error: Style
 }
@@ -59,18 +59,16 @@ pub struct AliasMap(HashMap<String, String>);
 
 impl Default for Theme {
     fn default() -> Theme {
-        const DEFAULT_COLOR: u8 = 0xff;
-
         Theme {
-            exe: Style::new(DEFAULT_COLOR),
-            literal: Style::new(DEFAULT_COLOR),
-            env: Style::new(DEFAULT_COLOR),
-            escape: Style::new(DEFAULT_COLOR),
-            subshell: Style::new(DEFAULT_COLOR),
+            exe: Style::new(27),
+            literal: Style::new(33),
+            env: Style::new(39),
+            escape: Style::new(128),
+            subshell: Style::new(39),
             single_str: Style::new(3),
             double_str: Style::new(3),
-            pipe: Style::new(DEFAULT_COLOR),
-            redirect: Style::new(DEFAULT_COLOR),
+            chain: Style::new(39),
+            redirect: Style::new(39),
             error: Style::new(9),
         }
     }

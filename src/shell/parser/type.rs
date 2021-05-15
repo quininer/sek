@@ -23,7 +23,8 @@ pub struct Escape(pub Span);
 #[derive(Debug)]
 pub struct SubShell<'c> {
     pub span: Span,
-    pub cmd: Box<'c, Command<'c>>
+    pub cmd: Box<'c, Command<'c>>,
+    pub is_closed: bool
 }
 
 #[derive(Debug)]
@@ -51,6 +52,7 @@ pub struct SingleStr(pub Span);
 pub struct DoubleStr<'c> {
     pub span: Span,
     pub list: Vec<'c, StrSlice<'c>>,
+    pub is_closed: bool
 }
 
 #[derive(Debug)]
@@ -76,6 +78,7 @@ pub enum ArgSlice<'c> {
 
 #[derive(Debug)]
 pub struct Redirect<'c> {
+    pub span: Span,
     pub kind: StdioKind,
     pub append: bool,
     pub value: Argument<'c>

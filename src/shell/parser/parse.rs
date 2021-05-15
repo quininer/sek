@@ -163,7 +163,7 @@ impl<'c> Command<'c> {
         };
 
         let mut cmd = None;
-        let start = state.lex.span().start;
+        let span = state.lex.span();
 
         while let Some(token) = state.again.take().or_else(|| state.lex.next()) {
             state.last = token;
@@ -177,7 +177,7 @@ impl<'c> Command<'c> {
             Ok(cmd)
         } else if state.incomplete {
             Ok(Command {
-                exe: Literal(start..state.lex.span().end),
+                exe: Literal(span.end..span.end),
                 args: Vec::new_in(bump),
                 redirect: Vec::new_in(bump),
                 chain: None,
@@ -186,7 +186,7 @@ impl<'c> Command<'c> {
             Err(ParseFailed {
                 token: state.last,
                 kind: ErrorKind::EmptyCommand,
-                span: start..state.lex.span().end
+                span: span.start..state.lex.span().end
             })
         }
     }
@@ -205,9 +205,17 @@ impl<'c> SubShell<'c> {
         let cmd = Command::parse_in(bump, &mut state)?;
         let cmd = Box::new_in(cmd, bump);
 
-        if state.incomplete || state.last == Token::ShellClose {
+        let end = state.lex.span().end;
+        if state.last == Token::ShellClose {
             Ok(SubShell {
-                span: span.start..state.lex.span().end,
+                span: span.start..end,
+                is_closed: true,
+                cmd
+            })
+        } else if state.incomplete {
+            Ok(SubShell {
+                span: span.start..end,
+                is_closed: false,
                 cmd
             })
         } else {
@@ -345,12 +353,17 @@ impl<'c> DoubleStr<'c> {
             }
         }
 
-        if state.incomplete ||
-            (state.last == Token::DoubleQuote && span.end < state.lex.span().end)
-        {
-            let end = state.lex.span().end;
+        let end = state.lex.span().end;
+        if state.last == Token::DoubleQuote && span.end < state.lex.span().end {
             Ok(DoubleStr {
                 span: span.start..end,
+                is_closed: true,
+                list
+            })
+        } else if state.incomplete {
+            Ok(DoubleStr {
+                span: span.start..end,
+                is_closed: false,
                 list
             })
         } else {
@@ -463,9 +476,9 @@ impl<'c> Redirect<'c> {
         state.has_redirect = true;
         state.again = None;
 
+        let span = state.lex.span();
         let (kind, append) = parse_redirect(state.lex.slice())
             .ok_or_else(|| bad(state, ErrorKind::UnsupportedRedirectType))?;
-        let span = state.lex.span();
 
         while let Some(token) = state.lex.next() {
             state.last = token;
@@ -486,7 +499,7 @@ impl<'c> Redirect<'c> {
         let value = Argument::parse_in(bump, state)?;
 
         if state.incomplete || !value.0.is_empty() {
-            Ok(Redirect { kind, append, value })
+            Ok(Redirect { span, kind, append, value })
         } else {
             Err(ParseFailed {
                 token: Token::Redirect,
