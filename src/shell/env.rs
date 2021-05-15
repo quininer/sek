@@ -8,13 +8,14 @@ use bstr::ByteSlice;
 use directories::UserDirs;
 use xorf::{ Filter, Xor8 };
 use crate::shell::builtin::BUILTIN_COMMANDS;
+use crate::shell::config::Config;
 
 pub struct Env {
     map: HashMap<OsString, OsString>,
     userdir: UserDirs,
+    exe_filter: Option<ExeFilter>,
     prev_pwd: Option<PathBuf>,
     pwd: PathBuf,
-    exe_filter: Option<ExeFilter>
 }
 
 struct ExeFilter {
@@ -23,12 +24,12 @@ struct ExeFilter {
 }
 
 impl Env {
-    pub fn new() -> anyhow::Result<Env> {
+    pub fn new(config: &Config) -> anyhow::Result<Env> {
         let map: HashMap<_, _> = env::vars_os().collect();
         let pwd = env::current_dir()?;
 
         let exe_filter = if let Some(paths) = map.get(OsStr::new("PATH")) {
-            Some(ExeFilter::new(paths)?)
+            Some(ExeFilter::new(paths, config)?)
         } else {
             None
         };
@@ -45,16 +46,19 @@ impl Env {
         self.map.get(name).map(std::ops::Deref::deref)
     }
 
+    fn set_pwd(&mut self) {
+        #[cfg(windows)]
+        self.set("CD".as_ref(), self.pwd.clone().into());
+
+        self.set("PWD".as_ref(), self.pwd.clone().into());
+    }
+
     pub fn cd(&mut self, path: &Path) -> io::Result<()> {
         env::set_current_dir(path)?;
 
         self.prev_pwd =
             Some(mem::replace(&mut self.pwd, env::current_dir()?));
-
-        #[cfg(windows)]
-        self.set("CD".as_ref(), self.pwd.clone().into());
-
-        self.set("PWD".as_ref(), self.pwd.clone().into());
+        self.set_pwd();
 
         Ok(())
     }
@@ -64,11 +68,7 @@ impl Env {
             Some(mem::replace(&mut self.pwd, self.userdir.home_dir().into()));
 
         env::set_current_dir(&self.pwd)?;
-
-        #[cfg(windows)]
-        self.set("CD".as_ref(), self.pwd.clone().into());
-
-        self.set("PWD".as_ref(), self.pwd.clone().into());
+        self.set_pwd();
 
         Ok(())
     }
@@ -78,11 +78,7 @@ impl Env {
             self.prev_pwd = Some(mem::replace(&mut self.pwd, pwd));
 
             env::set_current_dir(&self.pwd)?;
-
-            #[cfg(windows)]
-            self.set("CD".as_ref(), self.pwd.clone().into());
-
-            self.set("PWD".as_ref(), self.pwd.clone().into());
+            self.set_pwd();
         }
 
         Ok(())
@@ -128,7 +124,7 @@ impl Env {
 }
 
 impl ExeFilter {
-    fn new(paths: &OsStr) -> anyhow::Result<ExeFilter> {
+    fn new(paths: &OsStr, config: &Config) -> anyhow::Result<ExeFilter> {
         let mut keybuf = [0; 16];
         getrandom::getrandom(&mut keybuf)?;
         let key0 = u64::from_le_bytes(keybuf[..8].try_into()?);
@@ -176,8 +172,8 @@ impl ExeFilter {
 
             #[cfg(windows)] {
                 if path.extension()
-                    .filter(|ext| path_exts.iter().any(|ext2| ext.eq_ignore_ascii_case(ext2)))
-                    .is_some()
+                    .map(|ext| path_exts.iter().any(|ext2| ext.eq_ignore_ascii_case(ext2)))
+                    .unwrap_or(false)
                 {
                     if let Some(name) = path.file_stem()
                         .and_then(<[u8]>::from_os_str)
@@ -189,6 +185,10 @@ impl ExeFilter {
         }
 
         for (name, _) in BUILTIN_COMMANDS {
+            exeset.insert(hash((key0, key1), name.as_bytes()));
+        }
+
+        for name in config.alias.keys() {
             exeset.insert(hash((key0, key1), name.as_bytes()));
         }
 

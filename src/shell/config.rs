@@ -3,20 +3,27 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::borrow::Cow;
 use std::process::Stdio;
+use std::collections::HashMap;
 use serde::Deserialize;
 use tokio::process::Command;
+use bumpalo::collections::String as BumpString;
 use crossterm::style::{ style, Color, Attribute, Attributes };
 use crate::Global;
 use crate::shell::Shell;
 
 
-#[derive(Deserialize)]
-struct Config<'a> {
+#[derive(Deserialize, Default)]
+pub struct Config<'a> {
+    #[serde(default)]
     #[serde(with = "tuple_vec_map")]
-    set_env: Vec<(Cow<'a, OsStr>, Cow<'a, OsStr>)>,
-    unset_env: Vec<Cow<'a, OsStr>>,
-    push_path: Vec<Cow<'a, Path>>,
-    theme: Option<Theme>
+    pub set_env: Vec<(Cow<'a, OsStr>, Cow<'a, OsStr>)>,
+    #[serde(default)]
+    pub unset_env: Vec<Cow<'a, OsStr>>,
+    #[serde(default)]
+    pub push_path: Vec<Cow<'a, Path>>,
+    #[serde(default)]
+    pub alias: HashMap<String, String>,
+    pub theme: Option<Theme>
 }
 
 #[derive(Deserialize)]
@@ -43,6 +50,9 @@ pub struct Style {
     #[serde(default)]
     underlined: bool
 }
+
+#[derive(Default)]
+pub struct AliasMap(HashMap<String, String>);
 
 impl Default for Theme {
     fn default() -> Theme {
@@ -96,11 +106,42 @@ impl Style {
     }
 }
 
-pub async fn load(global: &Global, shell: &mut Shell) -> anyhow::Result<()> {
+impl AliasMap {
+    pub fn replace(&self, buf: &mut BumpString<'_>) {
+        use logos::Logos;
+        use crate::shell::parser::Token;
+
+        let mut lex = Token::lexer(&buf);
+        while let Some(token) = lex.next() {
+            match token {
+                Token::Text => break,
+                Token::Empty => (),
+                _ => return
+            }
+        }
+
+        let span = lex.span();
+        let exe = &buf[span.clone()];
+
+        if let Some(newexe) = self.0.get(exe) {
+            buf.replace_range(span, newexe);
+        }
+    }
+}
+
+pub async fn load(global: &Global) -> anyhow::Result<Shell> {
+    use std::io;
+    use std::rc::Rc;
+    use std::cell::RefCell;
+    use bumpalo::Bump;
+    use crate::util::arg_max;
+    use crate::shell::env::Env;
+    use crate::shell::process::Morgue;
+
     let path = global.projdir.config_dir().join("config");
     let path2 = global.projdir.config_dir().join("config.json");
 
-    let buf = if path.exists() {
+    let config = if path.exists() {
         let child = Command::new(path)
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -112,30 +153,35 @@ pub async fn load(global: &Global, shell: &mut Shell) -> anyhow::Result<()> {
             return Err(anyhow::format_err!("bad exit status: {}", output.status));
         }
 
-        output.stdout
+        serde_json::from_slice(&output.stdout)?
     } else if path2.exists() {
-        fs::read(path2)?
+        serde_json::from_slice(&fs::read(path2)?)?
     } else {
-        return Ok(());
+        Config::default()
     };
 
-    let config: Config = serde_json::from_slice(&buf)?;
+    let mut env = Env::new(&config)?;
 
     for (key, val) in config.set_env {
-        shell.env.set(&key, val.into_owned());
+        env.set(&key, val.into_owned());
     }
 
     for key in config.unset_env {
-        shell.env.remove(&key);
+        env.remove(&key);
     }
 
     for path in config.push_path {
-        shell.env.push_path(path.into_owned())?;
+        env.push_path(path.into_owned())?;
     }
 
-    if let Some(theme) = config.theme {
-        shell.theme = theme;
-    }
-
-    Ok(())
+    Ok(Shell {
+        env,
+        bump: Rc::new(RefCell::new(Bump::new())),
+        term: io::stdout(),
+        theme: config.theme.unwrap_or_default(),
+        alias: AliasMap(config.alias),
+        arg_max: arg_max(),
+        morgue: Morgue::default(),
+        last_status: true
+    })
 }

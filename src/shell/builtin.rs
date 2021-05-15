@@ -15,7 +15,6 @@ pub const BUILTIN_COMMANDS: &[(&str, CommandFn)] = &[
     ("set-env", set_env),
     ("unset-env", unset_env),
     ("push-path", push_path),
-    ("alias", alias),
 ];
 
 type CommandFn = for<'a> fn(&'a mut Shell, &'a str, &'a Command<'_>)
@@ -142,21 +141,6 @@ async_fn!{
         let path = path.canonicalize()
             .with_context(|| format!("{:?}", path))?;
         shell.env.push_path(path)?;
-
-        Ok(())
-    }
-}
-
-async_fn!{
-    async fn alias(shell, line, cmd) {
-        if cmd.args.len() != 2
-            || !cmd.redirect.is_empty()
-            || cmd.chain.is_some()
-        {
-            return Err(anyhow::format_err!("bad argument"));
-        }
-
-        // TODO
 
         Ok(())
     }

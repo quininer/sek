@@ -23,7 +23,7 @@ use crate::editor::Editor;
 use crate::editor::render::{ render, report };
 use crate::util::{ FmtDebug, arg_max };
 pub use crate::shell::env::Env;
-pub use crate::shell::config::Theme;
+pub use crate::shell::config::{ Theme, AliasMap };
 
 
 pub struct Shell {
@@ -31,6 +31,7 @@ pub struct Shell {
     pub term: io::Stdout,
     pub env: Env,
     pub theme: Theme,
+    pub alias: AliasMap,
     pub arg_max: usize,
     pub morgue: Morgue,
     pub last_status: bool
@@ -43,21 +44,8 @@ pub enum Action {
 }
 
 impl Shell {
-    pub fn new(_global: &Global) -> anyhow::Result<Self> {
-        Ok(Shell {
-            bump: Rc::new(RefCell::new(Bump::new())),
-            term: io::stdout(),
-            env: Env::new()?,
-            theme: Theme::default(),
-            arg_max: arg_max(),
-            morgue: Morgue::default(),
-            last_status: true
-        })
-    }
-
     pub async fn start(&mut self, global: &Global) -> anyhow::Result<()> {
         let mut reader = EventStream::new();
-
         let mut editor = Editor::new(global)?;
 
         render(&editor, self, false)?;
@@ -76,6 +64,7 @@ impl Shell {
 
                     let mut line = String::with_capacity_in(editor.line.len(), &bump);
                     editor.line.read_into(&mut line);
+                    self.alias.replace(&mut line);
                     let line = line.trim_end().trim_end_matches(';');
 
                     execute!(&self.term, style::Print("\r\n"))?;
@@ -103,7 +92,7 @@ impl Shell {
         Ok(())
     }
 
-    pub async fn execute<'g>(&mut self, line: &str, cmd: Command<'_>) -> anyhow::Result<()> {
+    pub async fn execute(&mut self, line: &str, cmd: Command<'_>) -> anyhow::Result<()> {
         terminal::disable_raw_mode()?;
 
         defer!{

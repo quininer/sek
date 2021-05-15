@@ -55,8 +55,7 @@ async fn main() -> anyhow::Result<()> {
             Err(err)
         })?;
 
-    let mut shell = Shell::new(&global)?;
-    shell::config::load(&global, &mut shell).await?;
+    let mut shell = shell::config::load(&global).await?;
 
     terminal::enable_raw_mode()?;
 
