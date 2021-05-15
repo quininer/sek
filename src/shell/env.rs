@@ -7,6 +7,7 @@ use bstr::ByteSlice;
 use directories::UserDirs;
 use xorf::{ Filter, Xor8 };
 use crate::util::hash;
+use crate::shell::builtin::BUILTIN_COMMANDS;
 
 pub struct Env {
     map: HashMap<OsString, OsString>,
@@ -74,6 +75,10 @@ impl Env {
                         }
                     }
                 }
+            }
+
+            for (name, _) in BUILTIN_COMMANDS {
+                exeset.insert(hash(name.as_bytes()));
             }
 
             let exelist = exeset.into_iter().collect::<Vec<_>>();
@@ -165,7 +170,7 @@ impl Env {
         self.userdir.home_dir()
     }
 
-    pub fn filter(&self, name: &[u8]) -> bool {
+    pub fn exist(&self, name: &[u8]) -> bool {
         self.exe_filter
             .as_ref()
             .filter(|filter| filter.contains(&hash(name)))

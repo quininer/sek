@@ -138,11 +138,10 @@ pub async fn read_to_end<R: AsyncRead + Unpin>(
 }
 
 pub fn hash(name: &[u8]) -> u64 {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{ Hasher, BuildHasher };
+    use siphasher::sip::SipHasher;
+    use std::hash::Hasher;
 
-    let state = RandomState::new();
-    let mut hasher = state.build_hasher();
+    let mut hasher = SipHasher::new_with_keys(0x1234, 0x5678);
     hasher.write(name);
     hasher.finish()
 }

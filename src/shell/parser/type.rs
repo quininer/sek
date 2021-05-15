@@ -21,17 +21,27 @@ pub struct Env(pub Span);
 pub struct Escape(pub Span);
 
 #[derive(Debug)]
-pub struct SubShell<'c>(pub Box<'c, Command<'c>>);
+pub struct SubShell<'c> {
+    pub span: Span,
+    pub cmd: Box<'c, Command<'c>>
+}
 
 #[derive(Debug)]
 pub struct ChainShell<'c>(pub Box<'c, Command<'c>>);
 
 #[derive(Debug)]
-pub enum Chain<'c> {
-    Pipe(ChainShell<'c>),
-    Then(ChainShell<'c>),
-    AndIf(ChainShell<'c>),
-    OrIf(ChainShell<'c>)
+pub struct Chain<'c> {
+    pub span: Span,
+    pub kind: ChainKind,
+    pub shell: ChainShell<'c>
+}
+
+#[derive(Debug)]
+pub enum ChainKind {
+    Pipe,
+    Then,
+    AndIf,
+    OrIf
 }
 
 #[derive(Debug)]
@@ -66,13 +76,13 @@ pub enum ArgSlice<'c> {
 
 #[derive(Debug)]
 pub struct Redirect<'c> {
-    pub ty: StdioType,
+    pub kind: StdioKind,
     pub append: bool,
     pub value: Argument<'c>
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum StdioType {
+pub enum StdioKind {
     Out,
     Err
 }

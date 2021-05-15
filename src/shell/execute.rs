@@ -79,21 +79,21 @@ impl<'c> SubShell<'c> {
             shell_cmd = Some(ShellCommand::new(osstr)?);
             Ok(())
         };
-        self.0.exe.eval(shell, line, &mut cmd_new)?;
+        self.cmd.exe.eval(shell, line, &mut cmd_new)?;
 
         let mut shell_cmd = shell_cmd.context("the expanded command was empty")?;
 
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
-        for arg in self.0.args.iter() {
+        for arg in self.cmd.args.iter() {
             boxed_await!(arg.eval(shell, line, &mut cmd_push))?;
         }
 
-        for stdio in self.0.redirect.iter() {
+        for stdio in self.cmd.redirect.iter() {
             boxed_await!(stdio.redirect(shell, line, &mut shell_cmd))?;
         }
 
-        if let Some(chain) = self.0.chain.as_ref() {
+        if let Some(chain) = self.cmd.chain.as_ref() {
             boxed_await!(async {
                 chain.exec(shell, line, shell_cmd, Some(push))
                     .await
@@ -176,9 +176,9 @@ impl<'c> Redirect<'c> {
                 .append(self.append)
                 .open(osstr.to_path()?)?;
 
-            match self.ty {
-                StdioType::Out => cmd.stdout(fd.into()),
-                StdioType::Err => cmd.stderr(fd.into())
+            match self.kind {
+                StdioKind::Out => cmd.stdout(fd.into()),
+                StdioKind::Err => cmd.stderr(fd.into())
             }
 
             Ok(())
@@ -194,12 +194,7 @@ impl<'c> Chain<'c> {
     pub async fn exec(&self, shell: &mut Shell, line: &str, mut prev_cmd: ShellCommand, mut push: Option<Push<'_>>)
         -> anyhow::Result<ExitStatus>
     {
-        let subshell = match self {
-            Chain::Pipe(subshell) => subshell,
-            Chain::Then(subshell) => subshell,
-            Chain::AndIf(subshell) => subshell,
-            Chain::OrIf(subshell) => subshell,
-        };
+        let subshell = &self.shell;
 
         let mut shell_cmd = None;
         let mut cmd_new = |osstr: &[u8]| {
@@ -220,8 +215,8 @@ impl<'c> Chain<'c> {
             stdio.redirect(shell, line, &mut shell_cmd).await?;
         }
 
-        match self {
-            Chain::Pipe(_) => {
+        match self.kind {
+            ChainKind::Pipe => {
                 prev_cmd.stdout(Stdio::piped());
 
                 let mut prev_child = prev_cmd.spawn(shell)?;
@@ -240,7 +235,7 @@ impl<'c> Chain<'c> {
 
                 Ok(status)
             },
-            Chain::Then(_) => {
+            ChainKind::Then => {
                 spawn_and_push(prev_cmd, shell, &mut push).await?;
 
                 if let Some(chain) = subshell.0.chain.as_ref() {
@@ -249,7 +244,7 @@ impl<'c> Chain<'c> {
                     spawn_and_push(shell_cmd, shell, &mut push).await
                 }
             },
-            Chain::AndIf(_) => {
+            ChainKind::AndIf => {
                 let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
 
                 if status.success() {
@@ -262,7 +257,7 @@ impl<'c> Chain<'c> {
                     Ok(status)
                 }
             },
-            Chain::OrIf(_) => {
+            ChainKind::OrIf => {
                 let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
 
                 if !status.success() {

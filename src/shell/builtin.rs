@@ -86,10 +86,7 @@ async_fn!{
 
         let name = take_name(line, cmd)?;
 
-        let bump = shell.bump.clone();
-        let bump = bump.borrow();
         let mut value = Vec::with_capacity(8);
-
         let mut push = |osstr: &[u8]| {
             value.extend_from_slice(osstr);
             Ok(())
@@ -134,17 +131,16 @@ async_fn!{
         let bump = shell.bump.clone();
         let bump = bump.borrow();
 
-        let mut path = Vec::with_capacity(8);
+        let mut path = BumpVec::with_capacity_in(16, &bump);
         let mut push = |osstr: &[u8]| {
             path.extend_from_slice(osstr);
             Ok(())
         };
         cmd.args[0].eval(shell, line, &mut push).await?;
 
-        let path = path.into_path_buf()
-            .ok()
-            .context("invalid env name")?;
-
+        let path = path.to_path().context("invalid path")?;
+        let path = path.canonicalize()
+            .with_context(|| format!("{:?}", path))?;
         shell.env.push_path(path)?;
 
         Ok(())

@@ -8,7 +8,6 @@ mod shell;
 use std::{ fs, io };
 use std::cell::Cell;
 use anyhow::Context;
-use bumpalo::Bump;
 use argh::FromArgs;
 use scopeguard::defer;
 use directories::ProjectDirs;
@@ -17,7 +16,6 @@ use shell::Shell;
 
 
 pub struct Global {
-    bump: Bump,
     columns: Cell<u16>,
     projdir: ProjectDirs
 }
@@ -46,7 +44,6 @@ async fn main() -> anyhow::Result<()> {
     let (size, _) = terminal::size()?;
 
     let global = Global {
-        bump: Bump::new(),
         columns: Cell::new(size),
         projdir
     };

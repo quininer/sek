@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::process::Stdio;
 use serde::Deserialize;
 use tokio::process::Command;
+use crossterm::style::{ style, Color, Attribute, Attributes };
 use crate::Global;
 use crate::shell::Shell;
 
@@ -23,6 +24,7 @@ pub struct Theme {
     pub exe: Style,
     pub literal: Style,
     pub env: Style,
+    pub escape: Style,
     pub subshell: Style,
     pub single_str: Style,
     pub double_str: Style,
@@ -44,16 +46,19 @@ pub struct Style {
 
 impl Default for Theme {
     fn default() -> Theme {
+        const DEFAULT_COLOR: u8 = 0xff;
+
         Theme {
-            exe: Style::new(0x37),
-            literal: Style::new(0x37),
-            env: Style::new(0x37),
-            subshell: Style::new(0x37),
-            single_str: Style::new(0x37),
-            double_str: Style::new(0x37),
-            pipe: Style::new(0x37),
-            redirect: Style::new(0x37),
-            error: Style::new(0x37),
+            exe: Style::new(DEFAULT_COLOR),
+            literal: Style::new(DEFAULT_COLOR),
+            env: Style::new(DEFAULT_COLOR),
+            escape: Style::new(DEFAULT_COLOR),
+            subshell: Style::new(DEFAULT_COLOR),
+            single_str: Style::new(3),
+            double_str: Style::new(3),
+            pipe: Style::new(DEFAULT_COLOR),
+            redirect: Style::new(DEFAULT_COLOR),
+            error: Style::new(9),
         }
     }
 }
@@ -68,30 +73,35 @@ impl Style {
         }
     }
 
-    pub fn print<D, W>(&self, val: D, mut term: W) -> anyhow::Result<()>
-    where
-        D: fmt::Display + Clone,
-        W: io::Write
-    {
-        use crossterm::queue;
-        use crossterm::style::{ style, Color, Attribute, PrintStyledContent };
+    pub fn color(&self) -> Color {
+        Color::AnsiValue(self.ansi)
+    }
 
-        let mut val = style(val).with(Color::AnsiValue(self.ansi));
-
+    pub fn attr(&self) -> Option<Attributes> {
+        let mut attr = Attributes::default();
         if self.bold {
-            val = val.attribute(Attribute::Bold);
+            attr.set(Attribute::Bold);
         }
-
         if self.dim {
-            val = val.attribute(Attribute::Dim);
+            attr.set(Attribute::Dim);
         }
-
         if self.underlined {
-            val = val.attribute(Attribute::Underlined);
+            attr.set(Attribute::Underlined);
         }
+        if attr != Attributes::default() {
+            Some(attr)
+        } else {
+            None
+        }
+    }
 
-        queue!(term, PrintStyledContent(val))?;
+    pub fn push<W: io::Write>(&self, mut term: W) -> anyhow::Result<()> {
+        use crossterm::{ queue, style };
 
+        queue!(term, style::SetForegroundColor(self.color()))?;
+        if let Some(attr) = self.attr() {
+            queue!(term, style::SetAttributes(attr))?;
+        }
         Ok(())
     }
 }
@@ -113,7 +123,7 @@ pub async fn load(global: &Global, shell: &mut Shell) -> anyhow::Result<()> {
         }
 
         output.stdout
-    } else if path.exists() {
+    } else if path2.exists() {
         fs::read(path2)?
     } else {
         return Ok(());

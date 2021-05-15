@@ -173,11 +173,22 @@ impl<'c> Command<'c> {
             }
         }
 
-        cmd.ok_or_else(|| ParseFailed {
-            token: state.last,
-            kind: ErrorKind::EmptyCommand,
-            span: start..state.lex.span().end
-        })
+        if let Some(cmd) = cmd {
+            Ok(cmd)
+        } else if state.incomplete {
+            Ok(Command {
+                exe: Literal(start..state.lex.span().end),
+                args: Vec::new_in(bump),
+                redirect: Vec::new_in(bump),
+                chain: None,
+            })
+        } else {
+            Err(ParseFailed {
+                token: state.last,
+                kind: ErrorKind::EmptyCommand,
+                span: start..state.lex.span().end
+            })
+        }
     }
 }
 
@@ -195,7 +206,10 @@ impl<'c> SubShell<'c> {
         let cmd = Box::new_in(cmd, bump);
 
         if state.incomplete || state.last == Token::ShellClose {
-            Ok(SubShell(cmd))
+            Ok(SubShell {
+                span: span.start..state.lex.span().end,
+                cmd
+            })
         } else {
             Err(ParseFailed {
                 token: Token::ShellOpen,
@@ -219,15 +233,17 @@ impl<'c> Chain<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
         let kind = state.last;
         let span = state.lex.span();
-        let subshell = ChainShell::parse_in(bump, state)?;
+        let shell = ChainShell::parse_in(bump, state)?;
 
-        match kind {
-            Token::Pipe => Ok(Chain::Pipe(subshell)),
-            Token::Then => Ok(Chain::Then(subshell)),
-            Token::AndIf => Ok(Chain::AndIf(subshell)),
-            Token::OrIf => Ok(Chain::OrIf(subshell)),
+        let kind = match kind {
+            Token::Pipe => ChainKind::Pipe,
+            Token::Then => ChainKind::Then,
+            Token::AndIf => ChainKind::AndIf,
+            Token::OrIf => ChainKind::OrIf,
             token => panic!("Unexpected token: {:?}", token),
-        }
+        };
+
+        Ok(Chain { span, kind, shell })
     }
 }
 
@@ -436,12 +452,12 @@ impl<'c> Argument<'c> {
 
 impl<'c> Redirect<'c> {
     fn parse_in<'i>(bump: &'c Bump, state: &mut State<'i>) -> Result<Self, ParseFailed> {
-        fn parse_redirect(token: &str) -> Option<(StdioType, bool)> {
+        fn parse_redirect(token: &str) -> Option<(StdioKind, bool)> {
             match token {
-                ">" | "1>" => Some((StdioType::Out, false)),
-                ">>" | "1>>" => Some((StdioType::Out, true)),
-                "2>" => Some((StdioType::Err, false)),
-                "2>>" => Some((StdioType::Err, true)),
+                ">" | "1>" => Some((StdioKind::Out, false)),
+                ">>" | "1>>" => Some((StdioKind::Out, true)),
+                "2>" => Some((StdioKind::Err, false)),
+                "2>>" => Some((StdioKind::Err, true)),
                 _ => None
             }
         }
@@ -449,7 +465,7 @@ impl<'c> Redirect<'c> {
         state.has_redirect = true;
         state.again = None;
 
-        let (ty, append) = parse_redirect(state.lex.slice())
+        let (kind, append) = parse_redirect(state.lex.slice())
             .ok_or_else(|| bad(state, ErrorKind::UnsupportedRedirectType))?;
         let span = state.lex.span();
 
@@ -472,7 +488,7 @@ impl<'c> Redirect<'c> {
         let value = Argument::parse_in(bump, state)?;
 
         if state.incomplete || !value.0.is_empty() {
-            Ok(Redirect { ty, append, value })
+            Ok(Redirect { kind, append, value })
         } else {
             Err(ParseFailed {
                 token: Token::Redirect,

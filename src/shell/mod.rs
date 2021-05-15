@@ -17,14 +17,13 @@ use scopeguard::defer;
 use crossterm::{ execute, queue, style, terminal };
 use crossterm::event::EventStream;
 use crate::Global;
-use crate::shell::env::Env;
-use crate::shell::config::Theme;
 use crate::shell::parser::type_::Command;
 use crate::shell::process::{ ShellCommand, Morgue };
 use crate::editor::Editor;
 use crate::editor::render::{ render, report };
 use crate::util::{ FmtDebug, arg_max };
-pub use crate::shell::parser::colour;
+pub use crate::shell::env::Env;
+pub use crate::shell::config::Theme;
 
 
 pub struct Shell {
@@ -67,9 +66,10 @@ impl Shell {
             self.bump.borrow_mut().reset();
 
             let action = editor.step(self, event?).await?;
+            let mut execute = false;
 
-            let execute = match action {
-                Action::Continue => false,
+            match action {
+                Action::Continue => (),
                 Action::Execute => {
                     let bump = self.bump.clone();
                     let bump = bump.borrow();
@@ -82,21 +82,20 @@ impl Shell {
 
                     if !line.is_empty() {
                         match parser::parse_in(&bump, line) {
-                            Ok(cmd) => self.execute(line, cmd).await?,
+                            Ok(cmd) => {
+                                execute = true;
+                                self.execute(line, cmd).await?;
+                                editor.line.history.push(line);
+                                editor.line.clear();
+                            },
                             Err(err) => report(&editor, self, line, err)?
                         }
-
-                        editor.line.history.push(line);
+                    } else {
+                        editor.line.clear();
                     }
-
-                    true
                 },
                 Action::Stop => break
             };
-
-            if execute {
-                editor.line.clear();
-            }
 
             render(&editor, self, execute)?;
         }
