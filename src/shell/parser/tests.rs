@@ -429,6 +429,16 @@ fn test_bad_command() -> anyhow::Result<()> {
         assert_eq!(err.kind, ErrorKind::EmptyCommand);
     }
 
+    // bad escape unclosed
+    bump.reset();
+    {
+        let input = r#"exe "\""#;
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::DoubleQuote);
+        assert_eq!(&input[err.span], "\"");
+        assert_eq!(err.kind, ErrorKind::UnclosedDoubleQuote);
+    }
+
     Ok(())
 }
 
@@ -496,7 +506,7 @@ impl Fix for Argument<'_> {
                 ArgSlice::Double(arg) =>
                     output.push(arg.fix(input)),
                 ArgSlice::SubShell(arg) =>
-                    output.push(Output::One(Kind::SubShell, Box::new(arg.0.fix(input))))
+                    output.push(Output::One(Kind::SubShell, Box::new(arg.cmd.fix(input))))
             }
         }
         Output::Vec(Kind::Argument, output)
@@ -515,7 +525,7 @@ impl Fix for DoubleStr<'_> {
                 StrSlice::Escape(Escape(span)) =>
                     output.push(Output::Item(Kind::Escape, input[span.clone()].into())),
                 StrSlice::SubShell(arg) =>
-                    output.push(Output::One(Kind::SubShell, Box::new(arg.0.fix(input))))
+                    output.push(Output::One(Kind::SubShell, Box::new(arg.cmd.fix(input))))
             }
         }
         Output::Vec(Kind::DoubleStr, output)
@@ -524,22 +534,25 @@ impl Fix for DoubleStr<'_> {
 
 impl Fix for Chain<'_> {
     fn fix(&self, input: &str) -> Output {
-        match self {
-            Chain::Pipe(subshell) => Output::One(Kind::Pipe, Box::new(subshell.0.fix(input))),
-            Chain::Then(subshell) => Output::One(Kind::Then, Box::new(subshell.0.fix(input))),
-            Chain::AndIf(subshell) => Output::One(Kind::AndIf, Box::new(subshell.0.fix(input))),
-            Chain::OrIf(subshell) => Output::One(Kind::OrIf, Box::new(subshell.0.fix(input)))
-        }
+        Output::One(
+            match self.kind {
+                ChainKind::Pipe => Kind::Pipe,
+                ChainKind::Then => Kind::Then,
+                ChainKind::AndIf => Kind::AndIf,
+                ChainKind::OrIf => Kind::OrIf
+            },
+            Box::new(self.shell.0.fix(input))
+        )
     }
 }
 
 impl Fix for Redirect<'_> {
     fn fix(&self, input: &str) -> Output {
-        let kind = match (self.ty, self.append) {
-            (StdioType::Out, false) => Kind::RedirectOut,
-            (StdioType::Out, true) => Kind::RedirectOutAppend,
-            (StdioType::Err, false) => Kind::RedirectErr,
-            (StdioType::Err, true) => Kind::RedirectErrAppend
+        let kind = match (self.kind, self.append) {
+            (StdioKind::Out, false) => Kind::RedirectOut,
+            (StdioKind::Out, true) => Kind::RedirectOutAppend,
+            (StdioKind::Err, false) => Kind::RedirectErr,
+            (StdioKind::Err, true) => Kind::RedirectErrAppend
         };
 
         Output::One(kind, Box::new(self.value.fix(input)))

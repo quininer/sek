@@ -320,7 +320,6 @@ impl<'c> DoubleStr<'c> {
             Token::Backslash => |_, state, list| {
                 let span = state.lex.span();
                 if let Some(token) = state.lex.next() {
-                    state.last = token;
                     let end = state.lex.span().end;
                     list.push(StrSlice::Escape(Escape(span.start..end)));
                     Ok(Action::Continue)
@@ -420,7 +419,6 @@ impl<'c> Argument<'c> {
             Token::Backslash => |_, state, arg| {
                 let span = state.lex.span();
                 if let Some(token) = state.lex.next() {
-                    state.last = token;
                     let end = state.lex.span().end;
                     arg.0.push(ArgSlice::Escape(Escape(span.start..end)));
                     Ok(Action::Continue)

@@ -50,7 +50,7 @@ pub struct SingleStr(pub Span);
 #[derive(Debug)]
 pub struct DoubleStr<'c> {
     pub span: Span,
-    pub list: Vec<'c, StrSlice<'c>>
+    pub list: Vec<'c, StrSlice<'c>>,
 }
 
 #[derive(Debug)]
