@@ -27,14 +27,18 @@ pub fn colour(shell: ShellRef<'_>, input: &str, term: &mut dyn io::Write, cmd: &
         );
     });
 
-    let line_end = shell.prompt_len;
+    let current_len = shell.prompt_len;
     let mut state = State {
-        shell, line_end,
+        shell, current_len,
         color: None,
         attr: None,
         is_doublestr: false,
         bytes_count: 0,
-        line_count: 0
+        chars_count: 0,
+        cursor_lines: 0,
+        cursor_width: 0,
+        current_lines: 0
+        current_width: 0,
     };
 
     cmd.colour(input, &mut state, &mut *term)?;
@@ -48,8 +52,11 @@ struct State<'a> {
     attr: Option<Attributes>,
     is_doublestr: bool,
     bytes_count: usize,
-    line_count: usize,
-    line_end: usize
+    chars_count: usize,
+    cursor_lines: usize,
+    cursor_width: usize,
+    current_lines: usize
+    current_width: usize
 }
 
 impl State<'_> {
@@ -82,7 +89,19 @@ impl State<'_> {
     {
         for c in chars {
             queue!(term, style::Print(c))?;
+
+            let width = c.width();
             self.bytes_count += c.len_utf8();
+            self.chars_count += 1;
+
+            if self.chars_count < self.shell.cursor_position {
+                self.cursor_width += width;
+            }
+            if self.chars_count == self.shell.cursor_position {
+                self.cursor_lines = self.cursor_lines;
+            }
+
+            self.current_width += width;
         }
 
         Ok(())
