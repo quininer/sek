@@ -165,7 +165,7 @@ fn test_parse_command() -> anyhow::Result<()> {
     // backslash
     bump.reset();
     {
-        let input = r#"exe a\ b\\ \c '\' "\"" "\ " \>>"#;
+        let input = r#"exe a\ b\\ \# '\' "\"" "\ " \>>"#;
         let cmd = parse_in(&bump, input).unwrap();
         let output = cmd.fix(input);
 
@@ -178,7 +178,7 @@ fn test_parse_command() -> anyhow::Result<()> {
                 Item(Escape, "\\\\".into())
             ]),
             Vec(Argument, vec![
-                Item(Escape, "\\c".into())
+                Item(Escape, "\\#".into())
             ]),
             Vec(Argument, vec![
                 Item(SingleStr, "'\\'".into())
@@ -437,6 +437,16 @@ fn test_bad_command() -> anyhow::Result<()> {
         assert_eq!(err.token, Token::DoubleQuote);
         assert_eq!(&input[err.span], "\"");
         assert_eq!(err.kind, ErrorKind::UnclosedDoubleQuote);
+    }
+
+    // unknown escape
+    bump.reset();
+    {
+        let input = r#"exe "\x""#;
+        let err = parse_in(&bump, input).unwrap_err();
+        assert_eq!(err.token, Token::Backslash);
+        assert_eq!(&input[err.span], "\\x");
+        assert_eq!(err.kind, ErrorKind::UnknownEscape);
     }
 
     Ok(())

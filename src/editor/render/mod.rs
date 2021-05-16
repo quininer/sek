@@ -61,7 +61,9 @@ pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
 
     let shell_ref = highlight::ShellRef {
         env: &shell.env,
-        theme: &shell.theme
+        theme: &shell.theme,
+        prompt_len: PROMPT.len(),
+        columns: editor.columns as usize
     };
 
     match incomplete_parse_in(&bump, &buf) {

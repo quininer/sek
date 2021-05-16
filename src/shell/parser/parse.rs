@@ -327,12 +327,18 @@ impl<'c> DoubleStr<'c> {
             },
             Token::Backslash => |_, state, list| {
                 let span = state.lex.span();
-                if let Some(_token) = state.lex.next() {
-                    let end = state.lex.span().end;
-                    list.push(StrSlice::Escape(Escape(span.start..end)));
-                    Ok(Action::Continue)
-                } else {
-                    Err(ParseFailed {
+                match state.lex.next() {
+                    Some(Token::Text) => Err(ParseFailed {
+                        token: Token::Backslash,
+                        kind: ErrorKind::UnknownEscape,
+                        span: span.start..state.lex.span().end
+                    }),
+                    Some(_token) => {
+                        let end = state.lex.span().end;
+                        list.push(StrSlice::Escape(Escape(span.start..end)));
+                        Ok(Action::Continue)
+                    },
+                    None => Err(ParseFailed {
                         token: Token::Backslash,
                         kind: ErrorKind::IncompleteEscape,
                         span
@@ -431,12 +437,18 @@ impl<'c> Argument<'c> {
             },
             Token::Backslash => |_, state, arg| {
                 let span = state.lex.span();
-                if let Some(_token) = state.lex.next() {
-                    let end = state.lex.span().end;
-                    arg.0.push(ArgSlice::Escape(Escape(span.start..end)));
-                    Ok(Action::Continue)
-                } else {
-                    Err(ParseFailed {
+                match state.lex.next() {
+                    Some(Token::Text) => Err(ParseFailed {
+                        token: Token::Backslash,
+                        kind: ErrorKind::UnknownEscape,
+                        span: span.start..state.lex.span().end
+                    }),
+                    Some(_token) => {
+                        let end = state.lex.span().end;
+                        arg.0.push(ArgSlice::Escape(Escape(span.start..end)));
+                        Ok(Action::Continue)
+                    },
+                    None => Err(ParseFailed {
                         token: Token::Backslash,
                         kind: ErrorKind::IncompleteEscape,
                         span
