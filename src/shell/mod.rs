@@ -14,12 +14,13 @@ use bumpalo::collections::String;
 use tokio::signal;
 use tokio_stream::StreamExt;
 use scopeguard::defer;
+use unicode_width::UnicodeWidthStr;
 use crossterm::{ execute, queue, style, terminal };
 use crossterm::event::EventStream;
 use crate::shell::parser::type_::Command;
 use crate::shell::process::{ ShellCommand, Morgue };
 use crate::editor::Editor;
-use crate::editor::render::{ render, report };
+use crate::editor::render::{ render_editor, render_line, report };
 use crate::util::FmtDebug;
 pub use crate::shell::env::Env;
 pub use crate::shell::config::{ Theme, AliasMap };
@@ -47,7 +48,7 @@ impl Shell {
         let mut reader = EventStream::new();
         let mut editor = Editor::new()?;
 
-        render(&editor, self, false)?;
+        render_editor(&editor, self, false)?;
 
         while let Some(event) = reader.next().await {
             self.bump.borrow_mut().reset();
@@ -61,31 +62,37 @@ impl Shell {
                     let bump = self.bump.clone();
                     let bump = bump.borrow();
 
-                    let mut line = String::with_capacity_in(editor.line.len(), &bump);
+                    let mut line = String::with_capacity_in(editor.line.len() + 16, &bump);
                     editor.line.read_into(&mut line);
                     self.alias.replace(&mut line);
-                    let line = line.trim_end().trim_end_matches(';');
+                    let line2 = line.trim_end().trim_end_matches(';');
 
-                    execute!(&self.term, style::Print("\r\n"))?;
-
-                    if !line.is_empty() {
-                        match parser::parse_in(&bump, line) {
+                    if !line2.is_empty() {
+                        match parser::parse_in(&bump, line2) {
                             Ok(cmd) => {
+                                execute!(&self.term, style::Print("\r\n"))?;
                                 execute = true;
-                                self.execute(line, cmd).await?;
-                                editor.line.history.push(line);
+                                self.execute(line2, cmd).await?;
+                                editor.line.history.push(line2);
                                 editor.line.clear();
                             },
-                            Err(err) => report(&editor, self, line, err)?
+                            Err(err) => {
+                                let width = line.width() as u16;
+                                render_line(&editor, self, &bump, &mut line, width, false)?;
+                                queue!(&self.term, style::Print("\r\n"))?;
+                                report(&editor, self, &line, err)?;
+                                self.last_status = false;
+                            }
                         }
                     } else {
+                        queue!(&self.term, style::Print("\r\n"))?;
                         editor.line.clear();
                     }
                 },
                 Action::Stop => break
             };
 
-            render(&editor, self, execute)?;
+            render_editor(&editor, self, execute)?;
         }
 
         Ok(())

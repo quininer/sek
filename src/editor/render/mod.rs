@@ -1,6 +1,7 @@
 mod highlight;
 
 use std::io::Write;
+use bumpalo::Bump;
 use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
 use crossterm::{ queue, execute, cursor, style, terminal };
@@ -12,7 +13,7 @@ use crate::util::{ Fill, FmtDebug };
 
 const PROMPT: &str = "~ ";
 
-pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
+pub fn render_editor(editor: &Editor, shell: &mut Shell, execute: bool)
     -> anyhow::Result<()>
 {
     let bump = shell.bump.clone();
@@ -21,6 +22,19 @@ pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
 
     let (cursor, _) = editor.line.ready_render(&mut buf, None);
 
+    render_line(editor, shell, &bump, &mut buf, cursor, execute)
+}
+
+pub fn render_line(
+    editor: &Editor,
+    shell: &mut Shell,
+    bump: &Bump,
+    buf: &mut String<'_>,
+    cursor: u16,
+    execute: bool
+)
+    -> anyhow::Result<()>
+{
     let mut term = shell.term.lock();
 
     // TODO slow
@@ -90,7 +104,7 @@ pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
             editor.cursor_line.set(0);
         },
         State::Command => {
-            let (cmdcur, fill) = editor.cmd.ready_render(&mut buf, Some(editor.columns));
+            let (cmdcur, fill) = editor.cmd.ready_render(buf, Some(editor.columns));
 
             queue!(
                 term,
