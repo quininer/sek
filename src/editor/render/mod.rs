@@ -23,6 +23,8 @@ pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
 
     let mut term = shell.term.lock();
 
+    // TODO slow
+    /*
     if execute {
         let (col, _) = cursor::position()?;
 
@@ -32,14 +34,17 @@ pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
                 style::SetAttribute(style::Attribute::Dim),
                 style::Print("⏎ "),
                 style::SetAttribute(style::Attribute::Reset),
-                style::Print("\n")
+                style::Print("\r\n")
             )?;
         }
     }
+    */
 
-    match editor.cursor_line.get() {
-        0 => queue!(term, cursor::MoveToColumn(0))?,
-        n => queue!(term, cursor::MoveToPreviousLine(n))?,
+    if !execute {
+        match editor.cursor_line.get() {
+            0 => queue!(term, cursor::MoveToColumn(0))?,
+            n => queue!(term, cursor::MoveToPreviousLine(n))?,
+        }
     }
 
     queue!(
@@ -83,16 +88,17 @@ pub fn render(editor: &Editor, shell: &mut Shell, execute: bool)
             editor.cursor_line.set(0);
         },
         State::Command => {
-            let size = editor.global.columns.get();
-            let (cmdcur, fill) = editor.cmd.ready_render(&mut buf, Some(size));
+            let (cmdcur, fill) = editor.cmd.ready_render(&mut buf, Some(editor.columns));
 
             queue!(
                 term,
                 style::Print("\r\n"),
+                terminal::DisableLineWrap,
                 style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
                 style::Print(&buf),
                 style::Print(fill),
                 style::ResetColor,
+                terminal::EnableLineWrap
             )?;
 
             if editor.cmd.is_empty() {

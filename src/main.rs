@@ -5,19 +5,10 @@ mod util;
 mod editor;
 mod shell;
 
-use std::{ fs, io };
-use std::cell::Cell;
-use anyhow::Context;
 use argh::FromArgs;
 use scopeguard::defer;
-use directories::ProjectDirs;
 use crossterm::terminal;
 
-
-pub struct Global {
-    columns: Cell<u16>,
-    projdir: ProjectDirs
-}
 
 /// Sek Shell
 #[derive(FromArgs)]
@@ -37,24 +28,7 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let projdir = ProjectDirs::from("", "", env!("CARGO_PKG_NAME"))
-        .context("Unable to retrieve project path from system")?;
-
-    let (size, _) = terminal::size()?;
-
-    let global = Global {
-        columns: Cell::new(size),
-        projdir
-    };
-
-    fs::create_dir_all(global.projdir.data_local_dir())
-        .or_else(|err| if err.kind() == io::ErrorKind::AlreadyExists {
-            Ok(())
-        } else {
-            Err(err)
-        })?;
-
-    let mut shell = shell::config::load(&global).await?;
+    let mut shell = shell::config::load().await?;
 
     terminal::enable_raw_mode()?;
 
@@ -62,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
         let _ = terminal::disable_raw_mode();
     };
 
-    shell.start(&global).await?;
+    shell.start().await?;
 
     Ok(())
 }

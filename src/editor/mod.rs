@@ -6,16 +6,15 @@ pub mod command;
 
 use std::cell::Cell;
 use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
-use crate::Global;
 use crate::shell::{ Shell, Action };
 use crate::editor::buffer::Buffer;
 
-pub struct Editor<'g> {
-    pub global: &'g Global,
+pub struct Editor {
     pub line: Buffer,
     pub cmd: Buffer,
     ready: Option<char>,
     cursor_line: Cell<u16>,
+    columns: u16,
     state: State
 }
 
@@ -27,14 +26,15 @@ enum State {
     Completion
 }
 
-impl<'g> Editor<'g> {
-    pub fn new(global: &'g Global) -> anyhow::Result<Self> {
+impl Editor {
+    pub fn new() -> anyhow::Result<Self> {
+    let (size, _) = crossterm::terminal::size()?;
         Ok(Editor {
-            global,
             line: Buffer::default(),
             cmd: Buffer::default(),
             ready: None,
             cursor_line: Cell::new(0),
+            columns: size,
             state: State::Edit
         })
     }
@@ -42,7 +42,7 @@ impl<'g> Editor<'g> {
     pub async fn step(&mut self, shell: &mut Shell, event: Event) -> anyhow::Result<Action> {
         match (self.state, event) {
             // resize
-            (_, Event::Resize(size, _)) => self.global.columns.set(size),
+            (_, Event::Resize(size, _)) => self.columns = size,
             // edit to command
             (State::Edit, Event::Key(KeyEvent { modifiers, code }))
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))

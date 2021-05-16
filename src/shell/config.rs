@@ -8,7 +8,6 @@ use serde::Deserialize;
 use tokio::process::Command;
 use bumpalo::collections::String as BumpString;
 use crossterm::style::{ Color, Attribute, Attributes };
-use crate::Global;
 use crate::shell::Shell;
 
 
@@ -130,16 +129,21 @@ impl AliasMap {
     }
 }
 
-pub async fn load(global: &Global) -> anyhow::Result<Shell> {
+pub async fn load() -> anyhow::Result<Shell> {
     use std::io;
     use std::rc::Rc;
     use std::cell::RefCell;
+    use anyhow::Context;
     use bumpalo::Bump;
+    use directories::ProjectDirs;
     use crate::util::arg_max;
     use crate::shell::env::Env;
     use crate::shell::process::Morgue;
 
-    let path = global.projdir.config_dir().join("config");
+    let projdir = ProjectDirs::from("", "", env!("CARGO_PKG_NAME"))
+        .context("Unable to retrieve project path from system")?;
+
+    let path = projdir.config_dir().join("config");
 
     let config = if path.exists() {
         let child = Command::new(path)
@@ -155,7 +159,7 @@ pub async fn load(global: &Global) -> anyhow::Result<Shell> {
 
         serde_json::from_slice(&output.stdout)?
     } else {
-        let path = global.projdir.config_dir().join("config.json");
+        let path = projdir.config_dir().join("config.json");
         if path.exists() {
             serde_json::from_slice(&fs::read(path)?)?
         } else {

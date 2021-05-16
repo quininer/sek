@@ -16,7 +16,6 @@ use tokio_stream::StreamExt;
 use scopeguard::defer;
 use crossterm::{ execute, queue, style, terminal };
 use crossterm::event::EventStream;
-use crate::Global;
 use crate::shell::parser::type_::Command;
 use crate::shell::process::{ ShellCommand, Morgue };
 use crate::editor::Editor;
@@ -44,9 +43,9 @@ pub enum Action {
 }
 
 impl Shell {
-    pub async fn start(&mut self, global: &Global) -> anyhow::Result<()> {
+    pub async fn start(&mut self) -> anyhow::Result<()> {
         let mut reader = EventStream::new();
-        let mut editor = Editor::new(global)?;
+        let mut editor = Editor::new()?;
 
         render(&editor, self, false)?;
 
