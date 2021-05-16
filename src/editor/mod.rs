@@ -120,6 +120,7 @@ impl Editor {
                 (None, KeyCode::Char('k')) => self.line.history.up(),
                 (None, KeyCode::Char('d')) => self.ready = Some('d'),
                 (None, KeyCode::Char('z')) => self.ready = Some('z'),
+                (None, KeyCode::Char('0')) => self.line.move_head(),
                 (None, KeyCode::Backspace) => self.line.move_left(),
                 (None, KeyCode::Left) => self.line.move_left(),
                 (None, KeyCode::Right) => self.line.move_right(),

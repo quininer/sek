@@ -77,7 +77,8 @@ pub fn render_line(
         env: &shell.env,
         theme: &shell.theme,
         prompt_len: PROMPT.len(),
-        columns: editor.columns as usize
+        columns: editor.columns as usize,
+        cursor_position: editor.line.cursor()
     };
 
     match incomplete_parse_in(&bump, &buf) {
@@ -86,20 +87,23 @@ pub fn render_line(
             let color = shell_ref.theme.error.color();
             let attr = shell_ref.theme.error.attr().unwrap_or_default();
 
+            queue!(term, style::Print(&buf[..err.span.start]))?;
+            if let Some(color) = color {
+                queue!(term, style::SetForegroundColor(color))?;
+            }
             queue!(term,
-                style::Print(&buf[..err.span.start]),
-                style::SetForegroundColor(color),
                 style::SetAttributes(attr),
                 style::Print(&buf[err.span.clone()]),
                 style::SetForegroundColor(style::Color::Reset),
                 style::SetAttribute(style::Attribute::Reset),
                 style::Print(&buf[err.span.end..])
-            )?
+            )?;
         }
     }
 
     match editor.state {
         State::Edit => {
+//            queue!(term, cursor::MoveToColumn(0))?;
             queue!(term, cursor::MoveToColumn(cursor + PROMPT.len() as u16))?;
             editor.cursor_line.set(0);
         },

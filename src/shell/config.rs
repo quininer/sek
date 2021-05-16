@@ -42,9 +42,9 @@ pub struct Theme {
     pub error: Style
 }
 
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Default, Clone, Copy)]
 pub struct Style {
-    ansi: u8,
+    ansi: Option<u8>,
     #[serde(default)]
     bold: bool,
     #[serde(default)]
@@ -76,15 +76,15 @@ impl Default for Theme {
 impl Style {
     pub fn new(ansi: u8) -> Style {
         Style {
-            ansi,
+            ansi: Some(ansi),
             bold: false,
             dim: false,
             underlined: false
         }
     }
 
-    pub fn color(&self) -> Color {
-        Color::AnsiValue(self.ansi)
+    pub fn color(&self) -> Option<Color> {
+        self.ansi.map(Color::AnsiValue)
     }
 
     pub fn attr(&self) -> Option<Attributes> {

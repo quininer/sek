@@ -58,6 +58,11 @@ impl Buffer {
         }
     }
 
+    pub fn move_head(&mut self) {
+        self.make();
+        self.cur = 0;
+    }
+
     pub fn move_left(&mut self) {
         self.make();
         self.cur = self.cur.saturating_sub(1);
@@ -75,6 +80,10 @@ impl Buffer {
             self.history.reset();
             self.cur = self.buf.len();
         }
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.cur
     }
 
     pub fn read_into<'a>(&self, buf: &'a mut String<'_>) {
