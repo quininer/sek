@@ -5,6 +5,7 @@ mod util;
 mod editor;
 mod shell;
 
+use std::path::PathBuf;
 use argh::FromArgs;
 use anyhow::Context;
 use scopeguard::defer;
@@ -15,6 +16,10 @@ use directories::ProjectDirs;
 /// Sek Shell
 #[derive(FromArgs)]
 struct Options {
+    /// use specified config
+    #[argh(option, short = 'c')]
+    config: Option<PathBuf>,
+
     /// print version
     #[argh(switch, short = 'v')]
     version: bool
@@ -22,7 +27,7 @@ struct Options {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    let options: Options = argh::from_env();
+    let mut options: Options = argh::from_env();
 
     if options.version {
         println!("{}", env!("CARGO_PKG_VERSION"));
@@ -30,9 +35,13 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let projdir = ProjectDirs::from("", "", env!("CARGO_PKG_NAME"))
-        .context("Unable to retrieve project path from system")?;
-    let confpath = projdir.config_dir().join("config");
+    let confpath = if let Some(path) = options.config.take() {
+        path
+    } else {
+        let projdir = ProjectDirs::from("", "", env!("CARGO_PKG_NAME"))
+            .context("Unable to retrieve project path from system")?;
+        projdir.config_dir().join("config")
+    };
 
     let mut shell = shell::config::load(&confpath).await?;
 
