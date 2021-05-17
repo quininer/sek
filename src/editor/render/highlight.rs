@@ -2,7 +2,6 @@ use std::{ io, mem };
 use logos::Span;
 use crossterm::{ queue, style };
 use crossterm::style::{ Color, Attributes };
-use unicode_width::{ UnicodeWidthStr, UnicodeWidthChar };
 use scopeguard::guard;
 use crate::util::{ Fill, DynWriter };
 use crate::shell;
@@ -13,9 +12,6 @@ use crate::shell::parser::type_::*;
 pub struct ShellRef<'a> {
     pub env: &'a shell::Env,
     pub theme: &'a shell::Theme,
-    pub prompt_len: usize,
-    pub columns: usize,
-    pub cursor_position: usize
 }
 
 pub fn colour(shell: ShellRef<'_>, input: &str, term: &mut dyn io::Write, cmd: &Command<'_>) -> anyhow::Result<()> {
@@ -27,18 +23,12 @@ pub fn colour(shell: ShellRef<'_>, input: &str, term: &mut dyn io::Write, cmd: &
         );
     });
 
-    let current_len = shell.prompt_len;
     let mut state = State {
-        shell, current_len,
+        shell,
         color: None,
         attr: None,
         is_doublestr: false,
         bytes_count: 0,
-        chars_count: 0,
-        cursor_lines: 0,
-        cursor_width: 0,
-        current_lines: 0
-        current_width: 0,
     };
 
     cmd.colour(input, &mut state, &mut *term)?;
@@ -52,11 +42,6 @@ struct State<'a> {
     attr: Option<Attributes>,
     is_doublestr: bool,
     bytes_count: usize,
-    chars_count: usize,
-    cursor_lines: usize,
-    cursor_width: usize,
-    current_lines: usize
-    current_width: usize
 }
 
 impl State<'_> {
@@ -82,28 +67,15 @@ impl State<'_> {
         Ok(())
     }
 
-    fn push<C, W>(&mut self, mut chars: C, term: &mut W) -> anyhow::Result<()>
-    where
-        C: Iterator<Item = char>,
-        W: io::Write
-    {
-        for c in chars {
-            queue!(term, style::Print(c))?;
+    fn push<W: io::Write>(&mut self, value: &str, term: &mut W) -> anyhow::Result<()> {
+        queue!(term, style::Print(value))?;
+        self.bytes_count += value.len();
+        Ok(())
+    }
 
-            let width = c.width();
-            self.bytes_count += c.len_utf8();
-            self.chars_count += 1;
-
-            if self.chars_count < self.shell.cursor_position {
-                self.cursor_width += width;
-            }
-            if self.chars_count == self.shell.cursor_position {
-                self.cursor_lines = self.cursor_lines;
-            }
-
-            self.current_width += width;
-        }
-
+    fn push_fill<W: io::Write>(&mut self, len: usize, term: &mut W) -> anyhow::Result<()> {
+        queue!(term, style::Print(Fill::empty(len as _)))?;
+        self.bytes_count += len;
         Ok(())
     }
 }
@@ -145,17 +117,17 @@ impl Exe {
         };
 
         state.start(theme, term)?;
-        state.push(name.chars(), term)?;
+        state.push(name, term)?;
 
         Ok(())
     }
 }
 
 impl Empty {
-    fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
+    fn colour<W: io::Write>(&self, _line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
         if self.0.start < self.0.end {
             state.start(Style::default(), term)?;
-            state.push(self.0.clone().map(|_| ' '), term)?;
+            state.push_fill(self.0.end - self.0.start, term)?;
         }
 
         Ok(())
@@ -173,7 +145,7 @@ impl Literal {
             state.shell.theme.double_str
         };
         state.start(theme, term)?;
-        state.push(line[self.0.clone()].chars(), term)?;
+        state.push(&line[self.0.clone()], term)?;
         Ok(())
     }
 }
@@ -191,7 +163,7 @@ impl Env {
             state.shell.theme.error
         };
         state.start(theme, term)?;
-        state.push(name.chars(), term)?;
+        state.push(name, term)?;
         Ok(())
     }
 }
@@ -202,7 +174,7 @@ impl Escape {
             .colour(line, state, term)?;
 
         state.start(state.shell.theme.escape, term)?;
-        state.push(line[self.0.clone()].chars(), term)?;
+        state.push(&line[self.0.clone()], term)?;
         Ok(())
     }
 }
@@ -213,7 +185,7 @@ impl SingleStr {
             .colour(line, state, term)?;
 
         state.start(state.shell.theme.single_str, term)?;
-        state.push(line[self.0.clone()].chars(), term)?;
+        state.push(&line[self.0.clone()], term)?;
         Ok(())
     }
 }
@@ -228,7 +200,7 @@ impl SubShell<'_> {
         let state = &mut *state;
 
         state.start(state.shell.theme.subshell, term)?;
-        state.push("$(".chars(), term)?;
+        state.push("$(", term)?;
 
         self.cmd.colour(line, state, term)?;
 
@@ -237,7 +209,7 @@ impl SubShell<'_> {
                 .colour(line, state, term)?;
 
             state.start(state.shell.theme.subshell, term)?;
-            state.push(")".chars(), term)?;
+            state.push(")", term)?;
         }
 
         Ok(())
@@ -254,7 +226,7 @@ impl DoubleStr<'_> {
         let state = &mut *state;
 
         state.start(state.shell.theme.double_str, term)?;
-        state.push("\"".chars(), term)?;
+        state.push("\"", term)?;
 
         for slice in self.list.iter() {
             match slice {
@@ -267,7 +239,7 @@ impl DoubleStr<'_> {
 
         if self.is_closed {
             state.start(state.shell.theme.double_str, term)?;
-            state.push("\"".chars(), term)?;
+            state.push("\"", term)?;
         }
 
         Ok(())
@@ -297,7 +269,7 @@ impl Redirect<'_> {
             .colour(line, state, term)?;
 
         state.start(state.shell.theme.redirect, term)?;
-        state.push(line[self.span.clone()].chars(), term)?;
+        state.push(&line[self.span.clone()], term)?;
 
         self.value.colour(line, state, term)?;
 
@@ -311,7 +283,7 @@ impl Chain<'_> {
             .colour(line, state, term)?;
 
         state.start(state.shell.theme.chain, term)?;
-        state.push(line[self.span.clone()].chars(), term)?;
+        state.push(&line[self.span.clone()], term)?;
 
         self.shell.0.colour(line, state, term)?;
 

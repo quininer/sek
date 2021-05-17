@@ -82,10 +82,6 @@ impl Buffer {
         }
     }
 
-    pub fn cursor(&self) -> usize {
-        self.cur
-    }
-
     pub fn read_into<'a>(&self, buf: &'a mut String<'_>) {
         buf.clear();
 

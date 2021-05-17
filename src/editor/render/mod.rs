@@ -76,9 +76,6 @@ pub fn render_line(
     let shell_ref = highlight::ShellRef {
         env: &shell.env,
         theme: &shell.theme,
-        prompt_len: PROMPT.len(),
-        columns: editor.columns as usize,
-        cursor_position: editor.line.cursor()
     };
 
     match incomplete_parse_in(&bump, &buf) {
@@ -101,11 +98,43 @@ pub fn render_line(
         }
     }
 
+    editor.cursor_line.set({
+        let total_width = buf.width() + PROMPT.len();
+        let total_width = total_width as u16;
+        (total_width / editor.columns)
+            + (total_width % editor.columns != 0) as u16
+            - 1
+    });
+
+    let cursor_width = cursor + PROMPT.len() as u16;
+    let cursor_line = (cursor_width / editor.columns)
+        + (cursor_width % editor.columns != 0) as u16
+        - 1;
+    let cursor_column = if cursor_width < editor.columns {
+        cursor_width
+    } else {
+        let cursor_column = cursor_width % editor.columns;
+        if cursor_column != 0 {
+            cursor_column
+        } else {
+            editor.columns
+        }
+    };
+
     match editor.state {
         State::Edit => {
-//            queue!(term, cursor::MoveToColumn(0))?;
-            queue!(term, cursor::MoveToColumn(cursor + PROMPT.len() as u16))?;
-            editor.cursor_line.set(0);
+            let last_line = editor.cursor_line.get();
+            if let Some(prev_line) = cursor_line.checked_sub(cursor_line)
+                .filter(|&prev_line| prev_line > 0)
+            {
+                editor.cursor_line.set(cursor_line);
+                queue!(term, cursor::MoveToPreviousLine(prev_line))?;
+            } else if last_line < cursor_line {
+                editor.cursor_line.set(cursor_line);
+                queue!(term, style::Print("\n"))?;
+            }
+
+            queue!(term, cursor::MoveToColumn(cursor_column))?;
         },
         State::Command => {
             let (cmdcur, fill) = editor.cmd.ready_render(buf, Some(editor.columns));
@@ -122,15 +151,23 @@ pub fn render_line(
             )?;
 
             if editor.cmd.is_empty() {
-                queue!(
-                    term,
-                    cursor::MoveToPreviousLine(1),
-                    cursor::MoveToColumn(cursor + PROMPT.len() as u16)
-                )?;
-                editor.cursor_line.set(0);
+                let last_line = editor.cursor_line.get();
+                if let Some(prev_line) = last_line.checked_sub(cursor_line)
+                    .filter(|&line| line > 0)
+                {
+                    editor.cursor_line.set(cursor_line);
+                    queue!(term, cursor::MoveToPreviousLine(prev_line + 1))?;
+                } else if last_line < cursor_line {
+                    editor.cursor_line.set(cursor_line);
+                    queue!(term, style::Print("\n"))?;
+                } else {
+                    queue!(term, cursor::MoveToPreviousLine(1))?;
+                }
+
+                queue!(term, cursor::MoveToColumn(cursor_column))?;
             } else {
                 queue!(term, cursor::MoveToColumn(cmdcur))?;
-                editor.cursor_line.set(1);
+                editor.cursor_line.set(editor.cursor_line.get() + 1);
             }
         },
         _ => ()
