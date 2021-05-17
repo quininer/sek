@@ -1,7 +1,4 @@
 use std::{ io, fmt };
-use std::marker::Unpin;
-use bumpalo::collections::Vec;
-use tokio::io::AsyncRead;
 
 
 #[derive(Clone, Copy)]
@@ -77,23 +74,4 @@ impl io::Write for DynWriter<'_> {
     fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
         self.0.write_vectored(bufs)
     }
-}
-
-pub async fn read_to_end<R: AsyncRead + Unpin>(
-    mut reader: R,
-    tmpbuf: &mut [u8],
-    outbuf: &mut Vec<'_, u8>
-) -> io::Result<()> {
-    use tokio::io::AsyncReadExt;
-
-    loop {
-        let n = reader.read(tmpbuf).await?;
-        if n == 0 {
-            break
-        }
-
-        outbuf.extend_from_slice(&tmpbuf[..n]);
-    }
-
-    Ok(())
 }

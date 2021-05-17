@@ -5,12 +5,11 @@ use std::process::{ Stdio, ExitStatus };
 use anyhow::Context as AnyhowContext;
 use bstr::ByteSlice;
 use bumpalo::collections::Vec;
-use tokio::io::AsyncReadExt;
+use tokio::io::{ AsyncRead, AsyncReadExt };
 use if_chain::if_chain;
 use crate::shell::Shell;
 use crate::shell::parser::type_::*;
 use crate::shell::process::{ ShellCommand, to_stdio };
-use crate::util::read_to_end;
 
 
 type Push<'a> = &'a mut dyn FnMut(&[u8]) -> anyhow::Result<()>;
@@ -291,16 +290,14 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &mut Shell, push: &mut Opt
                 let bump = shell.bump.clone();
                 let bump = bump.borrow();
                 let mut tmpbuf = bumpalo::vec![in &bump; 0; 1024];
-                let mut outbuf = Vec::new_in(&bump);
 
                 // The size is limited here just to avoid stdout may occupy memory indefinitely.
                 read_to_end(
                     stdout.take(shell.arg_max as u64),
                     &mut tmpbuf,
-                    &mut outbuf
+                    push
                 ).await?;
 
-                push(&outbuf)?;
                 is_push = true;
             }
 
@@ -318,4 +315,21 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &mut Shell, push: &mut Opt
     }
 
     ret
+}
+
+async fn read_to_end<R: AsyncRead + Unpin>(
+    mut reader: R,
+    tmpbuf: &mut [u8],
+    push: Push<'_>
+) -> anyhow::Result<()> {
+    loop {
+        let n = reader.read(tmpbuf).await?;
+        if n == 0 {
+            break
+        }
+
+        push(&tmpbuf[..n])?;
+    }
+
+    Ok(())
 }
