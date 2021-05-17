@@ -169,8 +169,7 @@ pub fn render_line(
                 queue!(term, cursor::MoveToColumn(cmdcur))?;
                 editor.cursor_line.set(editor.cursor_line.get() + 1);
             }
-        },
-        _ => ()
+        }
     }
 
     term.flush()?;

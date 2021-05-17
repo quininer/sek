@@ -29,14 +29,6 @@ impl Buffer {
         }
     }
 
-    pub fn first(&self) -> Option<char> {
-        if let Some(line) = self.history.get() {
-            line.chars().next()
-        } else {
-            self.buf.first().copied()
-        }
-    }
-
     pub fn push(&mut self, c: char) {
         self.make();
         self.buf.insert(self.cur, c);
@@ -61,6 +53,11 @@ impl Buffer {
     pub fn move_head(&mut self) {
         self.make();
         self.cur = 0;
+    }
+
+    pub fn move_end(&mut self) {
+        self.make();
+        self.cur = self.buf.len();
     }
 
     pub fn move_left(&mut self) {

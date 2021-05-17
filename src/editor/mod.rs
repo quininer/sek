@@ -1,13 +1,14 @@
 pub mod buffer;
 pub mod history;
 pub mod render;
-// pub mod command;
+pub mod command;
 
 
 use std::cell::Cell;
 use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
 use crate::shell::{ Shell, Action };
 use crate::editor::buffer::Buffer;
+use crate::editor::command::execute_command;
 
 pub struct Editor {
     pub line: Buffer,
@@ -22,8 +23,6 @@ pub struct Editor {
 enum State {
     Edit,
     Command,
-    Selection,
-    Completion
 }
 
 impl Editor {
@@ -99,9 +98,7 @@ impl Editor {
                 KeyCode::Up => self.cmd.history.up(),
                 KeyCode::Down => self.cmd.history.down(),
                 KeyCode::Esc => self.cmd.clear(),
-                KeyCode::Enter => {
-                    // TODO
-                },
+                KeyCode::Enter => return execute_command(self, shell),
                 _ => ()
             },
             // command selection

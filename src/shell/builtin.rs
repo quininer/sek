@@ -21,8 +21,8 @@ type CommandFn = for<'a> fn(&'a mut Shell, &'a str, &'a Command<'_>)
 pub async fn try_command(shell: &mut Shell, line: &str, cmd: &Command<'_>) -> anyhow::Result<bool> {
     let exe = &line[cmd.exe.0.clone()];
 
-    for (name, cmdfn) in BUILTIN_COMMANDS {
-        if exe.eq_ignore_ascii_case(name) {
+    for &(name, cmdfn) in BUILTIN_COMMANDS {
+        if exe == name {
             cmdfn(shell, line, cmd).await?;
             return Ok(true);
         }
