@@ -105,6 +105,16 @@ impl Shell {
             let _ = terminal::enable_raw_mode();
         };
 
+        let join = tokio::spawn(async {
+            loop {
+                if let Err(err) = signal::ctrl_c().await {
+                    return err;
+                }
+            }
+        });
+        let mut join = scopeguard::guard(join, |join| join.abort());
+        let join = &mut *join;
+
         tokio::select!{
             ret = shell_execute(self, line, &cmd) => match ret {
                 Ok(status) => self.last_status = status,
@@ -118,10 +128,7 @@ impl Shell {
                     self.last_status = false;
                 }
             },
-            ret = signal::ctrl_c() => {
-                ret?;
-                self.last_status = false;
-            }
+            err = join => return Err(err?.into())
         };
 
         self.morgue.wait().await?;
