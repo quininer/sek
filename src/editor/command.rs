@@ -11,7 +11,7 @@ pub const EDITOR_COMMANDS: &[(&str, CommandFn)] = &[
 ];
 
 type CommandFn = for<'a> fn(&'a Bump, &'a mut Editor, &'a mut Shell)
-    -> anyhow::Result<Action>;
+    -> Action;
 
 pub fn execute_command(editor: &mut Editor, shell: &mut Shell) -> anyhow::Result<Action> {
     let bump = shell.bump.clone();
@@ -24,18 +24,18 @@ pub fn execute_command(editor: &mut Editor, shell: &mut Shell) -> anyhow::Result
 
     for &(name, editfn) in EDITOR_COMMANDS {
         if buf == name {
-            return editfn(&bump, editor, shell);
+            return Ok(editfn(&bump, editor, shell));
         }
     }
 
     Ok(Action::Continue)
 }
 
-fn quit(_bump: &Bump, _editor: &mut Editor, _shell: &mut Shell) -> anyhow::Result<Action> {
-    Ok(Action::Stop)
+fn quit(_bump: &Bump, _editor: &mut Editor, _shell: &mut Shell) -> Action {
+    Action::Stop
 }
 
-fn alias_expand(bump: &Bump, editor: &mut Editor, shell: &mut Shell) -> anyhow::Result<Action> {
+fn alias_expand(bump: &Bump, editor: &mut Editor, shell: &mut Shell) -> Action {
     let mut buf = String::with_capacity_in(editor.line.len() + 16, bump);
     editor.line.read_into(&mut buf);
     shell.alias.replace(&mut buf);
@@ -44,6 +44,5 @@ fn alias_expand(bump: &Bump, editor: &mut Editor, shell: &mut Shell) -> anyhow::
         editor.line.push(c);
     }
     editor.line.move_end();
-
-    Ok(Action::Continue)
+    Action::Continue
 }
