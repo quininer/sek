@@ -124,7 +124,7 @@ pub fn render_line(
     match editor.state {
         State::Edit => {
             let last_line = editor.cursor_line.get();
-            if let Some(prev_line) = cursor_line.checked_sub(cursor_line)
+            if let Some(prev_line) = last_line.checked_sub(cursor_line)
                 .filter(|&prev_line| prev_line > 0)
             {
                 editor.cursor_line.set(cursor_line);
