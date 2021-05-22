@@ -12,6 +12,7 @@ const MAX_ENTRY_CAP: usize = 1024;
 pub struct PathSelector {
     min_cap: usize,
     path: PathBuf,
+    glob: Option<glob::Pattern>,
     parent: List,
     current: List,
     sub: List
@@ -43,25 +44,34 @@ impl PathSelector {
         PathSelector {
             min_cap: cmp::max(columns / 2, 1) as usize,
             path: PathBuf::new(),
+            glob: None,
             parent: List::default(),
             current: List::default(),
             sub: List::default()
         }
     }
 
+    pub fn set_columns(&mut self, columns: u16) {
+        self.min_cap = cmp::max(columns / 2, 1) as usize;
+    }
+
+    pub fn set_glob(&mut self, glob: Option<glob::Pattern>) {
+        self.glob = glob;
+    }
+
     pub fn cd(&mut self, path: &Path) -> anyhow::Result<()> {
         self.path.push(path);
 
-        self.current.cd(&self.path, MAX_ENTRY_CAP, None)?;
+        self.current.cd(&self.path, None, self.glob.as_ref(), MAX_ENTRY_CAP)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.min_cap, self.path.file_name())?;
+            self.parent.cd(parent, self.path.file_name(), self.glob.as_ref(), self.min_cap)?;
         } else {
             self.parent.clear();
         }
 
         if let Some(sub) = self.current.queue.get(self.current.cur) {
-            self.sub.cd(&sub.entry.path(), self.min_cap, None)?;
+            self.sub.cd(&sub.entry.path(), None, self.glob.as_ref(), self.min_cap)?;
         } else {
             self.sub.clear();
         }
@@ -76,7 +86,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), self.min_cap, None)?;
+                self.sub.cd(&sub.entry.path(), None, self.glob.as_ref(), self.min_cap)?;
             } else {
                 self.sub.clear();
             }
@@ -93,7 +103,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), self.min_cap, None)?;
+                self.sub.cd(&sub.entry.path(), None, self.glob.as_ref(), self.min_cap)?;
             } else {
                 self.sub.clear();
             }
@@ -110,10 +120,10 @@ impl PathSelector {
         mem::swap(&mut self.current, &mut self.sub);
         mem::swap(&mut self.parent, &mut self.current);
 
-        self.current.fill()?;
+        self.current.fill(self.glob.as_ref())?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.min_cap, self.path.file_name())?;
+            self.parent.cd(parent, self.path.file_name(), self.glob.as_ref(), self.min_cap)?;
         } else {
             self.parent.clear();
         }
@@ -131,10 +141,10 @@ impl PathSelector {
             mem::swap(&mut self.parent, &mut self.current);
             mem::swap(&mut self.current, &mut self.sub);
 
-            self.current.fill()?;
+            self.current.fill(self.glob.as_ref())?;
 
             if let Some(sub) = self.current.queue.get(self.current.cur) {
-                self.sub.cd(&sub.entry.path(), self.min_cap, None)?;
+                self.sub.cd(&sub.entry.path(), None, self.glob.as_ref(), self.min_cap)?;
             } else {
                 self.sub.clear();
             }
@@ -145,12 +155,27 @@ impl PathSelector {
 }
 
 impl List {
-    fn cd(&mut self, path: &Path, cap: usize, lookup: Option<&OsStr>) -> anyhow::Result<()> {
+    fn cd(&mut self,
+        path: &Path,
+        lookup: Option<&OsStr>,
+        glob: Option<&glob::Pattern>,
+        cap: usize,
+    ) -> anyhow::Result<()> {
         self.queue.clear();
         let mut readdir = path.read_dir()?;
 
-        for entry in readdir.by_ref().take(cap) {
-            self.queue.push(Entry::new(entry?)?);
+        for entry in readdir.by_ref()
+            .filter_map(Result::ok)
+            .filter(|entry| if let Some(glob) = glob {
+                let file_name = entry.file_name();
+                let file_name = file_name.to_string_lossy();
+                glob.matches(&file_name)
+            } else {
+                true
+            })
+            .take(cap)
+        {
+            self.queue.push(Entry::new(entry)?);
         }
 
         self.queue.sort_by(|x, y| match Ord::cmp(&x.ty, &y.ty) {
@@ -171,14 +196,24 @@ impl List {
         Ok(())
     }
 
-    fn fill(&mut self) -> anyhow::Result<()> {
+    fn fill(&mut self, glob: Option<&glob::Pattern>) -> anyhow::Result<()> {
         let readdir = match self.readdir.take() {
             Some(readdir) => readdir,
             None => return Ok(())
         };
 
-        for entry in readdir.take(MAX_ENTRY_CAP - self.queue.len()) {
-            self.queue.push(Entry::new(entry?)?);
+        for entry in readdir
+            .filter_map(Result::ok)
+            .filter(|entry| if let Some(glob) = glob {
+                let file_name = entry.file_name();
+                let file_name = file_name.to_string_lossy();
+                glob.matches(&file_name)
+            } else {
+                true
+            })
+            .take(MAX_ENTRY_CAP - self.queue.len())
+        {
+            self.queue.push(Entry::new(entry)?);
         }
 
         self.queue.sort_by(|x, y| match Ord::cmp(&x.ty, &y.ty) {
