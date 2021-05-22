@@ -12,10 +12,17 @@ const MAX_ENTRY_CAP: usize = 1024;
 pub struct PathSelector {
     min_cap: usize,
     path: PathBuf,
-    glob: Option<glob::Pattern>,
+    filter: Filter,
     parent: List,
     current: List,
     sub: List
+}
+
+#[derive(Debug)]
+struct Filter {
+    glob: Option<glob::Pattern>,
+    skip_dot: bool,
+    case_sensitive: bool
 }
 
 #[derive(Default, Debug)]
@@ -44,7 +51,7 @@ impl PathSelector {
         PathSelector {
             min_cap: cmp::max(columns / 2, 1) as usize,
             path: PathBuf::new(),
-            glob: None,
+            filter: Filter::default(),
             parent: List::default(),
             current: List::default(),
             sub: List::default()
@@ -56,22 +63,30 @@ impl PathSelector {
     }
 
     pub fn set_glob(&mut self, glob: Option<glob::Pattern>) {
-        self.glob = glob;
+        self.filter.glob = glob;
+    }
+
+    pub fn set_skip_dot(&mut self, flag: bool) {
+        self.filter.skip_dot = flag;
+    }
+
+    pub fn set_case_sensitive(&mut self, flag: bool) {
+        self.filter.case_sensitive = flag;
     }
 
     pub fn cd(&mut self, path: &Path) -> anyhow::Result<()> {
         self.path.push(path);
 
-        self.current.cd(&self.path, None, self.glob.as_ref(), MAX_ENTRY_CAP)?;
+        self.current.cd(&self.path, None, &self.filter, MAX_ENTRY_CAP)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), self.glob.as_ref(), self.min_cap)?;
+            self.parent.cd(parent, self.path.file_name(), &self.filter, self.min_cap)?;
         } else {
             self.parent.clear();
         }
 
         if let Some(sub) = self.current.queue.get(self.current.cur) {
-            self.sub.cd(&sub.entry.path(), None, self.glob.as_ref(), self.min_cap)?;
+            self.sub.cd(&sub.entry.path(), None, &self.filter, self.min_cap)?;
         } else {
             self.sub.clear();
         }
@@ -86,7 +101,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, self.glob.as_ref(), self.min_cap)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.min_cap)?;
             } else {
                 self.sub.clear();
             }
@@ -103,7 +118,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, self.glob.as_ref(), self.min_cap)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.min_cap)?;
             } else {
                 self.sub.clear();
             }
@@ -120,10 +135,10 @@ impl PathSelector {
         mem::swap(&mut self.current, &mut self.sub);
         mem::swap(&mut self.parent, &mut self.current);
 
-        self.current.fill(self.glob.as_ref())?;
+        self.current.fill(&self.filter)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), self.glob.as_ref(), self.min_cap)?;
+            self.parent.cd(parent, self.path.file_name(), &self.filter, self.min_cap)?;
         } else {
             self.parent.clear();
         }
@@ -141,10 +156,10 @@ impl PathSelector {
             mem::swap(&mut self.parent, &mut self.current);
             mem::swap(&mut self.current, &mut self.sub);
 
-            self.current.fill(self.glob.as_ref())?;
+            self.current.fill(&self.filter)?;
 
             if let Some(sub) = self.current.queue.get(self.current.cur) {
-                self.sub.cd(&sub.entry.path(), None, self.glob.as_ref(), self.min_cap)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.min_cap)?;
             } else {
                 self.sub.clear();
             }
@@ -154,11 +169,37 @@ impl PathSelector {
     }
 }
 
+impl Default for Filter {
+    fn default() -> Filter {
+        Filter {
+            glob: None,
+            skip_dot: true,
+            case_sensitive: true
+        }
+    }
+}
+
+impl Filter {
+    fn matches(&self, name: &str) -> bool {
+        if let Some(glob) = self.glob.as_ref() {
+            let mut options = glob::MatchOptions::default();
+            options.case_sensitive = self.case_sensitive;
+            options.require_literal_separator = true;
+            options.require_literal_leading_dot = self.skip_dot;
+            glob.matches_with(name, options)
+        } else if self.skip_dot {
+            !name.starts_with('.')
+        } else {
+            true
+        }
+    }
+}
+
 impl List {
     fn cd(&mut self,
         path: &Path,
         lookup: Option<&OsStr>,
-        glob: Option<&glob::Pattern>,
+        filter: &Filter,
         cap: usize,
     ) -> anyhow::Result<()> {
         self.queue.clear();
@@ -166,12 +207,10 @@ impl List {
 
         for entry in readdir.by_ref()
             .filter_map(Result::ok)
-            .filter(|entry| if let Some(glob) = glob {
+            .filter(|entry| {
                 let file_name = entry.file_name();
                 let file_name = file_name.to_string_lossy();
-                glob.matches(&file_name)
-            } else {
-                true
+                filter.matches(&file_name)
             })
             .take(cap)
         {
@@ -196,7 +235,7 @@ impl List {
         Ok(())
     }
 
-    fn fill(&mut self, glob: Option<&glob::Pattern>) -> anyhow::Result<()> {
+    fn fill(&mut self, filter: &Filter) -> anyhow::Result<()> {
         let readdir = match self.readdir.take() {
             Some(readdir) => readdir,
             None => return Ok(())
@@ -204,12 +243,10 @@ impl List {
 
         for entry in readdir
             .filter_map(Result::ok)
-            .filter(|entry| if let Some(glob) = glob {
+            .filter(|entry| {
                 let file_name = entry.file_name();
                 let file_name = file_name.to_string_lossy();
-                glob.matches(&file_name)
-            } else {
-                true
+                filter.matches(&file_name)
             })
             .take(MAX_ENTRY_CAP - self.queue.len())
         {
@@ -292,19 +329,19 @@ fn test_path_selector() -> anyhow::Result<()> {
 
     selector.cd(&dir.join("home").join("user").join(".config"))?;
     assert_eq!(selector.path, dir.join("home").join("user").join(".config"));
-    assert_eq!(selector.parent.queue.len(), 2);
+    assert_eq!(selector.parent.queue.len(), 1);
     assert_eq!(selector.current.queue.len(), 0);
     assert_eq!(selector.sub.queue.len(), 0);
 
     selector.left()?;
     assert_eq!(selector.path, dir.join("home").join("user"));
     assert_eq!(selector.parent.queue.len(), 1);
-    assert_eq!(selector.current.queue.len(), 2);
+    assert_eq!(selector.current.queue.len(), 1);
     assert_eq!(selector.sub.queue.len(), 0);
 
     selector.down()?;
     assert_eq!(selector.parent.queue.len(), 1);
-    assert_eq!(selector.current.queue.len(), 2);
+    assert_eq!(selector.current.queue.len(), 1);
     assert_eq!(selector.sub.queue.len(), 0);
 
     selector.right()?;
@@ -314,7 +351,7 @@ fn test_path_selector() -> anyhow::Result<()> {
     assert_eq!(selector.path, dir.join("home"));
     assert_eq!(selector.parent.queue.len(), 2);
     assert_eq!(selector.current.queue.len(), 1);
-    assert_eq!(selector.sub.queue.len(), 2);
+    assert_eq!(selector.sub.queue.len(), 1);
 
     Ok(())
 }
