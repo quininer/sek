@@ -2,6 +2,7 @@ pub mod buffer;
 pub mod history;
 pub mod render;
 pub mod command;
+pub mod path_selector;
 
 
 use std::cell::Cell;
@@ -16,6 +17,7 @@ pub struct Editor {
     ready: Option<char>,
     cursor_line: Cell<u16>,
     columns: u16,
+    rows: u16,
     state: State
 }
 
@@ -27,13 +29,13 @@ enum State {
 
 impl Editor {
     pub fn new() -> anyhow::Result<Self> {
-    let (size, _) = crossterm::terminal::size()?;
+        let (columns, rows) = crossterm::terminal::size()?;
         Ok(Editor {
+            columns, rows,
             line: Buffer::default(),
             cmd: Buffer::default(),
             ready: None,
             cursor_line: Cell::new(0),
-            columns: size,
             state: State::Edit
         })
     }
@@ -41,7 +43,10 @@ impl Editor {
     pub async fn step(&mut self, shell: &mut Shell, event: Event) -> anyhow::Result<Action> {
         match (self.state, event) {
             // resize
-            (_, Event::Resize(size, _)) => self.columns = size,
+            (_, Event::Resize(columns, rows)) => {
+                self.columns = columns;
+                self.rows = rows;
+            },
             // edit to command
             (State::Edit, Event::Key(KeyEvent { modifiers, code }))
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))

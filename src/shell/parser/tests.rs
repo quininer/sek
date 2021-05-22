@@ -294,8 +294,6 @@ fn test_parse_command() -> anyhow::Result<()> {
 #[test]
 fn test_bad_command() -> anyhow::Result<()> {
     use crate::shell::parser::{ ErrorKind, Token };
-    use Output::*;
-    use Kind::*;
 
     let mut bump = Bump::new();
 

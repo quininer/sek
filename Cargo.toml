@@ -46,4 +46,10 @@ serde_json = "1"
 serde-tuple-vec-map = "1"
 
 # highlight
-xorf = "0.7"
+xorf = { version = "0.7" } # TODO default-features = false
+
+# path selector
+glob = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

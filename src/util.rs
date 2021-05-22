@@ -1,4 +1,6 @@
 use std::{ io, fmt };
+use std::ffi::OsStr;
+use std::cmp::Ordering;
 
 
 #[derive(Clone, Copy)]
@@ -74,4 +76,9 @@ impl io::Write for DynWriter<'_> {
     fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
         self.0.write_vectored(bufs)
     }
+}
+
+// TODO use human sort
+pub fn file_name_cmp(x: &OsStr, y: &OsStr) -> Ordering {
+    Ord::cmp(x, y)
 }
