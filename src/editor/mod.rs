@@ -18,13 +18,15 @@ pub struct Editor {
     cursor_line: Cell<u16>,
     columns: u16,
     rows: u16,
-    state: State
+    mode: Mode
 }
 
 #[derive(Clone, Copy, Debug)]
-enum State {
-    Edit,
-    Command,
+enum Mode {
+    Insert,
+    Normal,
+    Visual,
+    PathSelector
 }
 
 impl Editor {
@@ -36,32 +38,32 @@ impl Editor {
             cmd: Buffer::default(),
             ready: None,
             cursor_line: Cell::new(0),
-            state: State::Edit
+            mode: Mode::Insert
         })
     }
 
     pub async fn step(&mut self, shell: &mut Shell, event: Event) -> anyhow::Result<Action> {
-        match (self.state, event) {
+        match (self.mode, event) {
             // resize
             (_, Event::Resize(columns, rows)) => {
                 self.columns = columns;
                 self.rows = rows;
             },
             // edit to command
-            (State::Edit, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Insert, Event::Key(KeyEvent { modifiers, code }))
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::ALT && code == KeyCode::Char(' '))
             => {
-                self.state = State::Command;
+                self.mode = Mode::Normal;
             },
             // edit quit
-            (State::Edit, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Insert, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers == KM::CONTROL && code == KeyCode::Char('d')
                     && self.line.is_empty()
             => return Ok(Action::Stop),
             // edit input
-            (State::Edit, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Insert, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
             => match code {
                 KeyCode::Char('\r') => (),
@@ -78,20 +80,20 @@ impl Editor {
                 _ => ()
             },
             // command to command input
-            (State::Command, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
                     && (code == KeyCode::Char(':') || code == KeyCode::Char(';'))
             => {
                 self.cmd.push(':');
             },
             // command to command filter
-            (State::Command, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers == KM::NONE && code == KeyCode::Char('/')
             => {
                 self.cmd.push('/');
             },
             // command input
-            (State::Command, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE) && !self.cmd.is_empty()
             => match code {
                 KeyCode::Char('\r') => (),
@@ -107,14 +109,14 @@ impl Editor {
                 _ => ()
             },
             // command selection
-            (State::Command, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers == KM::NONE && self.cmd.is_empty()
             => match (self.ready.take(), code) {
                 // command to edit
-                (None, KeyCode::Char('i')) => self.state = State::Edit,
+                (None, KeyCode::Char('i')) => self.mode = Mode::Insert,
                 (None, KeyCode::Char('a')) => {
                     self.line.move_right();
-                    self.state = State::Edit;
+                    self.mode = Mode::Insert;
                 },
                 (None, KeyCode::Char('h')) => self.line.move_left(),
                 (None, KeyCode::Char('l')) => self.line.move_right(),

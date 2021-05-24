@@ -5,7 +5,7 @@ use bumpalo::Bump;
 use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
 use crossterm::{ queue, execute, cursor, style, terminal };
-use crate::editor::{ Editor, State };
+use crate::editor::{ Editor, Mode };
 use crate::shell::Shell;
 use crate::shell::parser::{ incomplete_parse_in, ParseFailed };
 use crate::util::{ Fill, FmtDebug };
@@ -121,8 +121,8 @@ pub fn render_line(
         }
     };
 
-    match editor.state {
-        State::Edit => {
+    match editor.mode {
+        Mode::Insert => {
             let last_line = editor.cursor_line.get();
             if let Some(prev_line) = last_line.checked_sub(cursor_line)
                 .filter(|&prev_line| prev_line > 0)
@@ -136,7 +136,7 @@ pub fn render_line(
 
             queue!(term, cursor::MoveToColumn(cursor_column))?;
         },
-        State::Command => {
+        Mode::Normal => {
             let (cmdcur, fill) = editor.cmd.ready_render(buf, Some(editor.columns));
 
             queue!(
@@ -169,7 +169,8 @@ pub fn render_line(
                 queue!(term, cursor::MoveToColumn(cmdcur))?;
                 editor.cursor_line.set(editor.cursor_line.get() + 1);
             }
-        }
+        },
+        _ => ()
     }
 
     term.flush()?;
