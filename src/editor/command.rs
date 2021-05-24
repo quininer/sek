@@ -6,7 +6,7 @@ use crate::editor::Editor;
 
 pub const EDITOR_COMMANDS: &[(&str, CommandFn)] = &[
     ("q", quit),
-    ("quic", quit),
+    ("quit", quit),
     ("alias-expand", alias_expand),
 ];
 
