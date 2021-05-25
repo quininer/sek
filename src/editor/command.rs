@@ -17,7 +17,7 @@ pub fn execute_command(editor: &mut Editor, shell: &mut Shell) -> anyhow::Result
     let bump = shell.bump.clone();
     let bump = bump.borrow();
 
-    let mut buf = String::with_capacity_in(8, &bump);
+    let mut buf = String::with_capacity_in(editor.cmd.len(), &bump);
     editor.cmd.read_into(&mut buf);
     editor.cmd.clear();
     let buf = buf.trim_start_matches(':').trim();

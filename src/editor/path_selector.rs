@@ -182,11 +182,11 @@ impl Default for Filter {
 impl Filter {
     fn matches(&self, name: &str) -> bool {
         if let Some(glob) = self.glob.as_ref() {
-            let mut options = glob::MatchOptions::default();
-            options.case_sensitive = self.case_sensitive;
-            options.require_literal_separator = true;
-            options.require_literal_leading_dot = self.skip_dot;
-            glob.matches_with(name, options)
+            glob.matches_with(name, glob::MatchOptions {
+                case_sensitive: self.case_sensitive,
+                require_literal_separator: true,
+                require_literal_leading_dot: self.skip_dot
+            })
         } else if self.skip_dot {
             !name.starts_with('.')
         } else {

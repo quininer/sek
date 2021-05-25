@@ -38,6 +38,7 @@ pub struct Theme {
     pub double_str: Style,
     pub chain: Style,
     pub redirect: Style,
+    pub comment: Style,
     pub error: Style
 }
 
@@ -67,6 +68,7 @@ impl Default for Theme {
             double_str: Style::new(3),
             chain: Style::new(39),
             redirect: Style::new(39),
+            comment: Style::new(128),
             error: Style::new(9),
         }
     }

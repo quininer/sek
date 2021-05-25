@@ -33,6 +33,13 @@ pub fn colour(shell: ShellRef<'_>, input: &str, term: &mut dyn io::Write, cmd: &
 
     cmd.colour(input, &mut state, &mut *term)?;
 
+    if state.bytes_count < input.len() {
+        if let Some(pos) = input[state.bytes_count..].find('#') {
+            Comment(state.bytes_count + pos..input.len())
+                .colour(input, &mut state, &mut *term)?;
+        }
+    }
+
     Ok(())
 }
 
@@ -84,6 +91,8 @@ struct Exe(Span);
 
 struct Empty(Span);
 
+struct Comment(Span);
+
 impl Command<'_> {
     fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
         Exe(self.exe.0.clone()).colour(line, state, term)?;
@@ -129,6 +138,18 @@ impl Empty {
             state.start(Style::default(), term)?;
             state.push_fill(self.0.end - self.0.start, term)?;
         }
+
+        Ok(())
+    }
+}
+
+impl Comment {
+    fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
+        Empty(state.bytes_count..self.0.start)
+            .colour(line, state, term)?;
+
+        state.start(state.shell.theme.comment, term)?;
+        state.push(&line[self.0.clone()], term)?;
 
         Ok(())
     }
