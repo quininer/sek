@@ -9,11 +9,13 @@ use std::cell::Cell;
 use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
 use crate::shell::{ Shell, Action };
 use crate::editor::buffer::Buffer;
+use crate::editor::path_selector::PathSelector;
 use crate::editor::command::execute_command;
 
 pub struct Editor {
     pub line: Buffer,
     pub cmd: Buffer,
+    path_selector: PathSelector,
     ready: Option<char>,
     cursor_line: Cell<u16>,
     columns: u16,
@@ -36,6 +38,7 @@ impl Editor {
             columns, rows,
             line: Buffer::default(),
             cmd: Buffer::default(),
+            path_selector: PathSelector::new(columns),
             ready: None,
             cursor_line: Cell::new(0),
             mode: Mode::Insert
@@ -49,7 +52,7 @@ impl Editor {
                 self.columns = columns;
                 self.rows = rows;
             },
-            // edit to command
+            // Insert to Normal
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code }))
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
@@ -57,12 +60,12 @@ impl Editor {
             => {
                 self.mode = Mode::Normal;
             },
-            // edit quit
+            // Quit
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers == KM::CONTROL && code == KeyCode::Char('d')
                     && self.line.is_empty()
             => return Ok(Action::Stop),
-            // edit input
+            // Insert
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
             => match code {
@@ -79,20 +82,20 @@ impl Editor {
                 KeyCode::Enter => return Ok(Action::Execute),
                 _ => ()
             },
-            // command to command input
+            // Normal Command
             (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
                     && (code == KeyCode::Char(':') || code == KeyCode::Char(';'))
             => {
                 self.cmd.push(':');
             },
-            // command to command filter
+            // Noraml Filter
             (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers == KM::NONE && code == KeyCode::Char('/')
             => {
                 self.cmd.push('/');
             },
-            // command input
+            // Normal Command input
             (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE) && !self.cmd.is_empty()
             => match code {
@@ -108,11 +111,11 @@ impl Editor {
                 KeyCode::Enter => return execute_command(self, shell),
                 _ => ()
             },
-            // command selection
+            // Noraml
             (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers == KM::NONE && self.cmd.is_empty()
             => match (self.ready.take(), code) {
-                // command to edit
+                // Normal to Insert
                 (None, KeyCode::Char('i')) => self.mode = Mode::Insert,
                 (None, KeyCode::Char('a')) => {
                     self.line.move_right();
@@ -125,6 +128,7 @@ impl Editor {
                 (None, KeyCode::Char('d')) => self.ready = Some('d'),
                 (None, KeyCode::Char('z')) => self.ready = Some('z'),
                 (None, KeyCode::Char('0')) => self.line.move_head(),
+                (None, KeyCode::Char('$')) => self.line.move_end(),
                 (None, KeyCode::Backspace) => self.line.move_left(),
                 (None, KeyCode::Left) => self.line.move_left(),
                 (None, KeyCode::Right) => self.line.move_right(),
