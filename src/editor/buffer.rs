@@ -1,7 +1,6 @@
 use std::{ cmp, fmt };
 use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
-use crate::util::Fill;
 use crate::editor::history::History;
 
 
@@ -91,35 +90,31 @@ impl Buffer {
         }
     }
 
-    pub fn ready_render<'a>(&self, buf: &'a mut String<'_>, fillsize: Option<u16>)
-        -> (u16, Fill)
+    pub fn read_into_and_width<'a>(&self, buf: &'a mut String<'_>)
+        -> (u16, u16)
     {
         buf.clear();
 
         if let Some(line) = self.history.get() {
             buf.push_str(line);
+            let width = buf.width() as u16 + 1;
 
-            (buf.width() as u16 + 1, Fill::empty(0))
+            (width, width)
         } else {
             for &c in &self.buf[..self.cur] {
                 buf.push(c);
             }
 
             let cursor_bytes = buf.len();
-            let cursor = buf.width() as u16 + 1;
+            let cursor_width = buf.width() as u16 + 1;
 
             for &c in &self.buf[self.cur..] {
                 buf.push(c);
             }
 
-            let len = fillsize
-                .and_then(|size| {
-                    let strlen = cursor + buf[cursor_bytes..].width() as u16;
-                    size.checked_sub(strlen)
-                })
-                .unwrap_or(0);
+            let all_width = cursor_width + buf[cursor_bytes..].width() as u16;
 
-            (cursor, Fill::empty(len))
+            (cursor_width, all_width)
         }
     }
 

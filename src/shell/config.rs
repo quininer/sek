@@ -113,7 +113,7 @@ impl AliasMap {
         use crate::shell::parser::Token;
 
         let mut lex = Token::lexer(&buf);
-        while let Some(token) = lex.next() {
+        for token in &mut lex {
             match token {
                 Token::Text => break,
                 Token::Empty => (),
@@ -176,8 +176,9 @@ pub async fn load(path: &Path) -> anyhow::Result<Shell> {
         term: io::stdout(),
         theme: config.theme.unwrap_or_default(),
         alias: AliasMap(config.alias),
-        arg_max: arg_max(),
         morgue: Morgue::default(),
-        last_status: true
+        arg_max: arg_max(),
+        last_status: true,
+        is_execute: false
     })
 }

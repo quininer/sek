@@ -5,7 +5,6 @@ pub mod command;
 pub mod path_selector;
 
 
-use std::cell::Cell;
 use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
 use crate::shell::{ Shell, Action };
 use crate::editor::buffer::Buffer;
@@ -17,10 +16,17 @@ pub struct Editor {
     pub cmd: Buffer,
     path_selector: PathSelector,
     ready: Option<char>,
-    cursor_line: Cell<u16>,
+    mode: Mode,
+    ui: Ui
+}
+
+#[derive(Default)]
+struct Ui {
     columns: u16,
     rows: u16,
-    mode: Mode
+    cursor_column: u16,
+    cursor_row: u16,
+    bottom: u16
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -35,13 +41,15 @@ impl Editor {
     pub fn new() -> anyhow::Result<Self> {
         let (columns, rows) = crossterm::terminal::size()?;
         Ok(Editor {
-            columns, rows,
             line: Buffer::default(),
             cmd: Buffer::default(),
             path_selector: PathSelector::new(columns),
             ready: None,
-            cursor_line: Cell::new(0),
-            mode: Mode::Insert
+            mode: Mode::Insert,
+            ui: Ui {
+                columns, rows,
+                ..Default::default()
+            }
         })
     }
 
@@ -49,8 +57,8 @@ impl Editor {
         match (self.mode, event) {
             // resize
             (_, Event::Resize(columns, rows)) => {
-                self.columns = columns;
-                self.rows = rows;
+                self.ui.columns = columns;
+                self.ui.rows = rows;
             },
             // Insert to Normal
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code }))
@@ -144,5 +152,4 @@ impl Editor {
 
         Ok(Action::Continue)
     }
-
 }

@@ -20,7 +20,7 @@ use crossterm::event::EventStream;
 use crate::shell::parser::type_::Command;
 use crate::shell::process::{ ShellCommand, Morgue };
 use crate::editor::Editor;
-use crate::editor::render::{ render_editor, render_line, report };
+use crate::editor::render::{ render, report, render_line };
 use crate::util::FmtDebug;
 pub use crate::shell::env::Env;
 pub use crate::shell::config::{ Theme, AliasMap };
@@ -32,9 +32,10 @@ pub struct Shell {
     pub env: Env,
     pub theme: Theme,
     pub alias: AliasMap,
-    pub arg_max: usize,
     pub morgue: Morgue,
-    pub last_status: bool
+    pub arg_max: usize,
+    pub last_status: bool,
+    pub is_execute: bool
 }
 
 pub enum Action {
@@ -48,13 +49,13 @@ impl Shell {
         let mut reader = EventStream::new();
         let mut editor = Editor::new()?;
 
-        render_editor(&editor, self, false)?;
+        render(&mut editor, self)?;
 
         while let Some(event) = reader.next().await {
             self.bump.borrow_mut().reset();
 
             let action = editor.step(self, event?).await?;
-            let mut execute = false;
+            self.is_execute = false;
 
             match action {
                 Action::Continue => (),
@@ -65,22 +66,22 @@ impl Shell {
                     let mut line = String::with_capacity_in(editor.line.len() + 16, &bump);
                     editor.line.read_into(&mut line);
                     self.alias.replace(&mut line);
-                    let line2 = line.trim_end().trim_end_matches(';');
+                    let line2 = line.trim_end();
 
                     if !line2.is_empty() {
                         match parser::parse_in(&bump, line2) {
                             Ok(cmd) => {
                                 execute!(&self.term, style::Print("\r\n"))?;
-                                execute = true;
+                                self.is_execute = true;
                                 self.execute(line2, cmd).await?;
                                 editor.line.history.push(line2);
                                 editor.line.clear();
                             },
                             Err(err) => {
                                 let width = line.width() as u16;
-                                render_line(&editor, self, &bump, &mut line, width, false)?;
+                                render_line(&bump, &mut editor, self, &mut line, width)?;
                                 queue!(&self.term, style::Print("\r\n"))?;
-                                report(&editor, self, &line, err)?;
+                                report(&mut editor, self, &line, err)?;
                                 self.last_status = false;
                             }
                         }
@@ -92,7 +93,7 @@ impl Shell {
                 Action::Stop => break
             };
 
-            render_editor(&editor, self, execute)?;
+            render(&mut editor, self)?;
         }
 
         Ok(())

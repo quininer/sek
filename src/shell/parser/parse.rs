@@ -260,7 +260,7 @@ impl SingleStr {
         let span = state.lex.span();
         let mut end = None;
 
-        while let Some(token) = state.lex.next() {
+        for token in &mut state.lex {
             state.last = token;
             if let Token::SingleQuote = token {
                 end = Some(state.lex.span().end);
@@ -492,7 +492,7 @@ impl<'c> Redirect<'c> {
         let (kind, append) = parse_redirect(state.lex.slice())
             .ok_or_else(|| bad(state, ErrorKind::UnsupportedRedirectType))?;
 
-        while let Some(token) = state.lex.next() {
+        for token in &mut state.lex {
             state.last = token;
             if token != Token::Empty {
                 state.again = Some(token);
