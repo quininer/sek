@@ -111,6 +111,10 @@ impl Env {
         self.userdir.home_dir()
     }
 
+    pub fn pwd(&self) -> &Path {
+        &self.pwd
+    }
+
     pub fn exists(&self, name: &[u8]) -> bool {
         self.exe_filter
             .as_ref()

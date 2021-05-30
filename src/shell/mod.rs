@@ -54,7 +54,20 @@ impl Shell {
         while let Some(event) = reader.next().await {
             self.bump.borrow_mut().reset();
 
-            let action = editor.step(self, event?).await?;
+            let action = match editor.step(self, event?).await {
+                Ok(action) => action,
+                Err(err) => {
+                    // TODO better error handle
+
+                    queue!(&self.term,
+                        style::Print("\r\n"),
+                        style::Print(format_args!("{:?}", err)),
+                        style::Print("\r\n")
+                    )?;
+
+                    Action::Continue
+                }
+            };
             self.is_execute = false;
 
             match action {

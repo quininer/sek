@@ -1,5 +1,7 @@
 use std::mem;
+use std::ops::Range;
 use std::ffi::OsStr;
+use std::borrow::Cow;
 use std::path::{ PathBuf, Path };
 use std::cmp::{ self, Ordering };
 use std::fs::{ self, ReadDir, DirEntry };
@@ -10,12 +12,13 @@ const MAX_ENTRY_CAP: usize = 1024;
 
 #[derive(Debug)]
 pub struct PathSelector {
-    min_cap: usize,
+    space: usize,
     path: PathBuf,
     filter: Filter,
-    parent: List,
-    current: List,
-    sub: List
+    pub need_init: bool,
+    pub parent: List,
+    pub current: List,
+    pub sub: List
 }
 
 #[derive(Debug)]
@@ -27,6 +30,7 @@ struct Filter {
 
 #[derive(Default, Debug)]
 pub struct List {
+    window: Range<usize>,
     cur: usize,
     queue: Vec<Entry>,
     readdir: Option<ReadDir>
@@ -47,19 +51,20 @@ pub enum EntryType {
 }
 
 impl PathSelector {
-    pub fn new(columns: u16) -> PathSelector {
+    pub fn new(space: usize) -> PathSelector {
         PathSelector {
-            min_cap: cmp::max(columns / 2, 1) as usize,
+            space,
             path: PathBuf::new(),
             filter: Filter::default(),
+            need_init: false,
             parent: List::default(),
             current: List::default(),
             sub: List::default()
         }
     }
 
-    pub fn set_columns(&mut self, columns: u16) {
-        self.min_cap = cmp::max(columns / 2, 1) as usize;
+    pub fn set_space(&mut self, space: usize) {
+        self.space = space;
     }
 
     pub fn set_glob(&mut self, glob: Option<glob::Pattern>) {
@@ -74,19 +79,23 @@ impl PathSelector {
         self.filter.case_sensitive = flag;
     }
 
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn cd(&mut self, path: &Path) -> anyhow::Result<()> {
         self.path.push(path);
 
         self.current.cd(&self.path, None, &self.filter, MAX_ENTRY_CAP)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), &self.filter, self.min_cap)?;
+            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space)?;
         } else {
             self.parent.clear();
         }
 
         if let Some(sub) = self.current.queue.get(self.current.cur) {
-            self.sub.cd(&sub.entry.path(), None, &self.filter, self.min_cap)?;
+            self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
         } else {
             self.sub.clear();
         }
@@ -101,7 +110,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.min_cap)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -118,7 +127,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.min_cap)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -138,7 +147,7 @@ impl PathSelector {
         self.current.fill(&self.filter)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), &self.filter, self.min_cap)?;
+            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space)?;
         } else {
             self.parent.clear();
         }
@@ -159,7 +168,7 @@ impl PathSelector {
             self.current.fill(&self.filter)?;
 
             if let Some(sub) = self.current.queue.get(self.current.cur) {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.min_cap)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -200,7 +209,7 @@ impl List {
         path: &Path,
         lookup: Option<&OsStr>,
         filter: &Filter,
-        cap: usize,
+        space: usize,
     ) -> anyhow::Result<()> {
         self.queue.clear();
         let mut readdir = path.read_dir()?;
@@ -212,7 +221,7 @@ impl List {
                 let file_name = file_name.to_string_lossy();
                 filter.matches(&file_name)
             })
-            .take(cap)
+            .take(space)
         {
             self.queue.push(Entry::new(entry)?);
         }
@@ -267,12 +276,24 @@ impl List {
         self.queue.clear();
         self.readdir.take();
     }
+
+    pub fn take(&self, space: usize) -> impl Iterator<Item = &Entry> {
+        // TODO window
+
+        self.queue.iter()
+    }
 }
 
 impl Entry {
     pub fn new(entry: DirEntry) -> anyhow::Result<Entry> {
         let ty = EntryType::from(entry.file_type()?);
         Ok(Entry { entry, ty })
+    }
+
+    pub fn name(&self) -> Cow<'_, OsStr> {
+        // TODO use https://github.com/rust-lang/rust/issues/85573
+
+        Cow::Owned(self.entry.file_name())
     }
 }
 

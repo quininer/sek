@@ -40,20 +40,21 @@ impl<T: std::fmt::Debug> fmt::Display for FmtDebug<T> {
 
 #[inline]
 pub fn arg_max() -> usize {
-    const DEFAULT_MAX_LIMIT: usize = 16 * 1024;
-    const DEFAULT_MIN_LIMIT: usize = 4 * 1024;
+    const DEFAULT_LIMIT: usize = 16 * 1024;
 
     #[cfg(unix)]
     fn arg_max_limit() -> usize {
+        const DEFAULT_MIN_LIMIT: usize = 4 * 1024;
+
         match unsafe { libc::sysconf(libc::_SC_ARG_MAX) } {
-            -1 => DEFAULT_MAX_LIMIT,
+            -1 => DEFAULT_LIMIT,
             n => std::cmp::max(n as usize, DEFAULT_MIN_LIMIT)
         }
     }
 
     #[cfg(windows)]
     fn arg_max_limit() -> usize {
-        DEFAULT_MAX_LIMIT
+        DEFAULT_LIMIT
     }
 
     arg_max_limit()

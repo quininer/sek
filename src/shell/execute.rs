@@ -292,11 +292,8 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &mut Shell, push: &mut Opt
                 let mut tmpbuf = bumpalo::vec![in &bump; 0; 1024];
 
                 // The size is limited here just to avoid stdout may occupy memory indefinitely.
-                read_to_end(
-                    stdout.take(shell.arg_max as u64),
-                    &mut tmpbuf,
-                    push
-                ).await?;
+                let stdout = stdout.take(shell.arg_max as u64);
+                read_to_end(stdout, &mut tmpbuf, push).await?;
 
                 is_push = true;
             }

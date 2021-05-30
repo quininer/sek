@@ -1,4 +1,5 @@
 use std::{ cmp, fmt };
+use std::path::Path;
 use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
 use crate::editor::history::History;
@@ -32,6 +33,17 @@ impl Buffer {
         self.make();
         self.buf.insert(self.cur, c);
         self.cur += 1;
+    }
+
+    pub fn insert_path(&mut self, path: &Path) {
+        use bstr::{ ByteVec, ByteSlice };
+
+        let path = Vec::from_path_lossy(path);
+
+        for c in path.chars() {
+            self.buf.insert(self.cur, c);
+            self.cur += 1;
+        }
     }
 
     pub fn backspace(&mut self) {

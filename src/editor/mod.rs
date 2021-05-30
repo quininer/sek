@@ -43,7 +43,7 @@ impl Editor {
         Ok(Editor {
             line: Buffer::default(),
             cmd: Buffer::default(),
-            path_selector: PathSelector::new(columns),
+            path_selector: PathSelector::new(std::cmp::max(rows / 2, 1) as usize),
             ready: None,
             mode: Mode::Insert,
             ui: Ui {
@@ -59,6 +59,7 @@ impl Editor {
             (_, Event::Resize(columns, rows)) => {
                 self.ui.columns = columns;
                 self.ui.rows = rows;
+                self.path_selector.set_space(self.ui.available_space());
             },
             // Insert to Normal
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code }))
@@ -78,15 +79,20 @@ impl Editor {
                 if modifiers.contains(KM::SHIFT & KM::NONE)
             => match code {
                 KeyCode::Char('\r') => (),
-                KeyCode::Char(c) => {
-                    self.line.push(c);
-
-                    // TODO cursor
-                },
+                KeyCode::Char(c) => self.line.push(c),
                 KeyCode::Backspace => self.line.backspace(),
                 KeyCode::Delete => self.line.delete(),
                 KeyCode::Left => self.line.move_left(),
                 KeyCode::Right => self.line.move_right(),
+                KeyCode::Tab => {
+                    // TODO
+                    // completion daemon
+
+                    self.path_selector.set_space(self.ui.available_space());
+                    self.path_selector.cd(shell.env.pwd())?;
+                    self.path_selector.need_init = true;
+                    self.mode = Mode::PathSelector;
+                },
                 KeyCode::Enter => return Ok(Action::Execute),
                 _ => ()
             },
@@ -147,9 +153,38 @@ impl Editor {
                 (Some('z'), KeyCode::Char('h')) => shell.env.go_home()?,
                 _ => ()
             },
+            (Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
+                if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
+                    || (modifiers == KM::NONE && code == KeyCode::Esc)
+            => {
+                self.mode = Mode::Insert;
+            },
+            (Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
+                if modifiers.contains(KM::SHIFT & KM::NONE)
+            => match code {
+                KeyCode::Char('h') => self.path_selector.left()?,
+                KeyCode::Char('l') => self.path_selector.right()?,
+                KeyCode::Char('j') => self.path_selector.down()?,
+                KeyCode::Char('k') => self.path_selector.up()?,
+                KeyCode::Enter => {
+                    let path = self.path_selector.path();
+                    let path = path.strip_prefix(shell.env.pwd()).unwrap_or(path);
+                    self.line.insert_path(path);
+                    self.mode = Mode::Insert;
+                },
+                _ => ()
+            },
             _ => ()
         }
 
         Ok(Action::Continue)
+    }
+}
+
+impl Ui {
+    fn available_space(&self) -> usize {
+        self.rows.checked_sub(self.bottom)
+            .unwrap_or_default()
+            .into()
     }
 }
