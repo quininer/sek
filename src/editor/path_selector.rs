@@ -24,7 +24,7 @@ pub struct PathSelector {
 #[derive(Debug)]
 struct Filter {
     glob: Option<glob::Pattern>,
-    skip_dot: bool,
+    hidden_dot: bool,
     case_sensitive: bool
 }
 
@@ -71,12 +71,12 @@ impl PathSelector {
         self.filter.glob = glob;
     }
 
-    pub fn set_skip_dot(&mut self, flag: bool) {
-        self.filter.skip_dot = flag;
+    pub fn toggle_hidden_dot(&mut self) {
+        self.filter.hidden_dot = !self.filter.hidden_dot;
     }
 
-    pub fn set_case_sensitive(&mut self, flag: bool) {
-        self.filter.case_sensitive = flag;
+    pub fn toggle_case_sensitive(&mut self) {
+        self.filter.case_sensitive = !self.filter.case_sensitive;
     }
 
     pub fn path(&self) -> &Path {
@@ -92,18 +92,26 @@ impl PathSelector {
     }
 
     pub fn cd(&mut self, path: &Path) -> anyhow::Result<()> {
-        self.path.push(path);
+        let new_path = self.path.join(path).canonicalize()?;
+        let old_path = mem::replace(&mut self.path, new_path);
 
-        self.current.cd(&self.path, None, &self.filter, MAX_ENTRY_CAP)?;
+        if self.path == old_path {
+            let filename = self.current.get()
+                .map(|entry| entry.name().into_owned());
+            self.current.cd(&self.path, filename.as_deref(), &self.filter, self.space, MAX_ENTRY_CAP)?;
+        } else {
+            self.current.clear();
+            self.current.cd(&self.path, None, &self.filter, self.space, MAX_ENTRY_CAP)?;
+        }
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space)?;
+            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space, self.space)?;
         } else {
             self.parent.clear();
         }
 
         if let Some(sub) = self.current.queue.get(self.current.cur) {
-            self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
+            self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
         } else {
             self.sub.clear();
         }
@@ -125,7 +133,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -147,7 +155,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -167,7 +175,7 @@ impl PathSelector {
         self.current.fill(&self.filter)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space)?;
+            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space, self.space)?;
         } else {
             self.parent.clear();
         }
@@ -188,7 +196,7 @@ impl PathSelector {
             self.current.fill(&self.filter)?;
 
             if let Some(sub) = self.current.queue.get(self.current.cur) {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -202,7 +210,7 @@ impl Default for Filter {
     fn default() -> Filter {
         Filter {
             glob: None,
-            skip_dot: true,
+            hidden_dot: true,
             case_sensitive: true
         }
     }
@@ -214,9 +222,9 @@ impl Filter {
             glob.matches_with(name, glob::MatchOptions {
                 case_sensitive: self.case_sensitive,
                 require_literal_separator: true,
-                require_literal_leading_dot: self.skip_dot
+                require_literal_leading_dot: self.hidden_dot
             })
-        } else if self.skip_dot {
+        } else if self.hidden_dot {
             !name.starts_with('.')
         } else {
             true
@@ -230,6 +238,7 @@ impl List {
         lookup: Option<&OsStr>,
         filter: &Filter,
         space: usize,
+        cap: usize
     ) -> anyhow::Result<()> {
         self.queue.clear();
         let mut readdir = path.read_dir()?;
@@ -241,9 +250,11 @@ impl List {
                 let file_name = file_name.to_string_lossy();
                 filter.matches(&file_name)
             })
-            .take(space)
+            .take(cap)
         {
-            self.queue.push(Entry::new(entry)?);
+            if let Ok(entry) = Entry::new(entry) {
+                self.queue.push(entry);
+            }
         }
 
         self.queue.sort_by(|x, y| match Ord::cmp(&x.ty, &y.ty) {
@@ -252,11 +263,8 @@ impl List {
         });
 
         self.cur = if let Some(name) = lookup {
-            self.queue.binary_search_by(|e| match Ord::cmp(&e.ty, &EntryType::Dir) {
-                Ordering::Equal => file_name_cmp(&e.name(),  name),
-                ord => ord
-            })
-                .ok()
+            self.queue.iter()
+                .position(|e| e.name() == name)
                 .unwrap_or(0)
         } else {
             0
@@ -266,7 +274,7 @@ impl List {
 
         if !self.window.contains(&self.cur) || self.window.len() != space {
             self.window = if let Some(start) = self.cur.checked_sub(space) {
-                start..self.cur
+                (start + 1)..(self.cur + 1)
             } else {
                 0..space
             };
@@ -318,6 +326,14 @@ impl List {
             .skip(self.window.start)
             .map(move |(i, entry)| (i == self.cur, entry))
             .take(self.window.len())
+    }
+
+    pub fn to_top(&mut self) {
+        self.cur = 0;
+    }
+
+    pub fn to_bottom(&mut self) {
+        self.cur = self.queue.len().saturating_sub(1);
     }
 }
 

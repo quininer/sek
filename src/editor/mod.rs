@@ -164,18 +164,26 @@ impl Editor {
             },
             (Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
-            => match code {
-                KeyCode::Char('h') => self.path_selector.left()?,
-                KeyCode::Char('l') => self.path_selector.right()?,
-                KeyCode::Char('j') => self.path_selector.down()?,
-                KeyCode::Char('k') => self.path_selector.up()?,
-                KeyCode::Enter => if let Some(entry) = self.path_selector.current.get() {
+            => match (self.ready.take(), code) {
+                (None, KeyCode::Char('h')) => self.path_selector.left()?,
+                (None, KeyCode::Char('l')) => self.path_selector.right()?,
+                (None, KeyCode::Char('j')) => self.path_selector.down()?,
+                (None, KeyCode::Char('k')) => self.path_selector.up()?,
+                (None, KeyCode::Char('a')) => {
+                    self.path_selector.toggle_hidden_dot();
+                    self.path_selector.cd(".".as_ref())?;
+                },
+                (None, KeyCode::Char('c')) => self.path_selector.toggle_case_sensitive(),
+                (None, KeyCode::Char('g')) => self.ready = Some('g'),
+                (None, KeyCode::Char('G')) => self.path_selector.current.to_bottom(),
+                (None, KeyCode::Enter) => if let Some(entry) = self.path_selector.current.get() {
                     let path = entry.path();
                     let path = path.strip_prefix(shell.env.pwd()).unwrap_or(&path);
                     self.line.insert_path(path);
                     self.path_selector.clear();
                     self.mode = Mode::Insert;
                 },
+                (Some('g'), KeyCode::Char('g')) => self.path_selector.current.to_top(),
                 _ => ()
             },
             _ => ()

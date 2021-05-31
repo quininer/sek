@@ -13,12 +13,16 @@ use crossterm::terminal;
 use directories::ProjectDirs;
 
 
-/// Sek Shell
+/// The Sek Shell
 #[derive(FromArgs)]
 struct Options {
     /// use specified config
     #[argh(option, short = 'c')]
     config: Option<PathBuf>,
+
+    /// use specified pwd
+    #[argh(option, short = 'p')]
+    pwd: Option<PathBuf>,
 
     /// print version
     #[argh(switch, short = 'v')]
@@ -33,6 +37,10 @@ async fn main() -> anyhow::Result<()> {
         println!("{}", env!("CARGO_PKG_VERSION"));
 
         return Ok(());
+    }
+
+    if let Some(pwd) = options.pwd.take() {
+        std::env::set_current_dir(pwd)?;
     }
 
     let confpath = if let Some(path) = options.config.take() {
