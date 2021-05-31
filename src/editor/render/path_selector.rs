@@ -1,4 +1,4 @@
-use std::mem;
+use std::{ mem, fmt };
 use std::io::{ self, Write };
 use bumpalo::Bump;
 use bstr::{ ByteVec, ByteSlice };
@@ -42,14 +42,12 @@ pub fn render(
     )?;
 
     if let Some(entry) = editor.path_selector.current.get() {
-        // TODO color
-
         let name = entry.name();
         let name = Vec::from_os_str_lossy(&name);
         queue!(term, style::Print(name.as_bstr()))?;
     }
 
-    queue!(term, style::Print("\n"))?;
+    queue!(term, style::Print('\n'))?;
 
     let space = editor.ui.available_space().saturating_sub(RESERVE_SPACE);
     let mut parent = editor.path_selector.parent
@@ -75,7 +73,7 @@ pub fn render(
             entry.render(term)?;
         }
 
-        queue!(term, style::Print("\n"))?;
+        queue!(term, style::Print('\n'))?;
     }
 
     // TODO vi buffer
@@ -116,13 +114,18 @@ fn with(level: Level, width: u16)
 
 impl Item<'_> {
     fn render<W: io::Write>(&self, term: &mut W) -> anyhow::Result<()> {
+        fn cal(width: u16, scale: f32) -> u16 {
+            (width as f32 * scale) as u16
+        }
+
         let (start, len) = match self.level {
-            Level::Parent => (0, 30),
-            Level::Current => (31, 50),
-            Level::Sub => (81, 50)
+            Level::Parent => (0, cal(self.width, 0.2)),
+            Level::Current => (cal(self.width, 0.2) + 1, cal(self.width, 0.4)),
+            Level::Sub => (cal(self.width, 0.6) + 1, self.width - cal(self.width, 0.6))
         };
         let file_name = self.entry.name();
-        let file_name = file_name.to_string_lossy();
+        let file_name = Vec::from_os_str_lossy(&file_name);
+        let (file_name, fill) = name_width_limit(&file_name, len as usize);
 
         queue!(term, cursor::MoveToColumn(start))?;
 
@@ -135,14 +138,14 @@ impl Item<'_> {
         }
 
         queue!(term,
-            style::Print(" "),
-            style::Print(&file_name),
-            style::Print(" "),
+            style::Print(' '),
+            style::Print(file_name.as_bstr()),
+            style::Print(' '),
         )?;
 
         if self.selected {
             queue!(term,
-                style::Print(Fill::empty((len - file_name.len() - 3) as u16)),
+                style::Print(fill),
                 style::SetAttribute(style::Attribute::Reset),
                 style::ResetColor
             )?;
@@ -150,4 +153,22 @@ impl Item<'_> {
 
         Ok(())
     }
+}
+
+fn name_width_limit(name: &[u8], width: usize) -> (&[u8], Fill) {
+    use unicode_width::UnicodeWidthChar;
+
+    let mut width = width.saturating_sub(3);
+    let mut end = 0;
+
+    for (_, char_end, c) in name.char_indices() {
+        if let Some(result) = width.checked_sub(c.width().unwrap_or(0)) {
+            width = result;
+            end = char_end;
+        } else {
+            break
+        }
+    }
+
+    (&name[..end], Fill::empty(width as u16))
 }
