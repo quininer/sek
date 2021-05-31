@@ -57,14 +57,7 @@ impl Shell {
             let action = match editor.step(self, event?).await {
                 Ok(action) => action,
                 Err(err) => {
-                    // TODO better error handle
-
-                    queue!(&self.term,
-                        style::Print("\r\n"),
-                        style::Print(format_args!("{:?}", err)),
-                        style::Print("\r\n")
-                    )?;
-
+                    editor.error = Some(err);
                     Action::Continue
                 }
             };

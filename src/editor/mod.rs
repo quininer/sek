@@ -4,7 +4,7 @@ pub mod render;
 pub mod command;
 pub mod path_selector;
 
-
+use bumpalo::collections::String;
 use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
 use crate::shell::{ Shell, Action };
 use crate::editor::buffer::Buffer;
@@ -14,6 +14,7 @@ use crate::editor::command::execute_command;
 pub struct Editor {
     pub line: Buffer,
     pub cmd: Buffer,
+    pub error: Option<anyhow::Error>,
     path_selector: PathSelector,
     ready: Option<char>,
     mode: Mode,
@@ -29,7 +30,7 @@ struct Ui {
     bottom: u16
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Mode {
     Insert,
     Normal,
@@ -43,6 +44,7 @@ impl Editor {
         Ok(Editor {
             line: Buffer::default(),
             cmd: Buffer::default(),
+            error: None,
             path_selector: PathSelector::new(std::cmp::max(rows / 2, 1) as usize),
             ready: None,
             mode: Mode::Insert,
@@ -84,6 +86,8 @@ impl Editor {
                 KeyCode::Delete => self.line.delete(),
                 KeyCode::Left => self.line.move_left(),
                 KeyCode::Right => self.line.move_right(),
+                KeyCode::Up => self.line.history.up(),
+                KeyCode::Down => self.line.history.down(),
                 KeyCode::Tab => {
                     // TODO
                     // completion daemon
@@ -112,7 +116,7 @@ impl Editor {
                 self.cmd.push('/');
             },
             // Normal Command input
-            (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Normal | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE) && !self.cmd.is_empty()
             => match code {
                 KeyCode::Char('\r') => (),
@@ -124,7 +128,25 @@ impl Editor {
                 KeyCode::Up => self.cmd.history.up(),
                 KeyCode::Down => self.cmd.history.down(),
                 KeyCode::Esc => self.cmd.clear(),
-                KeyCode::Enter => return execute_command(self, shell),
+                KeyCode::Enter if self.mode == Mode::Normal
+                    => return execute_command(self, shell),
+                KeyCode::Enter if self.mode == Mode::PathSelector
+                => {
+                    let bump = shell.bump.clone();
+                    let bump = bump.borrow();
+                    let mut buf = String::with_capacity_in(self.cmd.len(), &bump);
+                    self.cmd.read_into(&mut buf);
+                    self.cmd.clear();
+                    let rule = if let Some(rule) = buf.strip_prefix('/')
+                        .filter(|buf| !buf.is_empty())
+                    {
+                        Some(glob::Pattern::new(rule)?)
+                    } else {
+                        None
+                    };
+                    self.path_selector.set_glob(rule);
+                    self.path_selector.cd(".".as_ref())?;
+                }
                 _ => ()
             },
             // Noraml
@@ -175,7 +197,11 @@ impl Editor {
                 },
                 (None, KeyCode::Char('c')) => self.path_selector.toggle_case_sensitive(),
                 (None, KeyCode::Char('g')) => self.ready = Some('g'),
-                (None, KeyCode::Char('G')) => self.path_selector.current.to_bottom(),
+                (None, KeyCode::Char('G')) => {
+                    self.path_selector.current.to_bottom();
+                    self.path_selector.cd(".".as_ref())?;
+                },
+                (None, KeyCode::Char('/')) => self.cmd.push('/'),
                 (None, KeyCode::Enter) => if let Some(entry) = self.path_selector.current.get() {
                     let path = entry.path();
                     let path = path.strip_prefix(shell.env.pwd()).unwrap_or(&path);
@@ -183,7 +209,10 @@ impl Editor {
                     self.path_selector.clear();
                     self.mode = Mode::Insert;
                 },
-                (Some('g'), KeyCode::Char('g')) => self.path_selector.current.to_top(),
+                (Some('g'), KeyCode::Char('g')) => {
+                    self.path_selector.current.to_top();
+                    self.path_selector.cd(".".as_ref())?;
+                },
                 _ => ()
             },
             _ => ()

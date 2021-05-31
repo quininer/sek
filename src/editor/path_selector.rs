@@ -85,6 +85,7 @@ impl PathSelector {
 
     pub fn clear(&mut self) {
         self.path.clear();
+        self.filter = Filter::default();
         self.need_init = false;
         self.parent.clear();
         self.current.clear();
@@ -326,6 +327,7 @@ impl List {
             .skip(self.window.start)
             .map(move |(i, entry)| (i == self.cur, entry))
             .take(self.window.len())
+            .take(space)
     }
 
     pub fn to_top(&mut self) {

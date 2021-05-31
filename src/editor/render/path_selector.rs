@@ -1,17 +1,17 @@
-use std::{ mem, fmt };
+use std::mem;
 use std::io::{ self, Write };
 use bumpalo::Bump;
+use bumpalo::collections::String;
 use bstr::{ ByteVec, ByteSlice };
 use scopeguard::guard;
 use crossterm::{ queue, style, cursor, terminal };
-use crossterm::style::{ Color, Attributes };
 use crate::shell::Shell;
 use crate::editor::Editor;
 use crate::editor::path_selector::Entry;
-use crate::util::Fill;
+use crate::util::{ Fill, FmtDebug };
 
 
-pub const RESERVE_SPACE: usize = 4;
+pub const RESERVE_SPACE: usize = 3;
 
 pub fn render(
     bump: &Bump,
@@ -60,7 +60,7 @@ pub fn render(
         .take(space)
         .map(with(Level::Sub, editor.ui.columns));
 
-    for i in 0..space {
+    for _ in 0..space {
         if let Some(entry) = parent.next() {
             entry.render(term)?;
         }
@@ -76,13 +76,32 @@ pub fn render(
         queue!(term, style::Print('\n'))?;
     }
 
-    // TODO vi buffer
-    queue!(term, style::Print("\r\n"))?;
+    if let Some(err) = editor.error.take() {
+        queue!(term,
+            cursor::MoveToColumn(0),
+            style::SetColors(style::Colors::new(style::Color::Black, style::Color::Red)),
+            style::Print(FmtDebug(err)),
+            style::ResetColor,
+        )?;
+    } else if !editor.cmd.is_empty() {
+        let mut buf = String::with_capacity_in(editor.cmd.len(), bump);
+        let (cmdcur, cmdwidth) = editor.cmd.read_into_and_width(&mut buf);
+        let fill = Fill::empty(editor.ui.columns.checked_sub(cmdwidth).unwrap_or(0));
 
-    queue!(term, cursor::MoveTo(
-        editor.ui.cursor_column.saturating_sub(1),
-        editor.ui.cursor_row
-    ))?;
+        queue!(term,
+            cursor::MoveToColumn(0),
+            style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
+            style::Print(&buf),
+            style::Print(fill),
+            style::ResetColor,
+            cursor::MoveToColumn(cmdcur)
+        )?;
+    } else {
+        queue!(term, cursor::MoveTo(
+            editor.ui.cursor_column.saturating_sub(1),
+            editor.ui.cursor_row
+        ))?;
+    }
 
     term.flush()?;
 

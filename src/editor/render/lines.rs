@@ -7,7 +7,7 @@ use crate::editor::{ Editor, Mode };
 use crate::shell::Shell;
 use crate::shell::parser::incomplete_parse_in;
 use crate::editor::render::{ highlight, PROMPT };
-use crate::util::Fill;
+use crate::util::{ Fill, FmtDebug };
 
 
 pub fn render(
@@ -45,10 +45,22 @@ pub fn render(
         }
     }
 
+    queue!(term, terminal::Clear(terminal::ClearType::FromCursorDown))?;
+
+    if let Some(err) = editor.error.take() {
+        queue!(term,
+            terminal::DisableLineWrap,
+            style::SetColors(style::Colors::new(style::Color::Black, style::Color::Red)),
+            style::Print(FmtDebug(err)),
+            style::ResetColor,
+            terminal::EnableLineWrap,
+            style::Print("\r\n")
+        )?;
+    }
+
     // TODO custom prompt
     queue!(
         term,
-        terminal::Clear(terminal::ClearType::FromCursorDown),
         style::SetForegroundColor(if shell.last_status {
             style::Color::Grey
         } else {
