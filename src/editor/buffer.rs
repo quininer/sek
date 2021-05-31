@@ -38,6 +38,8 @@ impl Buffer {
     pub fn insert_path(&mut self, path: &Path) {
         use bstr::{ ByteVec, ByteSlice };
 
+        self.make();
+
         let path = Vec::from_path_lossy(path);
 
         for c in path.chars() {

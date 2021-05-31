@@ -10,6 +10,7 @@ use crate::shell::Shell;
 use crate::shell::parser::ParseFailed;
 use crate::util::{ Fill, FmtDebug };
 pub use lines::render as render_line;
+pub use path_selector::RESERVE_SPACE as PATH_SELECTOR_RESERVE_SPACE;
 
 
 const PROMPT: &str = "~ ";

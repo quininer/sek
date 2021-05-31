@@ -1,12 +1,17 @@
-use std::{ io, mem };
+use std::mem;
+use std::io::{ self, Write };
 use bumpalo::Bump;
+use bstr::{ ByteVec, ByteSlice };
 use scopeguard::guard;
 use crossterm::{ queue, style, cursor, terminal };
 use crossterm::style::{ Color, Attributes };
 use crate::shell::Shell;
 use crate::editor::Editor;
 use crate::editor::path_selector::Entry;
+use crate::util::Fill;
 
+
+pub const RESERVE_SPACE: usize = 4;
 
 pub fn render(
     bump: &Bump,
@@ -33,10 +38,20 @@ pub fn render(
         terminal::Clear(terminal::ClearType::FromCursorDown),
         terminal::DisableLineWrap,
         style::Print(editor.path_selector.path().display()),
-        style::Print("\n"),
+        style::Print('/'),
     )?;
 
-    let space = editor.ui.available_space().saturating_sub(4);
+    if let Some(entry) = editor.path_selector.current.get() {
+        // TODO color
+
+        let name = entry.name();
+        let name = Vec::from_os_str_lossy(&name);
+        queue!(term, style::Print(name.as_bstr()))?;
+    }
+
+    queue!(term, style::Print("\n"))?;
+
+    let space = editor.ui.available_space().saturating_sub(RESERVE_SPACE);
     let mut parent = editor.path_selector.parent
         .take(space)
         .map(with(Level::Parent, editor.ui.columns));
@@ -66,6 +81,13 @@ pub fn render(
     // TODO vi buffer
     queue!(term, style::Print("\r\n"))?;
 
+    queue!(term, cursor::MoveTo(
+        editor.ui.cursor_column.saturating_sub(1),
+        editor.ui.cursor_row
+    ))?;
+
+    term.flush()?;
+
     Ok(())
 }
 
@@ -84,21 +106,20 @@ struct Item<'a> {
 }
 
 fn with(level: Level, width: u16)
-    -> impl Fn(&Entry) -> Item<'_>
+    -> impl Fn((bool, &Entry)) -> Item<'_>
 {
-    move |entry| Item {
-        entry,
+    move |(selected, entry)| Item {
+        entry, selected,
         level, width,
-        selected: false
     }
 }
 
 impl Item<'_> {
     fn render<W: io::Write>(&self, term: &mut W) -> anyhow::Result<()> {
         let (start, len) = match self.level {
-            Level::Parent => (0, 50),
-            Level::Current => (50, 100),
-            Level::Sub => (100, 30)
+            Level::Parent => (0, 30),
+            Level::Current => (31, 50),
+            Level::Sub => (81, 50)
         };
         let file_name = self.entry.name();
         let file_name = file_name.to_string_lossy();
@@ -106,13 +127,25 @@ impl Item<'_> {
         queue!(term, cursor::MoveToColumn(start))?;
 
         if self.selected {
-            // TODO color
+            queue!(term,
+                style::SetAttribute(style::Attribute::Bold),
+                style::SetBackgroundColor(style::Color::DarkBlue),
+                style::SetForegroundColor(style::Color::Black)
+            )?;
         }
 
-        queue!(term, style::Print(file_name))?;
+        queue!(term,
+            style::Print(" "),
+            style::Print(&file_name),
+            style::Print(" "),
+        )?;
 
         if self.selected {
-            queue!(term, style::SetBackgroundColor(style::Color::Reset))?;
+            queue!(term,
+                style::Print(Fill::empty((len - file_name.len() - 3) as u16)),
+                style::SetAttribute(style::Attribute::Reset),
+                style::ResetColor
+            )?;
         }
 
         Ok(())

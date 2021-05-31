@@ -44,7 +44,6 @@ pub struct Entry {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum EntryType {
-    Symlink,
     Dir,
     File,
     Other
@@ -64,7 +63,8 @@ impl PathSelector {
     }
 
     pub fn set_space(&mut self, space: usize) {
-        self.space = space;
+        self.space = space
+            .saturating_sub(crate::editor::render::PATH_SELECTOR_RESERVE_SPACE);
     }
 
     pub fn set_glob(&mut self, glob: Option<glob::Pattern>) {
@@ -81,6 +81,14 @@ impl PathSelector {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn clear(&mut self) {
+        self.path.clear();
+        self.need_init = false;
+        self.parent.clear();
+        self.current.clear();
+        self.sub.clear();
     }
 
     pub fn cd(&mut self, path: &Path) -> anyhow::Result<()> {
@@ -107,6 +115,13 @@ impl PathSelector {
         if let Some(cur) = self.current.cur.checked_sub(1) {
             self.current.cur = cur;
 
+            if !self.current.window.contains(&cur) {
+                if let Some(start) = self.current.window.start.checked_sub(1) {
+                    self.current.window.start = start;
+                    self.current.window.end = self.current.window.end.saturating_sub(1);
+                }
+            }
+
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
@@ -120,9 +135,14 @@ impl PathSelector {
     }
 
     pub fn down(&mut self) -> anyhow::Result<()> {
-        let cur = cmp::min(self.current.cur + 1, self.current.queue.len());
+        let cur = cmp::min(self.current.cur + 1, self.current.queue.len().saturating_sub(1));
         if self.current.cur != cur {
             self.current.cur = cur;
+
+            if !self.current.window.contains(&cur) {
+                self.current.window.start += 1;
+                self.current.window.end += 1;
+            }
 
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
@@ -227,12 +247,15 @@ impl List {
         }
 
         self.queue.sort_by(|x, y| match Ord::cmp(&x.ty, &y.ty) {
-            Ordering::Equal => file_name_cmp(&x.entry.file_name(), &y.entry.file_name()),
+            Ordering::Equal => file_name_cmp(&x.name(), &y.name()),
             ord => ord
         });
 
         self.cur = if let Some(name) = lookup {
-            self.queue.binary_search_by(|e| file_name_cmp(&e.entry.file_name(),  name))
+            self.queue.binary_search_by(|e| match Ord::cmp(&e.ty, &EntryType::Dir) {
+                Ordering::Equal => file_name_cmp(&e.name(),  name),
+                ord => ord
+            })
                 .ok()
                 .unwrap_or(0)
         } else {
@@ -240,6 +263,14 @@ impl List {
         };
 
         self.readdir = Some(readdir);
+
+        if !self.window.contains(&self.cur) || self.window.len() != space {
+            self.window = if let Some(start) = self.cur.checked_sub(space) {
+                start..self.cur
+            } else {
+                0..space
+            };
+        }
 
         Ok(())
     }
@@ -277,37 +308,46 @@ impl List {
         self.readdir.take();
     }
 
-    pub fn take(&self, space: usize) -> impl Iterator<Item = &Entry> {
-        // TODO window
+    pub fn get(&self) -> Option<&Entry> {
+        self.queue.get(self.cur)
+    }
 
+    pub fn take(&self, space: usize) -> impl Iterator<Item = (bool, &Entry)> {
         self.queue.iter()
+            .enumerate()
+            .skip(self.window.start)
+            .map(move |(i, entry)| (i == self.cur, entry))
+            .take(self.window.len())
     }
 }
 
 impl Entry {
     pub fn new(entry: DirEntry) -> anyhow::Result<Entry> {
-        let ty = EntryType::from(entry.file_type()?);
+        let mut ty = entry.file_type()?;
+
+        if ty.is_symlink() {
+            ty = fs::metadata(entry.path())?.file_type();
+        }
+
+        let ty = if ty.is_dir() {
+            EntryType::Dir
+        } else if ty.is_file() {
+            EntryType::File
+        } else {
+            EntryType::Other
+        };
+
         Ok(Entry { entry, ty })
+    }
+
+    pub fn path(&self) -> PathBuf {
+        self.entry.path()
     }
 
     pub fn name(&self) -> Cow<'_, OsStr> {
         // TODO use https://github.com/rust-lang/rust/issues/85573
 
         Cow::Owned(self.entry.file_name())
-    }
-}
-
-impl From<fs::FileType> for EntryType {
-    fn from(ty: fs::FileType) -> EntryType {
-        if ty.is_dir() {
-            EntryType::Dir
-        } else if ty.is_file() {
-            EntryType::File
-        } else if ty.is_symlink() {
-            EntryType::Symlink
-        } else {
-            EntryType::Other
-        }
     }
 }
 
@@ -339,7 +379,7 @@ fn test_path_selector() -> anyhow::Result<()> {
     assert_eq!(selector.sub.queue.len(), 0);
 
     selector.down()?;
-    assert_eq!(selector.current.cur, 1);
+    assert_eq!(selector.current.cur, 0);
     selector.up()?;
     assert_eq!(selector.current.cur, 0);
     selector.right()?;

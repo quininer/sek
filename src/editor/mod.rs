@@ -87,10 +87,12 @@ impl Editor {
                 KeyCode::Tab => {
                     // TODO
                     // completion daemon
+                    // path expand
 
                     self.path_selector.set_space(self.ui.available_space());
                     self.path_selector.cd(shell.env.pwd())?;
                     self.path_selector.need_init = true;
+                    self.cmd.clear();
                     self.mode = Mode::PathSelector;
                 },
                 KeyCode::Enter => return Ok(Action::Execute),
@@ -156,6 +158,7 @@ impl Editor {
             (Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
+                    || (modifiers == KM::NONE && code == KeyCode::Char('q'))
             => {
                 self.mode = Mode::Insert;
             },
@@ -166,10 +169,11 @@ impl Editor {
                 KeyCode::Char('l') => self.path_selector.right()?,
                 KeyCode::Char('j') => self.path_selector.down()?,
                 KeyCode::Char('k') => self.path_selector.up()?,
-                KeyCode::Enter => {
-                    let path = self.path_selector.path();
-                    let path = path.strip_prefix(shell.env.pwd()).unwrap_or(path);
+                KeyCode::Enter => if let Some(entry) = self.path_selector.current.get() {
+                    let path = entry.path();
+                    let path = path.strip_prefix(shell.env.pwd()).unwrap_or(&path);
                     self.line.insert_path(path);
+                    self.path_selector.clear();
                     self.mode = Mode::Insert;
                 },
                 _ => ()
