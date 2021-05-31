@@ -57,11 +57,11 @@ I can replace it with 10L rust code.
 use anyhow::Context;
 
 fn main() -> anyhow::Result<()> {
-	let pat = std::env::args().nth(1).context("no glob pattern")?;
-	for path in	glob(&pat)? {
-		std::fs::remove_file(path)?;
-	}
-	Ok(())
+    let pat = std::env::args().nth(1).context("no glob pattern")?;
+    for path in glob::glob(&pat)? {
+        std::fs::remove_file(path?)?;
+    }
+    Ok(())
 }
 ```
 
