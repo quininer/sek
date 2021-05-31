@@ -182,6 +182,7 @@ impl Editor {
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::NONE && code == KeyCode::Char('q'))
             => {
+                self.path_selector.clear();
                 self.mode = Mode::Insert;
             },
             (Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
