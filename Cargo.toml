@@ -50,6 +50,7 @@ xorf = { version = "0.7", git = "https://github.com/ayazhafiz/xorf", default-fea
 
 # path selector
 glob = "0.3"
+lexical-sort = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

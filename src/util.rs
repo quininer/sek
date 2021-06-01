@@ -77,7 +77,10 @@ impl io::Write for DynWriter<'_> {
     }
 }
 
-// TODO use human sort
 pub fn file_name_cmp(x: &OsStr, y: &OsStr) -> Ordering {
-    Ord::cmp(x, y)
+    if let (Some(x), Some(y)) = (x.to_str(), y.to_str()) {
+        lexical_sort::natural_cmp(x, y)
+    } else {
+        Ord::cmp(x, y)
+    }
 }
