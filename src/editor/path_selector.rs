@@ -267,14 +267,7 @@ impl List {
         };
 
         self.readdir = Some(readdir);
-
-        if !self.window.contains(&self.cur) || self.window.len() != space {
-            self.window = if let Some(start) = self.cur.checked_sub(space) {
-                (start + 1)..(self.cur + 1)
-            } else {
-                0..space
-            };
-        }
+        self.update_window(space);
 
         Ok(())
     }
@@ -304,6 +297,16 @@ impl List {
         });
 
         Ok(())
+    }
+
+    fn update_window(&mut self, space: usize) {
+        if !self.window.contains(&self.cur) || self.window.len() != space {
+            self.window = if let Some(start) = self.cur.checked_sub(space) {
+                (start + 1)..(self.cur + 1)
+            } else {
+                0..space
+            };
+        }
     }
 
     fn clear(&mut self) {
@@ -338,6 +341,9 @@ impl List {
             })
         {
             self.cur = cur;
+
+            let space = self.window.len();
+            self.update_window(space);
         }
 
         prev_cur != self.cur
@@ -356,6 +362,9 @@ impl List {
             })
         {
             self.cur = cur;
+
+            let space = self.window.len();
+            self.update_window(space);
         }
 
         prev_cur != self.cur
