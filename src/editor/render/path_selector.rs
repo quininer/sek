@@ -7,7 +7,7 @@ use scopeguard::guard;
 use crossterm::{ queue, style, cursor, terminal };
 use crate::shell::Shell;
 use crate::editor::Editor;
-use crate::editor::path_selector::Entry;
+use crate::editor::path_selector::{ Entry, EntryType };
 use crate::util::{ Fill, FmtDebug };
 
 
@@ -142,6 +142,7 @@ impl Item<'_> {
             Level::Current => (cal(self.width, 0.2) + 1, cal(self.width, 0.4)),
             Level::Sub => (cal(self.width, 0.6) + 1, self.width - cal(self.width, 0.6))
         };
+        let ty = self.entry.type_();
         let file_name = self.entry.name();
         let file_name = Vec::from_os_str_lossy(&file_name);
         let (file_name, fill) = name_width_limit(&file_name, len as usize);
@@ -154,6 +155,11 @@ impl Item<'_> {
                 style::SetBackgroundColor(style::Color::DarkBlue),
                 style::SetForegroundColor(style::Color::Black)
             )?;
+        } else if let EntryType::Dir = ty {
+            queue!(term,
+                style::SetAttribute(style::Attribute::Bold),
+                style::SetForegroundColor(style::Color::DarkBlue)
+            )?;
         }
 
         queue!(term,
@@ -163,8 +169,11 @@ impl Item<'_> {
         )?;
 
         if self.selected {
+            queue!(term, style::Print(fill))?;
+        }
+
+        if self.selected || ty == EntryType::Dir {
             queue!(term,
-                style::Print(fill),
                 style::SetAttribute(style::Attribute::Reset),
                 style::ResetColor
             )?;

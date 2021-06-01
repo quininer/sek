@@ -402,6 +402,10 @@ impl Entry {
         self.entry.path()
     }
 
+    pub fn type_(&self) -> EntryType {
+        self.ty
+    }
+
     pub fn name(&self) -> Cow<'_, OsStr> {
         // TODO use https://github.com/rust-lang/rust/issues/85573
 
