@@ -29,6 +29,10 @@ impl Buffer {
         }
     }
 
+    pub fn first(&self) -> Option<char> {
+        self.buf.first().copied()
+    }
+
     pub fn push(&mut self, c: char) {
         self.make();
         self.buf.insert(self.cur, c);

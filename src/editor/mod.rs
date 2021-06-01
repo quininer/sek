@@ -56,6 +56,10 @@ impl Editor {
     }
 
     pub async fn step(&mut self, shell: &mut Shell, event: Event) -> anyhow::Result<Action> {
+        if self.mode != Mode::PathSelector {
+            self.path_selector.clear();
+        }
+
         match (self.mode, event) {
             // resize
             (_, Event::Resize(columns, rows)) => {
@@ -103,14 +107,14 @@ impl Editor {
                 _ => ()
             },
             // Normal Command
-            (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Normal | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
                     && (code == KeyCode::Char(':') || code == KeyCode::Char(';'))
             => {
                 self.cmd.push(':');
             },
             // Noraml Filter
-            (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
+            (Mode::Normal | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
                 if modifiers == KM::NONE && code == KeyCode::Char('/')
             => {
                 self.cmd.push('/');
@@ -130,23 +134,29 @@ impl Editor {
                 KeyCode::Esc => self.cmd.clear(),
                 KeyCode::Enter if self.mode == Mode::Normal
                     => return execute_command(self, shell),
-                KeyCode::Enter if self.mode == Mode::PathSelector
+                KeyCode::Enter
+                    if self.mode == Mode::PathSelector && self.cmd.first() == Some(':')
+                    => return execute_command(self, shell),
+                KeyCode::Enter
+                    if self.mode == Mode::PathSelector && self.cmd.first() == Some('/')
                 => {
                     let bump = shell.bump.clone();
                     let bump = bump.borrow();
+
                     let mut buf = String::with_capacity_in(self.cmd.len(), &bump);
                     self.cmd.read_into(&mut buf);
                     self.cmd.clear();
-                    let rule = if let Some(rule) = buf.strip_prefix('/')
+
+                    if let Some(needle) = buf
+                        .strip_prefix('/')
+                        .map(|buf| buf.trim())
                         .filter(|buf| !buf.is_empty())
                     {
-                        Some(glob::Pattern::new(rule)?)
-                    } else {
-                        None
-                    };
-                    self.path_selector.set_glob(rule);
-                    self.path_selector.cd(".".as_ref())?;
-                }
+                        self.path_selector.search.clear();
+                        self.path_selector.search.push_str(needle);
+                        self.path_selector.current.search_down(needle);
+                    }
+                },
                 _ => ()
             },
             // Noraml
@@ -182,7 +192,6 @@ impl Editor {
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::NONE && code == KeyCode::Char('q'))
             => {
-                self.path_selector.clear();
                 self.mode = Mode::Insert;
             },
             (Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
@@ -202,12 +211,14 @@ impl Editor {
                     self.path_selector.current.to_bottom();
                     self.path_selector.cd(".".as_ref())?;
                 },
-                (None, KeyCode::Char('/')) => self.cmd.push('/'),
+                (None, KeyCode::Char('n'))
+                    => self.path_selector.current.search_down(&self.path_selector.search),
+                (None, KeyCode::Char('N'))
+                    => self.path_selector.current.search_up(&self.path_selector.search),
                 (None, KeyCode::Enter) => if let Some(entry) = self.path_selector.current.get() {
                     let path = entry.path();
                     let path = path.strip_prefix(shell.env.pwd()).unwrap_or(&path);
                     self.line.insert_path(path);
-                    self.path_selector.clear();
                     self.mode = Mode::Insert;
                 },
                 (Some('g'), KeyCode::Char('g')) => {

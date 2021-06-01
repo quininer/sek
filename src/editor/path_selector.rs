@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::path::{ PathBuf, Path };
 use std::cmp::{ self, Ordering };
 use std::fs::{ self, ReadDir, DirEntry };
+use bstr::{ ByteVec, ByteSlice };
 use crate::util::file_name_cmp;
 
 
@@ -15,6 +16,7 @@ pub struct PathSelector {
     space: usize,
     path: PathBuf,
     filter: Filter,
+    pub search: String,
     pub need_init: bool,
     pub parent: List,
     pub current: List,
@@ -55,6 +57,7 @@ impl PathSelector {
             space,
             path: PathBuf::new(),
             filter: Filter::default(),
+            search: String::new(),
             need_init: false,
             parent: List::default(),
             current: List::default(),
@@ -100,14 +103,14 @@ impl PathSelector {
         if path == Path::new(".") {
             let filename = self.current.get()
                 .map(|entry| entry.name().into_owned());
-            self.current.cd(&self.path, filename.as_deref(), &self.filter, self.space, MAX_ENTRY_CAP)?;
+            self.current.cd(&self.path, filename.as_deref(), &self.filter, self.space)?;
         } else {
             self.current.clear();
-            self.current.cd(&self.path, None, &self.filter, self.space, MAX_ENTRY_CAP)?;
+            self.current.cd(&self.path, None, &self.filter, self.space)?;
         }
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space, self.space)?;
+            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space)?;
         } else {
             self.parent.clear();
         }
@@ -115,7 +118,7 @@ impl PathSelector {
         if let Some(sub) = self.current.queue.get(self.current.cur)
             .filter(|sub| sub.ty == EntryType::Dir)
         {
-            self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
+            self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
         } else {
             self.sub.clear();
         }
@@ -137,7 +140,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -159,7 +162,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -179,7 +182,7 @@ impl PathSelector {
         self.current.fill(&self.filter)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space, self.space)?;
+            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space)?;
         } else {
             self.parent.clear();
         }
@@ -202,7 +205,7 @@ impl PathSelector {
             if let Some(sub) = self.current.queue.get(self.current.cur)
                 .filter(|sub| sub.ty == EntryType::Dir)
             {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
+                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
             } else {
                 self.sub.clear();
             }
@@ -244,7 +247,6 @@ impl List {
         lookup: Option<&OsStr>,
         filter: &Filter,
         space: usize,
-        cap: usize
     ) -> anyhow::Result<()> {
         self.queue.clear();
         let mut readdir = path.read_dir()?;
@@ -256,7 +258,7 @@ impl List {
                 let file_name = file_name.to_string_lossy();
                 filter.matches(&file_name)
             })
-            .take(cap)
+            .take(MAX_ENTRY_CAP)
         {
             if let Ok(entry) = Entry::new(entry) {
                 self.queue.push(entry);
@@ -333,6 +335,36 @@ impl List {
             .map(move |(i, entry)| (i == self.cur, entry))
             .take(self.window.len())
             .take(space)
+    }
+
+    pub fn search_up(&mut self, needle: &str) {
+        if let Some((cur, _)) = self.queue.iter()
+            .enumerate()
+            .take(self.cur)
+            .rev()
+            .find(|(_, e)| {
+                let name = e.name();
+                let name = Vec::from_os_str_lossy(&name);
+                name.find(needle.as_bytes()).is_some()
+            })
+        {
+            self.cur = cur;
+        }
+    }
+
+    pub fn search_down(&mut self, needle: &str) {
+        if let Some((cur, _)) = self.queue.iter()
+            .enumerate()
+            .skip(self.cur)
+            .skip(1)
+            .find(|(_, e)| {
+                let name = e.name();
+                let name = Vec::from_os_str_lossy(&name);
+                name.find(needle.as_bytes()).is_some()
+            })
+        {
+            self.cur = cur;
+        }
     }
 
     pub fn to_top(&mut self) {
