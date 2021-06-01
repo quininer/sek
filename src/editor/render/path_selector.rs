@@ -152,7 +152,7 @@ impl Item<'_> {
         if self.selected {
             queue!(term,
                 style::SetAttribute(style::Attribute::Bold),
-                style::SetBackgroundColor(style::Color::DarkBlue),
+                style::SetBackgroundColor(style::Color::Blue),
                 style::SetForegroundColor(style::Color::Black)
             )?;
         } else if let EntryType::Dir = ty {
