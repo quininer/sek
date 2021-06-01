@@ -17,7 +17,7 @@ bstr = { version = "0.2", features = [ "serde1" ] }
 serde = { version = "1", features = [ "derive" ] }
 scopeguard = "1"
 if_chain = "1"
-bumpalo = { version = "3", features = [ "collections", "boxed" ] }
+bumpalo = { version = "3.7", features = [ "collections", "boxed" ] }
 siphasher = "0.3"
 getrandom = "0.2"
 

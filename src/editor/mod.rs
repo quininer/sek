@@ -4,12 +4,15 @@ pub mod render;
 pub mod command;
 pub mod path_selector;
 
+use std::fmt::Write;
+use std::path::Path;
 use bumpalo::collections::String;
 use crossterm::event::{ Event, KeyEvent, KeyCode, KeyModifiers as KM };
 use crate::shell::{ Shell, Action };
 use crate::editor::buffer::Buffer;
 use crate::editor::path_selector::PathSelector;
 use crate::editor::command::execute_command;
+use crate::util::EscapePath;
 
 pub struct Editor {
     pub line: Buffer,
@@ -220,9 +223,20 @@ impl Editor {
                     self.path_selector.refresh_current()?;
                 },
                 (None, KeyCode::Enter) => if let Some(entry) = self.path_selector.current.get() {
+                    let bump = shell.bump.clone();
+                    let bump = bump.borrow();
+
                     let path = entry.path();
-                    let path = path.strip_prefix(shell.env.pwd()).unwrap_or(&path);
-                    self.line.insert_path(path);
+                    let mut path = path.strip_prefix(shell.env.pwd()).unwrap_or(&path);
+                    if path == Path::new("") {
+                        path = Path::new(".");
+                    }
+
+                    let path = path.to_string_lossy();
+                    let mut buf = String::with_capacity_in(self.cmd.len(), &bump);
+                    write!(&mut buf, "{}", EscapePath(&path))?;
+
+                    self.line.push_str(&buf);
                     self.mode = Mode::Insert;
                 },
                 (Some('g'), KeyCode::Char('g')) => {
