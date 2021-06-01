@@ -107,21 +107,15 @@ impl PathSelector {
         } else {
             self.current.clear();
             self.current.cd(&self.path, None, &self.filter, self.space)?;
+
+            if let Some(parent) = self.path.parent() {
+                self.parent.cd(parent, self.path.file_name(), &self.filter, self.space)?;
+            } else {
+                self.parent.clear();
+            }
         }
 
-        if let Some(parent) = self.path.parent() {
-            self.parent.cd(parent, self.path.file_name(), &self.filter, self.space)?;
-        } else {
-            self.parent.clear();
-        }
-
-        if let Some(sub) = self.current.queue.get(self.current.cur)
-            .filter(|sub| sub.ty == EntryType::Dir)
-        {
-            self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
-        } else {
-            self.sub.clear();
-        }
+        self.refresh_current()?;
 
         Ok(())
     }
@@ -137,13 +131,7 @@ impl PathSelector {
                 }
             }
 
-            if let Some(sub) = self.current.queue.get(cur)
-                .filter(|sub| sub.ty == EntryType::Dir)
-            {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
-            } else {
-                self.sub.clear();
-            }
+            self.refresh_current()?;
         }
 
         Ok(())
@@ -159,13 +147,7 @@ impl PathSelector {
                 self.current.window.end += 1;
             }
 
-            if let Some(sub) = self.current.queue.get(cur)
-                .filter(|sub| sub.ty == EntryType::Dir)
-            {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
-            } else {
-                self.sub.clear();
-            }
+            self.refresh_current()?;
         }
 
         Ok(())
@@ -202,13 +184,19 @@ impl PathSelector {
 
             self.current.fill(&self.filter)?;
 
-            if let Some(sub) = self.current.queue.get(self.current.cur)
-                .filter(|sub| sub.ty == EntryType::Dir)
-            {
-                self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
-            } else {
-                self.sub.clear();
-            }
+            self.refresh_current()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn refresh_current(&mut self) -> anyhow::Result<()> {
+        if let Some(sub) = self.current.queue.get(self.current.cur)
+            .filter(|sub| sub.ty == EntryType::Dir)
+        {
+            self.sub.cd(&sub.entry.path(), None, &self.filter, self.space)?;
+        } else {
+            self.sub.clear();
         }
 
         Ok(())
@@ -337,7 +325,8 @@ impl List {
             .take(space)
     }
 
-    pub fn search_up(&mut self, needle: &str) {
+    pub fn search_up(&mut self, needle: &str) -> bool {
+        let prev_cur = self.cur;
         if let Some((cur, _)) = self.queue.iter()
             .enumerate()
             .take(self.cur)
@@ -350,9 +339,12 @@ impl List {
         {
             self.cur = cur;
         }
+
+        prev_cur != self.cur
     }
 
-    pub fn search_down(&mut self, needle: &str) {
+    pub fn search_down(&mut self, needle: &str) -> bool {
+        let prev_cur = self.cur;
         if let Some((cur, _)) = self.queue.iter()
             .enumerate()
             .skip(self.cur)
@@ -365,6 +357,8 @@ impl List {
         {
             self.cur = cur;
         }
+
+        prev_cur != self.cur
     }
 
     pub fn to_top(&mut self) {

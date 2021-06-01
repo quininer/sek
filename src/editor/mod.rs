@@ -154,7 +154,9 @@ impl Editor {
                     {
                         self.path_selector.search.clear();
                         self.path_selector.search.push_str(needle);
-                        self.path_selector.current.search_down(needle);
+                        if self.path_selector.current.search_down(needle) {
+                            self.path_selector.refresh_current()?;
+                        }
                     }
                 },
                 _ => ()
@@ -211,10 +213,12 @@ impl Editor {
                     self.path_selector.current.to_bottom();
                     self.path_selector.cd(".".as_ref())?;
                 },
-                (None, KeyCode::Char('n'))
-                    => self.path_selector.current.search_down(&self.path_selector.search),
-                (None, KeyCode::Char('N'))
-                    => self.path_selector.current.search_up(&self.path_selector.search),
+                (None, KeyCode::Char('n')) => if self.path_selector.current.search_down(&self.path_selector.search) {
+                    self.path_selector.refresh_current()?;
+                },
+                (None, KeyCode::Char('N')) => if self.path_selector.current.search_up(&self.path_selector.search) {
+                    self.path_selector.refresh_current()?;
+                },
                 (None, KeyCode::Enter) => if let Some(entry) = self.path_selector.current.get() {
                     let path = entry.path();
                     let path = path.strip_prefix(shell.env.pwd()).unwrap_or(&path);
