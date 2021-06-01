@@ -40,21 +40,19 @@ impl<T: std::fmt::Debug> fmt::Display for FmtDebug<T> {
 
 #[inline]
 pub fn arg_max() -> usize {
-    const DEFAULT_LIMIT: usize = 16 * 1024;
-
     #[cfg(unix)]
     fn arg_max_limit() -> usize {
-        const DEFAULT_MIN_LIMIT: usize = 4 * 1024;
-
         match unsafe { libc::sysconf(libc::_SC_ARG_MAX) } {
-            -1 => DEFAULT_LIMIT,
-            n => std::cmp::max(n as usize, DEFAULT_MIN_LIMIT)
+            -1 => 1024 * 1024,
+            n => std::cmp::max(n as usize, 4 * 1024)
         }
     }
 
     #[cfg(windows)]
     fn arg_max_limit() -> usize {
-        DEFAULT_LIMIT
+        // https://docs.microsoft.com/zh-cn/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
+
+        32767
     }
 
     arg_max_limit()

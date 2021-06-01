@@ -119,8 +119,13 @@ impl<'c> DoubleStr<'c> {
         let bump = shell.bump.clone();
         let bump = bump.borrow();
 
+        let arg_max = shell.arg_max;
         let mut osbuf = Vec::new_in(&bump);
         let mut push2 = |osstr: &[u8]| {
+            if osbuf.len() + osstr.len() > arg_max {
+                return Err(anyhow::format_err!("Command argument is too long"));
+            }
+
             osbuf.extend_from_slice(osstr);
             Ok(())
         };
@@ -143,8 +148,13 @@ impl<'c> Argument<'c> {
         let bump = shell.bump.clone();
         let bump = bump.borrow();
 
+        let arg_max = shell.arg_max;
         let mut osbuf = Vec::new_in(&bump);
         let mut push2 = |osstr: &[u8]| {
+            if osbuf.len() + osstr.len() > arg_max {
+                return Err(anyhow::format_err!("Command argument is too long"));
+            }
+
             osbuf.extend_from_slice(osstr);
             Ok(())
         };
