@@ -6,7 +6,7 @@ use std::collections::{ HashMap, HashSet };
 use anyhow::Context;
 use bstr::ByteSlice;
 use directories::UserDirs;
-use xorf::{ Filter, Xor8 };
+use xorf::{ Filter, Xor16 };
 use crate::shell::builtin::BUILTIN_COMMANDS;
 use crate::shell::config::Config;
 
@@ -19,7 +19,7 @@ pub struct Env {
 }
 
 struct ExeFilter {
-    filter: Xor8,
+    filter: Xor16,
     keys: (u64, u64)
 }
 
@@ -138,9 +138,11 @@ impl ExeFilter {
 
         #[cfg(windows)]
         let path_exts = {
-            let path_exts = map.get(OsStr::new("PATHEXT"))
-                .map(|val| &**val)
-                .unwrap_or(OsStr::new(env::consts::EXE_EXTENSION));
+            use std::borrow::Cow;
+
+            let path_exts = env::var_os("PATHEXT")
+                .map(Cow::Owned)
+                .unwrap_or(Cow::Borrowed(OsStr::new(env::consts::EXE_EXTENSION)));
 
             env::split_paths(&path_exts)
                 .map(PathBuf::into_os_string)
@@ -199,7 +201,7 @@ impl ExeFilter {
         let exelist = exeset.into_iter().collect::<Vec<_>>();
 
         Ok(ExeFilter {
-            filter: Xor8::from(&exelist),
+            filter: Xor16::from(&exelist),
             keys: (key0, key1)
         })
     }

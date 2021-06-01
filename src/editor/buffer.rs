@@ -46,10 +46,16 @@ impl Buffer {
 
         let path = Vec::from_path_lossy(path);
 
+        self.buf.insert(self.cur, '\'');
+        self.cur += 1;
+
         for c in path.chars() {
             self.buf.insert(self.cur, c);
             self.cur += 1;
         }
+
+        self.buf.insert(self.cur, '\'');
+        self.cur += 1;
     }
 
     pub fn backspace(&mut self) {
