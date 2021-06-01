@@ -93,10 +93,11 @@ impl PathSelector {
     }
 
     pub fn cd(&mut self, path: &Path) -> anyhow::Result<()> {
-        let new_path = self.path.join(path).canonicalize()?;
-        let old_path = mem::replace(&mut self.path, new_path);
+        if path != Path::new(".") {
+            self.path.push(path);
+        }
 
-        if self.path == old_path {
+        if path == Path::new(".") {
             let filename = self.current.get()
                 .map(|entry| entry.name().into_owned());
             self.current.cd(&self.path, filename.as_deref(), &self.filter, self.space, MAX_ENTRY_CAP)?;
@@ -111,7 +112,9 @@ impl PathSelector {
             self.parent.clear();
         }
 
-        if let Some(sub) = self.current.queue.get(self.current.cur) {
+        if let Some(sub) = self.current.queue.get(self.current.cur)
+            .filter(|sub| sub.ty == EntryType::Dir)
+        {
             self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
         } else {
             self.sub.clear();
@@ -196,7 +199,9 @@ impl PathSelector {
 
             self.current.fill(&self.filter)?;
 
-            if let Some(sub) = self.current.queue.get(self.current.cur) {
+            if let Some(sub) = self.current.queue.get(self.current.cur)
+                .filter(|sub| sub.ty == EntryType::Dir)
+            {
                 self.sub.cd(&sub.entry.path(), None, &self.filter, self.space, self.space)?;
             } else {
                 self.sub.clear();
