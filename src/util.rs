@@ -94,7 +94,7 @@ impl fmt::Display for EscapePath<'_> {
 
         let s = self.0.as_bytes();
 
-        if s.find_byteset(r#"^#$&()|\;"'<> "#).is_none() {
+        if s.find_byteset(r#"#$&()|\;"'<> "#).is_none() {
             f.write_str(self.0)?;
         } else if s.find_byte(b'\'').is_none() {
             f.write_char('\'')?;

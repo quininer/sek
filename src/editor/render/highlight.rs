@@ -1,4 +1,5 @@
 use std::{ io, mem };
+use std::path::Path;
 use logos::Span;
 use crossterm::{ queue, style };
 use crossterm::style::{ Color, Attributes };
@@ -115,11 +116,31 @@ impl Command<'_> {
 
 impl Exe {
     fn colour<W: io::Write>(&self, line: &str, state: &mut State<'_>, term: &mut W) -> anyhow::Result<()> {
+        #[cfg(unix)]
+        fn is_local_exe(name: &str) -> bool {
+            use std::os::unix::fs::PermissionsExt;
+
+            Path::new(name)
+                .metadata()
+                .ok()
+                .filter(|metadata| metadata.is_file())
+                .filter(|metadata| metadata.permissions().mode() & 0o111 != 0)
+                .is_some()
+        }
+
+        #[cfg(not(unix))]
+        fn is_local_exe(name: &str) -> bool {
+            Path::new(name).is_file()
+        }
+
         Empty(state.bytes_count..self.0.start)
             .colour(line, state, term)?;
 
         let name = &line[self.0.clone()];
-        let theme = if state.shell.env.exists(name.as_bytes()) {
+        let theme = if
+            (name.starts_with("./") && is_local_exe(name))
+            || state.shell.env.exists(name.as_bytes())
+        {
             state.shell.theme.exe
         } else {
             state.shell.theme.error
