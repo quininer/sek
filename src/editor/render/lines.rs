@@ -131,7 +131,7 @@ pub fn render(
         },
         Mode::Normal => {
             let (cmdcur, cmdwidth) = editor.cmd.read_into_and_width(buf);
-            let fill = Fill::empty(editor.ui.columns.checked_sub(cmdwidth).unwrap_or(0));
+            let fill = Fill::empty(editor.ui.columns.saturating_sub(cmdwidth));
 
             queue!(
                 term,

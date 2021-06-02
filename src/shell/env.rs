@@ -142,13 +142,14 @@ impl ExeFilter {
 
             let path_exts = env::var_os("PATHEXT")
                 .map(Cow::Owned)
-                .unwrap_or(Cow::Borrowed(OsStr::new(env::consts::EXE_EXTENSION)));
+                .unwrap_or_else(|| Cow::Borrowed(OsStr::new(env::consts::EXE_EXTENSION)));
 
             env::split_paths(&path_exts)
                 .map(PathBuf::into_os_string)
                 .collect::<Vec<_>>()
         };
 
+        // TODO move to daemon
         for path in env::split_paths(paths)
             .filter_map(|path| path.read_dir().ok())
             .flatten()

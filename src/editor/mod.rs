@@ -33,12 +33,14 @@ struct Ui {
     bottom: u16
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Mode {
     Insert,
     Normal,
     Visual,
-    PathSelector
+    PathSelector,
+    Completion
 }
 
 impl Editor {
@@ -213,7 +215,7 @@ impl Editor {
                 (None, KeyCode::Char('c')) => self.path_selector.toggle_case_sensitive(),
                 (None, KeyCode::Char('g')) => self.ready = Some('g'),
                 (None, KeyCode::Char('G')) => {
-                    self.path_selector.current.to_bottom();
+                    self.path_selector.current.move_to_bottom();
                     self.path_selector.cd(".".as_ref())?;
                 },
                 (None, KeyCode::Char('n')) => if self.path_selector.current.search_down(&self.path_selector.search) {
@@ -240,7 +242,7 @@ impl Editor {
                     self.mode = Mode::Insert;
                 },
                 (Some('g'), KeyCode::Char('g')) => {
-                    self.path_selector.current.to_top();
+                    self.path_selector.current.move_to_top();
                     self.path_selector.cd(".".as_ref())?;
                 },
                 _ => ()

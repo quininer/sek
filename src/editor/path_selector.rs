@@ -380,11 +380,11 @@ impl List {
         prev_cur != self.cur
     }
 
-    pub fn to_top(&mut self) {
+    pub fn move_to_top(&mut self) {
         self.cur = 0;
     }
 
-    pub fn to_bottom(&mut self) {
+    pub fn move_to_bottom(&mut self) {
         self.cur = self.queue.len().saturating_sub(1);
     }
 }

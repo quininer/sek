@@ -86,7 +86,7 @@ pub fn render(
     } else if !editor.cmd.is_empty() {
         let mut buf = String::with_capacity_in(editor.cmd.len(), bump);
         let (cmdcur, cmdwidth) = editor.cmd.read_into_and_width(&mut buf);
-        let fill = Fill::empty(editor.ui.columns.checked_sub(cmdwidth).unwrap_or(0));
+        let fill = Fill::empty(editor.ui.columns.saturating_sub(cmdwidth));
 
         queue!(term,
             cursor::MoveToColumn(0),
