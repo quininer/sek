@@ -207,7 +207,7 @@ impl Editor {
                 (None, KeyCode::Char('j')) => self.path_selector.down()?,
                 (None, KeyCode::Char('k')) => self.path_selector.up()?,
                 (None, KeyCode::Char('a')) => {
-                    self.path_selector.toggle_hidden_dot();
+                    self.path_selector.toggle_hidden_file();
                     self.path_selector.cd(".".as_ref())?;
                 },
                 (None, KeyCode::Char('c')) => self.path_selector.toggle_case_sensitive(),

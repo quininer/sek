@@ -26,7 +26,7 @@ pub struct PathSelector {
 #[derive(Debug)]
 struct Filter {
     glob: Option<glob::Pattern>,
-    hidden_dot: bool,
+    hidden_file: bool,
     case_sensitive: bool
 }
 
@@ -74,8 +74,8 @@ impl PathSelector {
         self.filter.glob = glob;
     }
 
-    pub fn toggle_hidden_dot(&mut self) {
-        self.filter.hidden_dot = !self.filter.hidden_dot;
+    pub fn toggle_hidden_file(&mut self) {
+        self.filter.hidden_file = !self.filter.hidden_file;
     }
 
     pub fn toggle_case_sensitive(&mut self) {
@@ -207,22 +207,40 @@ impl Default for Filter {
     fn default() -> Filter {
         Filter {
             glob: None,
-            hidden_dot: true,
+            hidden_file: true,
             case_sensitive: true
         }
     }
 }
 
 impl Filter {
-    fn matches(&self, name: &str) -> bool {
+    fn matches(&self, entry: &DirEntry) -> bool {
         if let Some(glob) = self.glob.as_ref() {
-            glob.matches_with(name, glob::MatchOptions {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+
+            glob.matches_with(&name, glob::MatchOptions {
                 case_sensitive: self.case_sensitive,
                 require_literal_separator: true,
-                require_literal_leading_dot: self.hidden_dot
+                require_literal_leading_dot: self.hidden_file
             })
-        } else if self.hidden_dot {
-            !name.starts_with('.')
+        } else if self.hidden_file {
+            #[cfg(unix)] {
+                let name = entry.file_name();
+                let name = Vec::from_os_str_lossy(&name);
+                !name.starts_with_str(".")
+            }
+
+            #[cfg(windows)] {
+                use std::os::windows::fs::MetadataExt;
+
+                const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+
+                entry.metadata().ok()
+                    .map(|metadata| metadata.file_attributes())
+                    .filter(|attr| attr & FILE_ATTRIBUTE_HIDDEN != 0)
+                    .is_none()
+            }
         } else {
             true
         }
@@ -241,11 +259,7 @@ impl List {
 
         for entry in readdir.by_ref()
             .filter_map(Result::ok)
-            .filter(|entry| {
-                let file_name = entry.file_name();
-                let file_name = file_name.to_string_lossy();
-                filter.matches(&file_name)
-            })
+            .filter(|entry| filter.matches(&entry))
             .take(MAX_ENTRY_CAP)
         {
             if let Ok(entry) = Entry::new(entry) {
@@ -280,11 +294,7 @@ impl List {
 
         for entry in readdir
             .filter_map(Result::ok)
-            .filter(|entry| {
-                let file_name = entry.file_name();
-                let file_name = file_name.to_string_lossy();
-                filter.matches(&file_name)
-            })
+            .filter(|entry| filter.matches(&entry))
             .take(MAX_ENTRY_CAP - self.queue.len())
         {
             self.queue.push(Entry::new(entry)?);
