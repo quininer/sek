@@ -5,9 +5,9 @@ pub mod process;
 pub mod execute;
 pub mod builtin;
 
-use std::io;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::io::{ self, Write };
 use anyhow::Context;
 use bumpalo::Bump;
 use bumpalo::collections::String;
@@ -15,11 +15,11 @@ use tokio::signal;
 use tokio_stream::StreamExt;
 use scopeguard::defer;
 use unicode_width::UnicodeWidthStr;
-use crossterm::{ execute, queue, style, terminal };
+use crossterm::{ queue, style, terminal };
 use crossterm::event::EventStream;
 use crate::shell::parser::type_::Command;
 use crate::shell::process::{ ShellCommand, Morgue };
-use crate::editor::Editor;
+use crate::editor::{ Editor, Mode };
 use crate::editor::render::{ render, report, render_line };
 use crate::util::FmtDebug;
 pub use crate::shell::env::Env;
@@ -77,7 +77,15 @@ impl Shell {
                     if !line2.is_empty() {
                         match parser::parse_in(&bump, line2) {
                             Ok(cmd) => {
-                                execute!(&self.term, style::Print("\r\n"))?;
+                                queue!(&mut self.term, style::Print("\r\n"))?;
+
+                                if let Mode::Normal = editor.mode {
+                                    editor.mode = Mode::Insert;
+                                    queue!(&mut self.term, terminal::Clear(terminal::ClearType::CurrentLine))?;
+                                }
+
+                                self.term.flush()?;
+
                                 self.is_execute = true;
                                 self.execute(line2, cmd).await?;
                                 editor.line.history.push(line2);

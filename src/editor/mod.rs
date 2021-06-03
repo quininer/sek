@@ -18,9 +18,9 @@ pub struct Editor {
     pub line: Buffer,
     pub cmd: Buffer,
     pub error: Option<anyhow::Error>,
+    pub mode: Mode,
     path_selector: PathSelector,
     ready: Option<char>,
-    mode: Mode,
     ui: Ui
 }
 
@@ -35,7 +35,7 @@ struct Ui {
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum Mode {
+pub enum Mode {
     Insert,
     Normal,
     Visual,
@@ -50,9 +50,9 @@ impl Editor {
             line: Buffer::default(),
             cmd: Buffer::default(),
             error: None,
+            mode: Mode::Insert,
             path_selector: PathSelector::new(std::cmp::max(rows / 2, 1) as usize),
             ready: None,
-            mode: Mode::Insert,
             ui: Ui {
                 columns, rows,
                 ..Default::default()
@@ -190,6 +190,8 @@ impl Editor {
                 (None, KeyCode::Left) => self.line.move_left(),
                 (None, KeyCode::Right) => self.line.move_right(),
                 (None, KeyCode::Esc) => self.ready = None,
+                (None, KeyCode::Enter) if !self.line.is_empty()
+                    => return Ok(Action::Execute),
                 (Some('d'), KeyCode::Char('d')) => self.line.clear(),
                 (Some('z'), KeyCode::Char('c')) => shell.env.cd("..".as_ref())?,
                 (Some('z'), KeyCode::Char('j')) => shell.env.go_back()?,
