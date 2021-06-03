@@ -95,6 +95,8 @@ impl Editor {
                 KeyCode::Delete => self.line.delete(),
                 KeyCode::Left => self.line.move_left(),
                 KeyCode::Right => self.line.move_right(),
+                KeyCode::Home => self.line.move_head(),
+                KeyCode::End => self.line.move_end(),
                 KeyCode::Up => self.line.history.up(),
                 KeyCode::Down => self.line.history.down(),
                 KeyCode::Tab => {
