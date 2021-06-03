@@ -18,7 +18,7 @@ pub struct Editor {
     pub line: Buffer,
     pub cmd: Buffer,
     pub error: Option<anyhow::Error>,
-    pub mode: Mode,
+    mode: Mode,
     path_selector: PathSelector,
     ready: Option<char>,
     ui: Ui
@@ -35,7 +35,7 @@ struct Ui {
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Mode {
+enum Mode {
     Insert,
     Normal,
     Visual,
@@ -170,7 +170,7 @@ impl Editor {
             },
             // Noraml
             (Mode::Normal, Event::Key(KeyEvent { modifiers, code }))
-                if modifiers == KM::NONE && self.cmd.is_empty()
+                if modifiers.contains(KM::SHIFT & KM::NONE) && self.cmd.is_empty()
             => match (self.ready.take(), code) {
                 // Normal to Insert
                 (None, KeyCode::Char('i')) => self.mode = Mode::Insert,
@@ -186,12 +186,16 @@ impl Editor {
                 (None, KeyCode::Char('z')) => self.ready = Some('z'),
                 (None, KeyCode::Char('0')) => self.line.move_head(),
                 (None, KeyCode::Char('$')) => self.line.move_end(),
+                (None, KeyCode::Char('x')) => self.line.delete(),
+                (None, KeyCode::Char('D')) => self.line.delete_to_end(),
                 (None, KeyCode::Backspace) => self.line.move_left(),
                 (None, KeyCode::Left) => self.line.move_left(),
                 (None, KeyCode::Right) => self.line.move_right(),
                 (None, KeyCode::Esc) => self.ready = None,
-                (None, KeyCode::Enter) if !self.line.is_empty()
-                    => return Ok(Action::Execute),
+                (None, KeyCode::Enter) if !self.line.is_empty() => {
+                    self.mode = Mode::Insert;
+                    return Ok(Action::Execute)
+                },
                 (Some('d'), KeyCode::Char('d')) => self.line.clear(),
                 (Some('z'), KeyCode::Char('c')) => shell.env.cd("..".as_ref())?,
                 (Some('z'), KeyCode::Char('j')) => shell.env.go_back()?,

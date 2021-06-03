@@ -62,6 +62,14 @@ impl Buffer {
         }
     }
 
+    pub fn delete_to_end(&mut self) {
+        self.make();
+        if self.buf.len() > self.cur {
+            self.buf.drain(self.cur..);
+            self.cur = self.cur.saturating_sub(1);
+        }
+    }
+
     pub fn move_head(&mut self) {
         self.make();
         self.cur = 0;
