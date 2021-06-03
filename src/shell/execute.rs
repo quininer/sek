@@ -1,6 +1,7 @@
 use std::fs;
 use std::pin::Pin;
 use std::future::Future;
+use std::convert::TryInto;
 use std::process::{ Stdio, ExitStatus };
 use anyhow::Context as AnyhowContext;
 use bstr::ByteSlice;
@@ -9,7 +10,7 @@ use tokio::io::{ AsyncRead, AsyncReadExt };
 use if_chain::if_chain;
 use crate::shell::Shell;
 use crate::shell::parser::type_::*;
-use crate::shell::process::{ ShellCommand, to_stdio };
+use crate::shell::process::ShellCommand;
 
 
 type Push<'a> = &'a mut dyn FnMut(&[u8]) -> anyhow::Result<()>;
@@ -231,7 +232,7 @@ impl<'c> Chain<'c> {
                 let mut prev_child = prev_cmd.spawn(shell)?;
 
                 if let Some(stdout) = prev_child.take_stdout() {
-                    shell_cmd.stdin(to_stdio(stdout));
+                    shell_cmd.stdin(stdout.try_into()?);
                 }
 
                 let status = if let Some(chain) = subshell.0.chain.as_ref() {
