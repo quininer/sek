@@ -38,6 +38,12 @@ impl Buffer {
         self.cur += 1;
     }
 
+    pub fn replace(&mut self, c: char) {
+        if let Some(cc) = self.buf.get_mut(self.cur) {
+            *cc = c;
+        }
+    }
+
     pub fn push_str(&mut self, string: &str) {
         self.make();
 

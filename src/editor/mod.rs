@@ -182,12 +182,24 @@ impl Editor {
                 (None, KeyCode::Char('l')) => self.line.move_right(),
                 (None, KeyCode::Char('j')) => self.line.history.down(),
                 (None, KeyCode::Char('k')) => self.line.history.up(),
-                (None, KeyCode::Char('d')) => self.ready = Some('d'),
-                (None, KeyCode::Char('z')) => self.ready = Some('z'),
                 (None, KeyCode::Char('0')) => self.line.move_head(),
                 (None, KeyCode::Char('$')) => self.line.move_end(),
                 (None, KeyCode::Char('x')) => self.line.delete(),
                 (None, KeyCode::Char('D')) => self.line.delete_to_end(),
+                (None, KeyCode::Char('s')) => {
+                    self.line.delete();
+                    self.mode = Mode::Insert;
+                },
+                (None, KeyCode::Char('C')) => {
+                    self.line.delete_to_end();
+                    self.line.move_right();
+                    self.mode = Mode::Insert;
+                },
+                (None, KeyCode::Char('d')) => self.ready = Some('d'),
+                (None, KeyCode::Char('z')) => self.ready = Some('z'),
+                (None, KeyCode::Char('g')) => self.ready = Some('g'),
+                (None, KeyCode::Char('r')) => self.ready = Some('r'),
+                (None, KeyCode::Char('c')) => self.ready = Some('c'),
                 (None, KeyCode::Backspace) => self.line.move_left(),
                 (None, KeyCode::Left) => self.line.move_left(),
                 (None, KeyCode::Right) => self.line.move_right(),
@@ -197,9 +209,24 @@ impl Editor {
                     return Ok(Action::Execute)
                 },
                 (Some('d'), KeyCode::Char('d')) => self.line.clear(),
+                (Some('d'), KeyCode::Char('h')) => self.line.backspace(),
+                (Some('d'), KeyCode::Char('l')) => self.line.delete(),
+                (Some('c'), KeyCode::Char('h')) => {
+                    self.line.backspace();
+                    self.mode = Mode::Insert;
+                },
+                (Some('c'), KeyCode::Char('l')) => {
+                    self.line.delete();
+                    self.mode = Mode::Insert;
+                },
+                (Some('r'), KeyCode::Char(c)) => self.line.replace(c),
                 (Some('z'), KeyCode::Char('c')) => shell.env.cd("..".as_ref())?,
                 (Some('z'), KeyCode::Char('j')) => shell.env.go_back()?,
                 (Some('z'), KeyCode::Char('h')) => shell.env.go_home()?,
+                (Some('g'), KeyCode::Char('i')) => {
+                    self.line.move_end();
+                    self.mode = Mode::Insert;
+                },
                 _ => ()
             },
             (Mode::PathSelector, Event::Key(KeyEvent { modifiers, code }))
