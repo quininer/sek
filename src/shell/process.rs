@@ -1,4 +1,4 @@
-use std::{ io, mem };
+use std::io;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::process::{ Stdio, ExitStatus };
@@ -136,29 +136,5 @@ impl Morgue {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(unix)]
-pub fn to_stdio(stdout: ChildStdout) -> Stdio {
-    use std::os::unix::io::{ AsRawFd, FromRawFd };
-
-    let fd = stdout.as_raw_fd();
-    mem::forget(stdout);
-
-    unsafe {
-        Stdio::from_raw_fd(fd)
-    }
-}
-
-#[cfg(windows)]
-pub fn to_stdio(stdout: ChildStdout) -> Stdio {
-    use std::os::windows::io::{ AsRawHandle, FromRawHandle };
-
-    let fd = stdout.as_raw_handle();
-    mem::forget(stdout);
-
-    unsafe {
-        Stdio::from_raw_handle(fd)
     }
 }
