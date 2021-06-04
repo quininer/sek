@@ -8,7 +8,7 @@ use crossterm::{ queue, style, cursor, terminal };
 use crate::shell::Shell;
 use crate::editor::Editor;
 use crate::editor::path_selector::{ Entry, EntryType };
-use crate::util::{ Fill, FmtDebug };
+use crate::util::Fill;
 
 
 pub const RESERVE_SPACE: usize = 3;
@@ -80,7 +80,7 @@ pub fn render(
         queue!(term,
             cursor::MoveToColumn(0),
             style::SetColors(style::Colors::new(style::Color::Black, style::Color::Red)),
-            style::Print(FmtDebug(err)),
+            style::Print(err),
             style::ResetColor,
         )?;
     } else if !editor.cmd.is_empty() {
