@@ -26,8 +26,8 @@ pub fn render(editor: &mut Editor, shell: &mut Shell)
     } else {
         let mut buf = String::with_capacity_in(editor.line.len(), &bump);
 
-        let (cursor, _) = editor.line.read_into_and_width(&mut buf);
-        lines::render(&bump, editor, shell, &mut buf, cursor)
+        let (cursor_width, _) = editor.line.read_into_and_width(&mut buf);
+        lines::render(&bump, editor, shell, &mut buf, cursor_width)
     }
 }
 

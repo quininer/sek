@@ -92,7 +92,7 @@ async_fn!{
 
         let value = value.into_os_string()
             .ok()
-            .context("invalid value name")?;
+            .context("invalid value")?;
 
         shell.env.set(name.as_ref(), value);
 

@@ -4,6 +4,7 @@ pub mod config;
 pub mod process;
 pub mod execute;
 pub mod builtin;
+pub mod completion;
 
 use std::io;
 use std::rc::Rc;
@@ -40,6 +41,7 @@ pub struct Shell {
 
 pub enum Action {
     Continue,
+    Completion,
     Execute,
     Stop
 }
@@ -65,6 +67,23 @@ impl Shell {
 
             match action {
                 Action::Continue => (),
+                Action::Completion => {
+                    let bump = self.bump.clone();
+                    let bump = bump.borrow();
+
+                    let mut line = String::with_capacity_in(editor.line.len() + 16, &bump);
+                    let cursor_bytes = editor.line.read_into_and_bytes(&mut line);
+
+                    if let Ok(cmd) = parser::parse_in(&bump, &line) {
+                        // TODO
+                        // completion daemon
+                        // path expand
+
+                        self.completion(&line, cursor_bytes, cmd).await?;
+
+                        editor.switch_path_selector(&self)?;
+                    };
+                },
                 Action::Execute => {
                     let bump = self.bump.clone();
                     let bump = bump.borrow();
@@ -72,10 +91,10 @@ impl Shell {
                     let mut line = String::with_capacity_in(editor.line.len() + 16, &bump);
                     editor.line.read_into(&mut line);
                     self.alias.replace(&mut line);
-                    let line2 = line.trim_end();
+                    let trimmed_line = line.trim_end();
 
-                    if !line2.is_empty() {
-                        match parser::parse_in(&bump, line2) {
+                    if !trimmed_line.is_empty() {
+                        match parser::parse_in(&bump, trimmed_line) {
                             Ok(cmd) => {
                                 execute!(&mut self.term,
                                     style::Print("\r\n"),
@@ -83,8 +102,8 @@ impl Shell {
                                 )?;
 
                                 self.is_execute = true;
-                                self.execute(line2, cmd).await?;
-                                editor.line.history.push(line2);
+                                self.execute(trimmed_line, cmd).await?;
+                                editor.line.history.push(trimmed_line);
                                 editor.line.clear();
                             },
                             Err(err) => {
@@ -101,7 +120,7 @@ impl Shell {
                     }
                 },
                 Action::Stop => break
-            };
+            }
 
             render(&mut editor, self)?;
         }
@@ -144,6 +163,12 @@ impl Shell {
 
         Ok(())
     }
+
+    pub async fn completion(&mut self, line: &str, cursor: usize, cmd: &Command<'_>) -> anyhow::Result<()> {
+        // TODO
+
+        Ok(())
+    }
 }
 
 async fn shell_execute(shell: &mut Shell, line: &str, cmd: &Command<'_>)
@@ -161,7 +186,6 @@ async fn shell_execute(shell: &mut Shell, line: &str, cmd: &Command<'_>)
     cmd.exe.eval(shell, line, &mut cmd_new)?;
 
     let mut shell_cmd = shell_cmd.context("the expanded command was empty")?;
-
     let mut push = |osstr: &[u8]| shell_cmd.push(osstr);
 
     for arg in cmd.args.iter() {

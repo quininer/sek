@@ -117,6 +117,26 @@ impl Buffer {
         }
     }
 
+    pub fn read_into_and_bytes<'a>(&self, buf: &'a mut String<'_>)
+        -> usize
+    {
+        buf.clear();
+
+        if let Some(line) = self.history.get() {
+            buf.push_str(line);
+            buf.len()
+        } else {
+            for &c in &self.buf[..self.cur] {
+                buf.push(c);
+            }
+            let cur = buf.len();
+            for &c in &self.buf[self.cur..] {
+                buf.push(c);
+            }
+            cur
+        }
+    }
+
     pub fn read_into_and_width<'a>(&self, buf: &'a mut String<'_>)
         -> (u16, u16)
     {

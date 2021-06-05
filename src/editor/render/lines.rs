@@ -15,7 +15,7 @@ pub fn render(
     editor: &mut Editor,
     shell: &mut Shell,
     buf: &mut String<'_>,
-    cursor: u16
+    cursor_width: u16
 )
     -> anyhow::Result<()>
 {
@@ -94,7 +94,7 @@ pub fn render(
         }
     }
 
-    let cursor_width = cursor + PROMPT.len() as u16;
+    let cursor_width = cursor_width + PROMPT.len() as u16;
     editor.ui.bottom = {
         let total_width = buf.width() + PROMPT.len();
         let total_width = total_width as u16;

@@ -89,3 +89,29 @@ pub enum StdioKind {
     Out,
     Err
 }
+
+impl Argument<'_> {
+    pub fn span(&self) -> Span {
+        let start = self.0.first().map(|arg| arg.span());
+        let end = self.0.last().map(|arg| arg.span());
+
+        match (start, end) {
+            (Some(start), Some(end)) => start.start..end.end,
+            (Some(span), None) | (None, Some(span)) => span,
+            (None, None) => 0..0
+        }
+    }
+}
+
+impl ArgSlice<'_> {
+    pub fn span(&self) -> Span {
+        match self {
+            ArgSlice::Str(val) => val.0.clone(),
+            ArgSlice::Env(val) => val.0.clone(),
+            ArgSlice::Escape(val) => val.0.clone(),
+            ArgSlice::Single(val) => val.0.clone(),
+            ArgSlice::Double(val) => val.span.clone(),
+            ArgSlice::SubShell(val) => val.span.clone()
+        }
+    }
+}

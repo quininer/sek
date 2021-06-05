@@ -18,7 +18,7 @@ pub struct Editor {
     pub line: Buffer,
     pub cmd: Buffer,
     pub error: Option<anyhow::Error>,
-    mode: Mode,
+    pub mode: Mode,
     path_selector: PathSelector,
     ready: Option<char>,
     ui: Ui
@@ -35,7 +35,7 @@ struct Ui {
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum Mode {
+pub enum Mode {
     Insert,
     Normal,
     Visual,
@@ -99,17 +99,7 @@ impl Editor {
                 KeyCode::End => self.line.move_end(),
                 KeyCode::Up => self.line.history.up(),
                 KeyCode::Down => self.line.history.down(),
-                KeyCode::Tab => {
-                    // TODO
-                    // completion daemon
-                    // path expand
-
-                    self.path_selector.set_space(self.ui.available_space());
-                    self.path_selector.cd(shell.env.pwd())?;
-                    self.path_selector.need_init = true;
-                    self.cmd.clear();
-                    self.mode = Mode::PathSelector;
-                },
+                KeyCode::Tab => return Ok(Action::Completion),
                 KeyCode::Enter => return Ok(Action::Execute),
                 _ => ()
             },
@@ -286,6 +276,15 @@ impl Editor {
         }
 
         Ok(Action::Continue)
+    }
+
+    pub fn switch_path_selector(&mut self, shell: &Shell) -> anyhow::Result<()> {
+        self.path_selector.set_space(self.ui.available_space());
+        self.path_selector.cd(shell.env.pwd())?;
+        self.path_selector.need_init = true;
+        self.cmd.clear();
+        self.mode = Mode::PathSelector;
+        Ok(())
     }
 }
 
