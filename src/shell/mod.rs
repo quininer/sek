@@ -4,14 +4,15 @@ pub mod config;
 pub mod process;
 pub mod execute;
 pub mod builtin;
-pub mod completion;
+// pub mod completion;
 
 use std::io;
 use std::rc::Rc;
 use std::cell::RefCell;
 use anyhow::Context;
+use bstr::ByteSlice;
 use bumpalo::Bump;
-use bumpalo::collections::String;
+use bumpalo::collections::{ Vec, String };
 use tokio::signal;
 use tokio_stream::StreamExt;
 use scopeguard::defer;
@@ -96,7 +97,7 @@ impl Shell {
                     if !trimmed_line.is_empty() {
                         match parser::parse_in(&bump, trimmed_line) {
                             Ok(cmd) => {
-                                execute!(&mut self.term,
+                                queue!(&mut self.term,
                                     style::Print("\r\n"),
                                     terminal::Clear(terminal::ClearType::CurrentLine)
                                 )?;
@@ -164,7 +165,7 @@ impl Shell {
         Ok(())
     }
 
-    pub async fn completion(&mut self, line: &str, cursor: usize, cmd: &Command<'_>) -> anyhow::Result<()> {
+    pub async fn completion(&mut self, line: &str, cursor: usize, cmd: Command<'_>) -> anyhow::Result<()> {
         // TODO
 
         Ok(())
@@ -178,12 +179,25 @@ async fn shell_execute(shell: &mut Shell, line: &str, cmd: &Command<'_>)
         return Ok(true);
     }
 
+    let bump = shell.bump.clone();
+    let bump = bump.borrow();
+
+    // TODO use https://doc.rust-lang.org/stable/std/process/struct.Command.html#method.get_program
+    let mut cmd_name = Vec::with_capacity_in(8, &bump);
     let mut shell_cmd = None;
     let mut cmd_new = |osstr: &[u8]| {
         shell_cmd = Some(ShellCommand::new(osstr)?);
+        cmd_name.extend_from_slice(osstr);
         Ok(())
     };
     cmd.exe.eval(shell, line, &mut cmd_new)?;
+
+    let title = bumpalo::format!(in &bump,
+        "{} {}",
+        cmd_name.as_bstr(),
+        shell.env.pwd().display()
+    );
+    execute!(&mut shell.term, terminal::SetTitle(&title))?;
 
     let mut shell_cmd = shell_cmd.context("the expanded command was empty")?;
     let mut push = |osstr: &[u8]| shell_cmd.push(osstr);

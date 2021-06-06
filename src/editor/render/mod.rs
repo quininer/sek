@@ -4,7 +4,7 @@ mod path_selector;
 
 use bumpalo::collections::String;
 use unicode_width::UnicodeWidthStr;
-use crossterm::{ execute, style };
+use crossterm::{ queue, execute, style, terminal };
 use crate::editor::{ Editor, Mode };
 use crate::shell::Shell;
 use crate::shell::parser::ParseFailed;
@@ -20,6 +20,12 @@ pub fn render(editor: &mut Editor, shell: &mut Shell)
 {
     let bump = shell.bump.clone();
     let bump = bump.borrow();
+
+    let title = bumpalo::format!(in &bump,
+        "sek {}",
+        shell.env.pwd().display()
+    );
+    queue!(&mut shell.term, terminal::SetTitle(&title))?;
 
     if let Mode::PathSelector = editor.mode {
         path_selector::render(&bump, editor, shell)
