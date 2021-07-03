@@ -183,7 +183,7 @@ async fn shell_execute(shell: &mut Shell, line: &str, cmd: &Command<'_>)
     let bump = bump.borrow();
 
     // TODO use https://doc.rust-lang.org/stable/std/process/struct.Command.html#method.get_program
-    let mut cmd_name = Vec::with_capacity_in(8, &bump);
+    let mut cmd_name = Vec::new_in(&bump);
     let mut shell_cmd = None;
     let mut cmd_new = |osstr: &[u8]| {
         shell_cmd = Some(ShellCommand::new(osstr)?);

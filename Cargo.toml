@@ -25,7 +25,7 @@ tokio = { version = "1", features = [ "rt", "signal", "process", "io-util", "mac
 tokio-stream = "0.1"
 
 # term
-crossterm = { version = "0.19", features = [ "event-stream" ] }
+crossterm = { version = "0.20", features = [ "event-stream" ] }
 
 # options
 argh = "0.1"
@@ -45,7 +45,7 @@ serde_json = "1"
 serde-tuple-vec-map = "1"
 
 # highlight
-xorf = { version = "0.7", git = "https://github.com/ayazhafiz/xorf", default-features = false }
+xorf = { version = "0.7.1", default-features = false }
 
 # path selector
 glob = "0.3"
