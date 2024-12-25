@@ -11,45 +11,17 @@ path = "src/main.rs"
 [dependencies]
 # utils
 anyhow = "1"
-log = "0.4"
-bstr = { version = "0.2", features = [ "serde1" ] }
-serde = { version = "1", features = [ "derive" ] }
-scopeguard = "1"
-if_chain = "1"
-bumpalo = { version = "3.7", features = [ "collections", "boxed" ] }
-siphasher = "0.3"
-getrandom = "0.2"
-
-# runtime
-tokio = { version = "1", features = [ "rt", "signal", "process", "io-util", "macros", "parking_lot" ] }
-tokio-stream = "0.1"
-
-# term
-crossterm = { version = "0.20", features = [ "event-stream" ] }
 
 # options
 argh = "0.1"
-directories = "3"
+directories = "5"
 
-# editor
-unicode-width = "0.1"
+# ui
+miette = "7"
 
-# shell parse
-logos = "0.12"
-
-# process
-libc = "0.2"
-
-# config
-serde_json = "1"
-serde-tuple-vec-map = "1"
-
-# highlight
-xorf = { version = "0.7.1", default-features = false }
-
-# path selector
-glob = "0.3"
-lexical-sort = "0.3"
+# lang
+logos = "0.15"
+la-arena = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

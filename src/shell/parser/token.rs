@@ -1,7 +1,11 @@
-use logos::Logos;
+use logos::{ Logos, Span };
+use super::error::LexingError;
 
+pub type TokenId = la_arena::Idx<(Result<Token, LexingError>, Span)>;
+pub type TokenArena = la_arena::Arena<(Result<Token, LexingError>, Span)>;
 
 #[derive(Logos, Debug, PartialEq, Copy, Clone)]
+#[logos(error = LexingError)]
 pub enum Token {
     #[token("'")]
     SingleQuote,
@@ -39,14 +43,11 @@ pub enum Token {
 
     #[regex(r"[\s]+")]
     Empty,
-
-    #[error]
-    Unknown
 }
 
 impl Token {
     pub const fn size() -> usize {
-        const TOKEN_KIND: &[Token; 15] = &[
+        const TOKEN_KIND: &[Token; 14] = &[
             Token::SingleQuote,
             Token::DoubleQuote,
             Token::ShellOpen,
@@ -61,7 +62,6 @@ impl Token {
             Token::Env,
             Token::Text,
             Token::Empty,
-            Token::Unknown
         ];
 
         TOKEN_KIND.len()
@@ -78,16 +78,16 @@ mod test {
 
         let result = Token::lexer(input)
             .spanned()
-            .filter(|(token, _)| token != &Token::Empty)
+            .filter(|(token, _)| token != &Ok(Token::Empty))
             .map(|(token, span)| (token, &input[span]))
             .collect::<std::vec::Vec<_>>();
 
         let expected = vec![
-            (Token::Text, "exe"),
-            (Token::Text, "--args"),
-            (Token::Text, "foo"),
-            (Token::Text, "--args2"),
-            (Token::Text, "中文!"),
+            (Ok(Token::Text), "exe"),
+            (Ok(Token::Text), "--args"),
+            (Ok(Token::Text), "foo"),
+            (Ok(Token::Text), "--args2"),
+            (Ok(Token::Text), "中文!"),
         ];
 
         assert_eq!(expected, result);
@@ -99,24 +99,24 @@ mod test {
 
         let result = Token::lexer(input)
             .spanned()
-            .filter(|(token, _)| token != &Token::Empty)
+            .filter(|(token, _)| token != &Ok(Token::Empty))
             .map(|(token, span)| (token, &input[span]))
             .collect::<std::vec::Vec<_>>();
 
         let expected = vec![
-            (Token::Text, "exe"),
-            (Token::Redirect, "2>"),
-            (Token::Text, "fd0"),
-            (Token::Redirect, ">>"),
-            (Token::Text, "fd1"),
-            (Token::Pipe, "|"),
-            (Token::Text, "exe2"),
-            (Token::Redirect, ">"),
-            (Token::Text, "fd2"),
-            (Token::Redirect, "2>>"),
-            (Token::Text, "fd3"),
-            (Token::Then, ";"),
-            (Token::Text, "exe3")
+            (Ok(Token::Text), "exe"),
+            (Ok(Token::Redirect), "2>"),
+            (Ok(Token::Text), "fd0"),
+            (Ok(Token::Redirect), ">>"),
+            (Ok(Token::Text), "fd1"),
+            (Ok(Token::Pipe), "|"),
+            (Ok(Token::Text), "exe2"),
+            (Ok(Token::Redirect), ">"),
+            (Ok(Token::Text), "fd2"),
+            (Ok(Token::Redirect), "2>>"),
+            (Ok(Token::Text), "fd3"),
+            (Ok(Token::Then), ";"),
+            (Ok(Token::Text), "exe3")
         ];
 
         assert_eq!(expected, result);
@@ -128,20 +128,20 @@ mod test {
 
         let result = Token::lexer(input)
             .spanned()
-            .filter(|(token, _)| token != &Token::Empty)
+            .filter(|(token, _)| token != &Ok(Token::Empty))
             .map(|(token, span)| (token, &input[span]))
             .collect::<std::vec::Vec<_>>();
 
         let expected = vec![
-            (Token::Text, "exe"),
-            (Token::Pipe, "|"),
-            (Token::Text, "exe1"),
-            (Token::Pipe, "1|"),
-            (Token::Text, "exe2"),
-            (Token::Pipe, "2|"),
-            (Token::Text, "exe3"),
-            (Token::Pipe, "*|"),
-            (Token::Text, "exe4")
+            (Ok(Token::Text), "exe"),
+            (Ok(Token::Pipe), "|"),
+            (Ok(Token::Text), "exe1"),
+            (Ok(Token::Pipe), "1|"),
+            (Ok(Token::Text), "exe2"),
+            (Ok(Token::Pipe), "2|"),
+            (Ok(Token::Text), "exe3"),
+            (Ok(Token::Pipe), "*|"),
+            (Ok(Token::Text), "exe4")
         ];
 
         assert_eq!(expected, result);
@@ -153,22 +153,22 @@ mod test {
 
         let result = Token::lexer(input)
             .spanned()
-            .filter(|(token, _)| token != &Token::Empty)
+            .filter(|(token, _)| token != &Ok(Token::Empty))
             .map(|(token, span)| (token, &input[span]))
             .collect::<std::vec::Vec<_>>();
 
         let expected = vec![
-            (Token::Env, "$CC"),
-            (Token::DoubleQuote, "\""),
-            (Token::Text, "aaa"),
-            (Token::SingleQuote, "'"),
-            (Token::Env, "$中文"),
-            (Token::SingleQuote, "'"),
-            (Token::Text, "bbb"),
-            (Token::Backslash, "\\"),
-            (Token::DoubleQuote, "\""),
-            (Token::Text, "ccc"),
-            (Token::DoubleQuote, "\"")
+            (Ok(Token::Env), "$CC"),
+            (Ok(Token::DoubleQuote), "\""),
+            (Ok(Token::Text), "aaa"),
+            (Ok(Token::SingleQuote), "'"),
+            (Ok(Token::Env), "$中文"),
+            (Ok(Token::SingleQuote), "'"),
+            (Ok(Token::Text), "bbb"),
+            (Ok(Token::Backslash), "\\"),
+            (Ok(Token::DoubleQuote), "\""),
+            (Ok(Token::Text), "ccc"),
+            (Ok(Token::DoubleQuote), "\"")
         ];
 
         assert_eq!(expected, result);
@@ -180,23 +180,23 @@ mod test {
 
         let result = Token::lexer(input)
             .spanned()
-            .filter(|(token, _)| token != &Token::Empty)
+            .filter(|(token, _)| token != &Ok(Token::Empty))
             .map(|(token, span)| (token, &input[span]))
             .collect::<std::vec::Vec<_>>();
 
         let expected = vec![
-            (Token::Text, "exe"),
-            (Token::DoubleQuote, "\""),
-            (Token::ShellOpen, "$("),
-            (Token::Text, "exe2"),
-            (Token::Text, "--args"),
-            (Token::DoubleQuote, "\""),
-            (Token::Env, "$ENV"),
-            (Token::DoubleQuote, "\""),
-            (Token::Pipe, "|"),
-            (Token::Text, "exe3"),
-            (Token::ShellClose, ")"),
-            (Token::DoubleQuote, "\"")
+            (Ok(Token::Text), "exe"),
+            (Ok(Token::DoubleQuote), "\""),
+            (Ok(Token::ShellOpen), "$("),
+            (Ok(Token::Text), "exe2"),
+            (Ok(Token::Text), "--args"),
+            (Ok(Token::DoubleQuote), "\""),
+            (Ok(Token::Env), "$ENV"),
+            (Ok(Token::DoubleQuote), "\""),
+            (Ok(Token::Pipe), "|"),
+            (Ok(Token::Text), "exe3"),
+            (Ok(Token::ShellClose), ")"),
+            (Ok(Token::DoubleQuote), "\"")
         ];
 
         assert_eq!(expected, result);
@@ -208,15 +208,15 @@ mod test {
 
         let result = Token::lexer(input)
             .spanned()
-            .filter(|(token, _)| token != &Token::Empty)
+            .filter(|(token, _)| token != &Ok(Token::Empty))
             .map(|(token, span)| (token, &input[span]))
             .collect::<std::vec::Vec<_>>();
 
         let expected = vec![
-            (Token::Text, "exe"),
-            (Token::Redirect, ">>"),
-            (Token::Redirect, ">>"),
-            (Token::Text, "fd"),
+            (Ok(Token::Text), "exe"),
+            (Ok(Token::Redirect), ">>"),
+            (Ok(Token::Redirect), ">>"),
+            (Ok(Token::Text), "fd"),
         ];
 
         assert_eq!(expected, result);
@@ -232,10 +232,10 @@ mod test {
             .collect::<std::vec::Vec<_>>();
 
         let expected = vec![
-            (Token::Text, "exe"),
-            (Token::Empty, " "),
-            (Token::Env, "$HOME"),
-            (Token::Text, "/path/foo"),
+            (Ok(Token::Text), "exe"),
+            (Ok(Token::Empty), " "),
+            (Ok(Token::Env), "$HOME"),
+            (Ok(Token::Text), "/path/foo"),
         ];
 
         assert_eq!(expected, result);
