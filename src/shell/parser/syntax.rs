@@ -5,6 +5,7 @@ pub type NodeId = la_arena::Idx<Node>;
 
 pub enum Node {
     /// Meta node
+    Null,
     Link(Link),
 
     /// Syntax node    
@@ -26,11 +27,11 @@ pub struct Command {
     /// arg list
     pub args: NodeId,
     /// redirect to stdout
-    pub redirect_out: Option<NodeId>,
+    pub redirect_out: NodeId,
     /// redirect to stderr
-    pub redirect_err: Option<NodeId>,
+    pub redirect_err: NodeId,
     /// chain shell
-    pub chain: Option<NodeId>,    
+    pub chain: NodeId,    
 }
 
 #[derive(Debug)]
@@ -101,6 +102,8 @@ pub struct Chain {
     pub span: Span,
     /// chain token
     pub token: TokenId,
+
+    pub stdio: StdioKind,
     pub kind: ChainKind,
 
     /// command
@@ -131,5 +134,6 @@ pub enum ChainKind {
 #[derive(Clone, Copy, Debug)]
 pub enum StdioKind {
     Out,
-    Err
+    Err,
+    All,
 }

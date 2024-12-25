@@ -17,7 +17,7 @@ argh = "0.1"
 directories = "5"
 
 # ui
-miette = "7"
+annotate-snippets = "0.11"
 
 # lang
 logos = "0.15"

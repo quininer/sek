@@ -32,7 +32,7 @@ pub enum Token {
     #[token("||")]
     OrIf,
 
-    #[regex(r"[\d]?>>?")]
+    #[regex(r"[12*]?>>?")]
     Redirect,
 
     #[regex(r"\$[\w]+")]
