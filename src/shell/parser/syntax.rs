@@ -1,8 +1,10 @@
 use logos::Span;
 use super::token::TokenId;
+use crate::util::arena;
 
-pub type NodeId = la_arena::Idx<Node>;
+pub type NodeId = arena::Id<Node>;
 
+#[derive(Debug)]
 pub enum Node {
     /// Meta node
     Null,
@@ -26,10 +28,8 @@ pub struct Command {
     pub exe: NodeId,
     /// arg list
     pub args: NodeId,
-    /// redirect to stdout
-    pub redirect_out: NodeId,
-    /// redirect to stderr
-    pub redirect_err: NodeId,
+    /// redirect list
+    pub redirect: NodeId,
     /// chain shell
     pub chain: NodeId,    
 }
@@ -37,27 +37,35 @@ pub struct Command {
 #[derive(Debug)]
 pub struct Link {
     pub current: NodeId,
-    pub next: Option<NodeId>
+    pub next: Option<NodeId>,
+}
+
+#[derive(Debug)]
+pub struct Argument {
+    pub span: Span,
+
+    /// arg slice list
+    pub link: NodeId,
 }
 
 /// text token
 #[derive(Debug)]
-pub struct Literal(pub TokenId);
+pub struct Literal(pub Span);
 
 #[derive(Debug)]
 pub struct Env {
     /// env token
-    token: TokenId,
+    pub token: TokenId,
     /// text token
-    ident: TokenId
+    pub ident: TokenId
 }
 
 #[derive(Debug)]
 pub struct Escape {
     /// escape token
-    token: TokenId,
+    pub token: TokenId,
     /// text token
-    ident: TokenId
+    pub ident: TokenId
 }
 
 #[derive(Debug)]
@@ -116,6 +124,7 @@ pub struct Redirect {
     pub span: Span,
     /// redirect token
     pub token: TokenId,
+
     pub kind: StdioKind,
     pub append: bool,
 

@@ -5,7 +5,7 @@ use super::token::Token;
 
 #[derive(Debug)]
 pub struct ParseFailed {
-    pub token: Token,
+    pub token: Option<Token>,
     pub kind: ErrorKind,
     pub span: Span,
 }
@@ -27,7 +27,16 @@ pub enum ErrorKind {
     RedirectNoTarget,
     UnexpectedArgument,
     IncompleteEscape,
-    UnknownEscape
+    UnknownEscape,
+    InvalidToken,
+    Unreachable
+}
+
+impl ParseFailed {
+    pub const fn with_kind(mut self, kind: ErrorKind) -> ParseFailed {
+        self.kind = kind;
+        self
+    }
 }
 
 impl ErrorKind {

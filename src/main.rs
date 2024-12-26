@@ -1,3 +1,5 @@
+#[macro_use]
+pub mod util;
 pub mod shell;
 
 use std::path::PathBuf;

@@ -1,8 +1,9 @@
 use logos::{ Logos, Span };
 use super::error::LexingError;
+use crate::util::arena;
 
-pub type TokenId = la_arena::Idx<(Result<Token, LexingError>, Span)>;
-pub type TokenArena = la_arena::Arena<(Result<Token, LexingError>, Span)>;
+pub type TokenItem = (Result<Token, LexingError>, Span);
+pub type TokenId = arena::Id<TokenItem>;
 
 #[derive(Logos, Debug, PartialEq, Copy, Clone)]
 #[logos(error = LexingError)]

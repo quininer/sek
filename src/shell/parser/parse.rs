@@ -1,13 +1,13 @@
 use std::ops::ControlFlow;
-use la_arena::Arena;
 use logos::Span;
 use super::error::{ ParseFailed, ErrorKind };
-use super::token::{ Token, TokenId, TokenArena };
+use super::token::{ Token, TokenId, TokenItem };
 use super::syntax::{ self, Node, NodeId };
+use crate::util::arena::{ self, Arena };
 
 
 pub struct Parser {
-    tokens: TokenArena,
+    tokens: Arena<TokenItem>,
     nodes: Arena<Node>
 }
 
@@ -23,6 +23,8 @@ impl Parser {
             tokens: &self.tokens,
             nodes: &mut self.nodes,
 
+            iter: self.tokens.iter(),
+
             is_subshell: false,
             has_redirect: false,
             null, incomplete
@@ -33,8 +35,10 @@ impl Parser {
 }
 
 struct State<'p> {
-    tokens: &'p TokenArena,
+    tokens: &'p Arena<TokenItem>,
     nodes: &'p mut Arena<Node>,
+
+    iter: arena::Iter<'p, TokenItem>,
 
     null: NodeId,
     is_subshell: bool,
@@ -42,24 +46,179 @@ struct State<'p> {
     incomplete: bool
 }
 
-type LookupAction = for<'p> fn(&mut State<'p>, NodeId) -> Result<ControlFlow<()>, ParseFailed>;
+macro_rules! lookup {
+    (
+        static $name:ident = [$ty:ty ; $size:expr];
+        $( $( $token:path )|* => $val:expr ,)*
+        #_ => $default:expr $(,)?
+    ) => (
+        static $name: [$ty; $size] = {
+            let default = $default as $ty;
+            let mut table = [default; $size];
+
+            $(
+                let val = $val as $ty;
+                $(
+                    table[$token as usize] = val;
+                )*
+            )*
+
+            table
+        };
+    )
+}
+
+fn failed(item: &TokenItem)
+    -> ParseFailed
+{
+    let (maybe_token, span) = &item;
+    ParseFailed {
+        token: maybe_token.as_ref().copied().ok(),
+        kind: ErrorKind::InvalidToken,
+        span: span.clone()
+    }
+}
 
 impl syntax::Command {
-    fn parse_in(state: &mut State<'_>, mut iter: impl Iterator<Item = TokenId>)
-        -> Result<NodeId, ParseFailed>
-    {
+    fn parse_in(state: &mut State<'_>) -> Result<NodeId, ParseFailed> {
+        #[derive(Clone, Copy)]
+        struct SubState {
+            link: NodeId
+        }
+
+        type LookupAction = fn(&mut State<'_>, SubState, NodeId, TokenId)
+            -> Result<ControlFlow<(), SubState>, ParseFailed>;
+
+        lookup!{
+            static LUT = [LookupAction; Token::size()];
+
+            Token::Text => |state, substate, node, token| {
+                let item = &state.tokens[token];
+                
+                let arg = syntax::Argument::parse_in(state)?;
+                let next = state.nodes.alloc(Node::Link(syntax::Link {
+                    current: state.null,
+                    next: None
+                }));
+
+                let link = matches2!(&mut state.nodes[substate.link], Node::Link)
+                    .ok_or_else(|| failed(item).with_kind(ErrorKind::Unreachable))?;
+                link.current = arg;
+                link.next = Some(next);
+                Ok(ControlFlow::Continue(SubState { link: next }))
+            },
+            Token::SingleQuote
+                | Token::DoubleQuote
+                | Token::ShellOpen
+                | Token::Backslash
+                | Token::Env
+            => |state, substate, _node, token| {
+                let item = &state.tokens[token];
+
+                let arg = syntax::Argument::parse_in(state)?;
+                let next = state.nodes.alloc(Node::Link(syntax::Link {
+                    current: state.null,
+                    next: None
+                }));
+
+                let link = matches2!(&mut state.nodes[substate.link], Node::Link)
+                    .ok_or_else(|| failed(item).with_kind(ErrorKind::Unreachable))?;
+                link.current = arg;
+                link.next = Some(next);
+                Ok(ControlFlow::Continue(SubState { link: next }))
+            },
+            Token::Pipe
+                | Token::Then
+                | Token::AndIf
+                | Token::OrIf
+            => |state, substate, _node, token| {
+                // TODO
+
+                Ok(ControlFlow::Break(()))
+            },
+            Token::Redirect => |state, substate, node, token| {
+                // TODO
+
+                Ok(ControlFlow::Continue(substate))
+            },
+            Token::ShellClose => |state, _substate, _node, token|
+                if state.is_subshell {
+                    Ok(ControlFlow::Break(()))
+                } else {
+                    Err(failed(&state.tokens[token]).with_kind(ErrorKind::UnexpectedClose))
+                },
+            #_ => |_, _, _, _| todo!()
+        }
+        
         let node_id = state.nodes.alloc(syntax::Node::Command(syntax::Command {
             exe: state.null,
             args: state.null,
-            redirect_out: state.null,
-            redirect_err: state.null,
+            redirect: state.null,
             chain: state.null
         }));
-        
-        while let Some(token) = iter.next() {
-            todo!()
+
+        let mut substate = SubState {
+            link: state.null
+        };
+
+        // first token
+        {
+            let token = state.iter.next()
+                .ok_or_else(|| ParseFailed {
+                    token: None,
+                    kind: ErrorKind::EmptyCommand,
+                    span: 0..0
+                })?;
+            let item = &state.tokens[token];
+            let (token, span) = item;
+
+            // check first token
+            match token {
+                Ok(Token::Text) => (),
+                Ok(Token::ShellClose) if state.is_subshell =>
+                    return Err(failed(item).with_kind(ErrorKind::EmptyCommand)),
+                Ok(_) => return Err(failed(item).with_kind(ErrorKind::FirstArgMustLiteral)),
+                Err(_) => return Err(failed(item).with_kind(ErrorKind::InvalidToken))
+            }
+
+            let exe = state.nodes.alloc(Node::Literal(syntax::Literal(span.clone())));
+            let args = state.nodes.alloc(Node::Link(syntax::Link {
+                current: state.null,
+                next: None
+            }));
+
+            let cmd = matches2!(&mut state.nodes[node_id], Node::Command)
+                .ok_or_else(|| failed(item).with_kind(ErrorKind::Unreachable))?;
+            cmd.exe = exe;
+            cmd.args = args;
+            substate.link = args;
         }
-        
+
+        // args token
+        while let Some(token_id) = state.iter.peek() {
+            let (maybe_token, span) = &state.tokens[token_id];
+            let &token = maybe_token
+                .as_ref()
+                .map_err(|_| ParseFailed {
+                    token: None,
+                    kind: ErrorKind::InvalidToken,
+                    span: span.clone()
+                })?;
+
+            substate = match LUT[token as usize](state, substate, node_id, token_id)? {
+                ControlFlow::Continue(next) => next,
+                ControlFlow::Break(()) => break,
+            };
+
+            state.iter.next();
+        }
+
+        Ok(node_id)        
+    }
+}
+
+impl syntax::Argument {
+    fn parse_in(state: &mut State<'_>) -> Result<NodeId, ParseFailed> {
         todo!()
     }
 }
