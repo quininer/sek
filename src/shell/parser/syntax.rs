@@ -76,7 +76,7 @@ pub struct DoubleStr {
     /// start double quote token
     pub start_token: TokenId,
     /// end double quote token
-    pub end_end: Option<TokenId>,
+    pub end_token: Option<TokenId>,
 
     /// string slice list
     pub list: NodeId,
@@ -98,7 +98,6 @@ pub struct Chain {
     /// chain token
     pub token: TokenId,
 
-    pub stdio: StdioKind,
     pub kind: ChainKind,
 
     /// command
@@ -117,9 +116,9 @@ pub struct Redirect {
     pub value: NodeId
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum ChainKind {
-    Pipe,
+    Pipe(StdioKind),
     Then,
     AndIf,
     OrIf

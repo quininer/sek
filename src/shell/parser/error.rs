@@ -21,13 +21,9 @@ pub enum ErrorKind {
     UnexpectedToken,
     UnexpectedClose,
     UnexpectedArgument,
-    UnsupportedRedirectType,
-    UnclosedSubShell,
-    UnclosedSingleQuote,
-    UnclosedDoubleQuote,
-    RedirectNoTarget,
     IncompleteEscape,
     UnknownEscape,
+    UnknownRedirect,
     InvalidToken,
     Unreachable
 }
