@@ -59,6 +59,14 @@ impl<T> Clone for Id<T> {
 
 impl<T> Copy for Id<T> {}
 
+impl<T> PartialEq for Id<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<T> Eq for Id<T> {}
+
 pub struct Iter<'a, T> {
     arena: &'a Arena<T>,
     index: usize
@@ -78,6 +86,10 @@ impl<T> Iterator for Iter<'_, T> {
 impl<T> Iter<'_, T> {
     pub fn back(&mut self) {
         self.index = self.index.saturating_sub(1);
+    }
+
+    pub fn bump(&mut self) {
+        self.next();
     }
 
     pub fn peek(&self) -> Option<Id<T>> {

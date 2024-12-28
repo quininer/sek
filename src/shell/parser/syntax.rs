@@ -13,7 +13,7 @@ pub enum Node {
     /// Syntax node    
     Command(Command),
     Literal(Literal),
-    Env(Env),
+    Variable(Variable),
     Escape(Escape),
     SingleStr(SingleStr),
     DoubleStr(DoubleStr),
@@ -34,7 +34,7 @@ pub struct Command {
     pub chain: NodeId,    
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Link {
     pub current: NodeId,
     pub next: Option<NodeId>,
@@ -53,25 +53,18 @@ pub struct Argument {
 pub struct Literal(pub Span);
 
 #[derive(Debug)]
-pub struct Env {
-    /// env token
-    pub token: TokenId,
-    /// text token
-    pub ident: TokenId
-}
+pub struct Variable(pub TokenId);
 
 #[derive(Debug)]
 pub struct Escape {
     /// escape token
     pub token: TokenId,
-    /// text token
-    pub ident: TokenId
+    /// value token
+    pub value: TokenId
 }
 
 #[derive(Debug)]
 pub struct SingleStr {
-    /// string range
-    pub span: Span,
     /// start single quote token
     pub start_token: TokenId,
     /// end single quote token
@@ -80,8 +73,6 @@ pub struct SingleStr {
 
 #[derive(Debug)]
 pub struct DoubleStr {
-    /// string range
-    pub span: Span,
     /// start double quote token
     pub start_token: TokenId,
     /// end double quote token
@@ -93,8 +84,6 @@ pub struct DoubleStr {
 
 #[derive(Debug)]
 pub struct SubShell {
-    /// subshell range
-    pub span: Span,
     /// shell open token
     pub start_token: TokenId,
     /// shell close token
@@ -106,8 +95,6 @@ pub struct SubShell {
 
 #[derive(Debug)]
 pub struct Chain {
-    /// chain range
-    pub span: Span,
     /// chain token
     pub token: TokenId,
 
@@ -120,8 +107,6 @@ pub struct Chain {
 
 #[derive(Debug)]
 pub struct Redirect {
-    /// redirect range
-    pub span: Span,
     /// redirect token
     pub token: TokenId,
 

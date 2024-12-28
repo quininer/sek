@@ -6,8 +6,8 @@ use super::token::Token;
 #[derive(Debug)]
 pub struct ParseFailed {
     pub token: Option<Token>,
+    pub span: Option<Span>,
     pub kind: ErrorKind,
-    pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -20,12 +20,12 @@ pub enum ErrorKind {
     EmptyCommand,
     UnexpectedToken,
     UnexpectedClose,
+    UnexpectedArgument,
     UnsupportedRedirectType,
     UnclosedSubShell,
     UnclosedSingleQuote,
     UnclosedDoubleQuote,
     RedirectNoTarget,
-    UnexpectedArgument,
     IncompleteEscape,
     UnknownEscape,
     InvalidToken,

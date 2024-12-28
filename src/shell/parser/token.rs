@@ -2,7 +2,7 @@ use logos::{ Logos, Span };
 use super::error::LexingError;
 use crate::util::arena;
 
-pub type TokenItem = (Result<Token, LexingError>, Span);
+pub type TokenItem = (Token, Span);
 pub type TokenId = arena::Id<TokenItem>;
 
 #[derive(Logos, Debug, PartialEq, Copy, Clone)]
@@ -37,7 +37,7 @@ pub enum Token {
     Redirect,
 
     #[regex(r"\$[\w]+")]
-    Env,
+    Variable,
 
     #[regex(r#"[^#$&()|\\;"'<>\s]+"#)]
     Text,
@@ -60,7 +60,7 @@ impl Token {
             Token::AndIf,
             Token::OrIf,
             Token::Redirect,
-            Token::Env,
+            Token::Variable,
             Token::Text,
             Token::Empty,
         ];
@@ -159,11 +159,11 @@ mod test {
             .collect::<std::vec::Vec<_>>();
 
         let expected = vec![
-            (Ok(Token::Env), "$CC"),
+            (Ok(Token::Variable), "$CC"),
             (Ok(Token::DoubleQuote), "\""),
             (Ok(Token::Text), "aaa"),
             (Ok(Token::SingleQuote), "'"),
-            (Ok(Token::Env), "$中文"),
+            (Ok(Token::Variable), "$中文"),
             (Ok(Token::SingleQuote), "'"),
             (Ok(Token::Text), "bbb"),
             (Ok(Token::Backslash), "\\"),
@@ -192,7 +192,7 @@ mod test {
             (Ok(Token::Text), "exe2"),
             (Ok(Token::Text), "--args"),
             (Ok(Token::DoubleQuote), "\""),
-            (Ok(Token::Env), "$ENV"),
+            (Ok(Token::Variable), "$ENV"),
             (Ok(Token::DoubleQuote), "\""),
             (Ok(Token::Pipe), "|"),
             (Ok(Token::Text), "exe3"),
@@ -235,7 +235,7 @@ mod test {
         let expected = vec![
             (Ok(Token::Text), "exe"),
             (Ok(Token::Empty), " "),
-            (Ok(Token::Env), "$HOME"),
+            (Ok(Token::Variable), "$HOME"),
             (Ok(Token::Text), "/path/foo"),
         ];
 
