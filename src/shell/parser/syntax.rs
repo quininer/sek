@@ -98,6 +98,7 @@ pub struct Chain {
     /// chain token
     pub token: TokenId,
 
+    // chain kind
     pub kind: ChainKind,
 
     /// command
@@ -109,7 +110,10 @@ pub struct Redirect {
     /// redirect token
     pub token: TokenId,
 
+    /// stdio kind
     pub kind: StdioKind,
+
+    /// append mode
     pub append: bool,
 
     /// arg list

@@ -1,3 +1,4 @@
+use std::hash::{ Hash, Hasher };
 use std::ops::{ Index, IndexMut };
 use std::convert::TryInto;
 use std::marker::PhantomData;
@@ -66,6 +67,12 @@ impl<T> PartialEq for Id<T> {
 }
 
 impl<T> Eq for Id<T> {}
+
+impl<T> Hash for Id<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
+    }
+}
 
 pub struct Iter<'a, T> {
     arena: &'a Arena<T>,

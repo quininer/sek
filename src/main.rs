@@ -1,6 +1,7 @@
 #[macro_use]
 pub mod util;
 pub mod shell;
+pub mod editor;
 
 use std::path::PathBuf;
 use argh::FromArgs;
