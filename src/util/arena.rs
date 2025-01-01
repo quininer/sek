@@ -1,13 +1,12 @@
+use std::fmt;
 use std::hash::{ Hash, Hasher };
 use std::ops::{ Index, IndexMut };
 use std::convert::TryInto;
 use std::marker::PhantomData;
 
 
-#[derive(Default)]
 pub struct Arena<T>(Vec<T>);
 
-#[derive(Debug)]
 pub struct Id<T>(u32, PhantomData<fn() -> T>);
 
 impl<T> Arena<T> {
@@ -27,6 +26,12 @@ impl<T> Arena<T> {
 
     pub fn clear(&mut self) {
         self.0.clear();
+    }
+}
+
+impl<T> Default for Arena<T> {
+    fn default() -> Self {
+        Arena::new()
     }
 }
 
@@ -71,6 +76,12 @@ impl<T> Eq for Id<T> {}
 impl<T> Hash for Id<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash(state)
+    }
+}
+
+impl<T> fmt::Debug for Id<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
     }
 }
 

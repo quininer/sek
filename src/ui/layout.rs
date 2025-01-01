@@ -2,7 +2,7 @@ use std::{ cmp, iter };
 use std::convert::TryInto;
 use std::ops::Range;
 use smallvec::SmallVec;
-use super::arena::{ Arena, Id };
+use crate::util::arena::{ Arena, Id };
 
 
 pub struct Tree {
@@ -18,9 +18,9 @@ pub struct Node {
 
 #[derive(Clone, Copy)]
 pub struct Style {
-    axis: Axis,
-    justify: Justify,
-    overflow: bool,
+    pub axis: Axis,
+    pub justify: Justify,
+    pub overflow: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,15 +36,32 @@ pub enum Justify {
     End,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point {
-    x: u16,
-    y: u16
+    pub x: u16,
+    pub y: u16
 }
 
 pub trait Space {
-    fn size(&self) -> (u16, u16);
     fn length(&self, leaf: Id<Node>) -> Option<usize>;
+}
+
+impl Default for Tree {
+    fn default() -> Self {
+        let mut nodes = Arena::default();
+        let root = nodes.alloc(Node {
+            style: Style {
+                axis: Axis::Vertical,
+                justify: Justify::Start,
+                overflow: false
+            },
+            children: Default::default()
+        });
+        Tree {
+            nodes, root,
+            freelist: Default::default()
+        }
+    }
 }
 
 impl Tree {
@@ -80,42 +97,32 @@ impl Tree {
         self.freelist.extend(list);
     }
 
-    pub fn layout(&self, space: &dyn Space, output: &mut Vec<(Id<Node>, Layout)>) {
-        let (columns, rows) = space.size();
+    pub fn layout(&self, space: &dyn Space, size: (u16, u16), output: &mut Vec<(Id<Node>, Layout)>) {
+        let (columns, rows) = size;
         let root = &self.nodes[self.root];
 
-        let mut state = State {
+        let state = State {
             space,
-            parent: self.root,
             parent_size: (columns, rows),
             range: Point { x: 0, y: 0 }..Point { x: columns, y: rows },
         };
 
         assert!(matches!(root.style.axis, Axis::Vertical));
 
-        for &child in &root.children {
-            let layout = layout(self, state.clone(), child, output);
-
-            // TODO handle overflow
-            state.parent_size.1 -= layout.size.1;
-        }
-
-        todo!()
+        layout(self, state, self.root, output);
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Layout {
-    range: Range<Point>,
-    size: (u16, u16),
-    padding: u16
+    pub range: Range<Point>,
+    pub size: (u16, u16),
+    pub padding: u16
 }
 
 #[derive(Clone)]
 struct State<'s> {
     space: &'s dyn Space,
-
-    parent: Id<Node>,    
     parent_size: (u16, u16),
     range: Range<Point>,
 }
@@ -134,10 +141,8 @@ fn layout(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(Id<No
 fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(Id<Node>, Layout)>)
     -> Layout
 {
-    let mut state = state;
-    state.parent = node;
-
     let node = &tree.nodes[node];
+    let mut state = state;
     let mut start = 0;
     let mut end = node.children.len();
 
@@ -172,7 +177,7 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
                 node_layout.size.1 += child_layout.size.1;
             },
             Axis::Vertical => {
-                state.range.start.x += child_layout.size.1;
+                state.range.start.x += child_layout.size.0;
                 node_layout.size.0 += child_layout.size.0;
                 node_layout.size.1 = cmp::max(node_layout.size.1, child_layout.size.1);
             },
@@ -197,11 +202,11 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
             Axis::Horizontal => {
                 state.range.end.y -= child_layout.size.1;
                 node_layout.size.0 = cmp::max(node_layout.size.0, child_layout.size.0);
-                node_layout.size.1 += child_layout.size.1;
+                node_layout.size.1 = state.parent_size.1;
             }
             Axis::Vertical => {
                 state.range.end.x -= child_layout.size.0;
-                node_layout.size.0 += child_layout.size.0;
+                node_layout.size.0 = state.parent_size.0;
                 node_layout.size.1 = cmp::max(node_layout.size.1, child_layout.size.1);
             }
         }
@@ -222,7 +227,7 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
 
         node_layout.size.0 += child_layout.size.0;
         node_layout.size.1 = state.parent_size.1;
-    } else {
+    } else if !dynamic_nodes.is_empty() {
         let (step, half) = {
             let total = match node.style.axis {
                 Axis::Horizontal => usize::from(state.range.end.y - state.range.start.y),
@@ -282,20 +287,59 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
 fn layout_leaf(tree: &Tree, state: State<'_>, leaf_id: Id<Node>, output: &mut Vec<(Id<Node>, Layout)>)
     -> Layout
 {
+    let leaf = &tree.nodes[leaf_id];
+    
     let mut leaf_layout = Layout {
         range: state.range.start..state.range.start,
         size: (0, 0),
         padding: 0
     };
+
+    if matches!(leaf.style.justify, Justify::End) {
+        leaf_layout.range.start.y = state.range.end.y;
+        leaf_layout.range.end.y = state.range.end.y;
+    }
     
-    let leaf = &tree.nodes[leaf_id];
     let mut len = match state.space.length(leaf_id) {
         Some(len) => len,
         None => return leaf_layout
     };
+    let first_line = state.range.end.y - state.range.start.y;
+    let full_line = state.parent_size.1;
 
-    for line in iter::once(usize::from(state.range.end.y - state.range.start.y))
-        .chain(iter::repeat(usize::from(state.parent_size.1)))
+    match leaf.style.justify {
+        Justify::Start => {
+            if usize::from(first_line) > len {
+                let len: u16 = len.try_into().unwrap();
+                leaf_layout.range.end.y += len;
+                leaf_layout.size.1 += len;
+            } else {
+                leaf_layout.range.end.y += first_line;
+                leaf_layout.size.1 += first_line;
+            }
+
+            output.push((leaf_id, leaf_layout.clone()));
+            return leaf_layout;
+        },
+        Justify::Stretch => (),
+        Justify::End => {
+            if usize::from(first_line) > len {
+                let len: u16 = len.try_into().unwrap();
+                leaf_layout.range.start.y -= len;
+                leaf_layout.size.1 += len;
+            } else {
+                leaf_layout.range.start.y -= first_line;
+                leaf_layout.size.1 += first_line;
+            }
+
+            output.push((leaf_id, leaf_layout.clone()));
+            return leaf_layout; 
+        }
+    }
+
+    for line in iter::once(first_line)
+        .chain(iter::repeat(full_line))
+        .map(usize::from)
         .take(usize::from(state.range.end.x - state.range.start.x))
     {
         if let Some(rem) = line.checked_sub(len) {
@@ -303,8 +347,13 @@ fn layout_leaf(tree: &Tree, state: State<'_>, leaf_id: Id<Node>, output: &mut Ve
             let rem: u16 = rem.try_into().unwrap();
             leaf_layout.range.end.y += len;
             leaf_layout.size.0 += 1;
-            leaf_layout.size.1 += len + rem;
-            leaf_layout.padding = rem;
+            leaf_layout.size.1 += len;
+
+            if matches!(leaf.style.justify, Justify::Stretch) {
+                leaf_layout.size.1 += rem;
+                leaf_layout.padding = rem;
+            }
+
             break
         } if !leaf.style.overflow {
             let line: u16 = line.try_into().unwrap();

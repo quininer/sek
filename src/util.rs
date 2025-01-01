@@ -1,5 +1,4 @@
 pub mod arena;
-pub mod layout;
 
 macro_rules! matches2 {
     ( $expr:expr, $item:path ) => {
