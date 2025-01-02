@@ -55,7 +55,7 @@ impl EditableLine {
 
     pub fn delete_to_end(&mut self) {
         if self.buf.len() > self.cur {
-            self.buf.drain(self.cur..);
+            self.buf.truncate(self.cur);
             self.cur = self.cur.saturating_sub(1);
         }
     }

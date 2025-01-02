@@ -25,33 +25,30 @@ impl ShellUi {
         let insert = layout.new_node(root, layout::Style {
             axis: layout::Axis::Horizontal,
             justify: layout::Justify::Start,
-            overflow: false
+            ..Default::default()
         });
         let prompt = layout.new_node(insert, layout::Style {
-            axis: layout::Axis::Horizontal,
             justify: layout::Justify::Start,
-            overflow: false
+            ..Default::default()
         });
         let insert_line = layout.new_node(insert, layout::Style {
-            axis: layout::Axis::Horizontal,
             justify: layout::Justify::Stretch,
-            overflow: false
+            wrap: true,
+            ..Default::default()
         });
         // command line
         let command = layout.new_node(root, layout::Style {
             axis: layout::Axis::Horizontal,
             justify: layout::Justify::Start,
-            overflow: false
+            ..Default::default()
         });
         let command_line = layout.new_node(command, layout::Style {
-            axis: layout::Axis::Horizontal,
             justify: layout::Justify::Stretch,
-            overflow: false
+            ..Default::default()
         });
         let command_tips =  layout.new_node(command, layout::Style {
-            axis: layout::Axis::Horizontal,
             justify: layout::Justify::End,
-            overflow: false
+            ..Default::default()
         });
 
         Ok(ShellUi {
@@ -67,9 +64,9 @@ impl ShellUi {
         let size = crossterm::terminal::size()?;
 
         let mut output = Vec::new();
-        self.layout.layout(data, (size.1, size.0), &mut output);
+        self.layout.layout(data, size, &mut output);
 
-        output.sort_by_key(|(_, layout)| layout.range.start);
+        output.sort_by_key(|(_, layout)| (layout.range.start.y, layout.range.start.x));
 
         let mut current = layout::Point {
             x: 0,
@@ -80,19 +77,19 @@ impl ShellUi {
             let s = data.0.get(&id).context("not found node data")?;
 
             if current != layout.range.start {
-                let x = current.x.abs_diff(layout.range.start.x);
-                if x != 0 {
-                    if current.x > layout.range.start.x {
-                        queue!(&mut term, cursor::MoveToPreviousLine(x))?;
+                let y = current.y.abs_diff(layout.range.start.y);
+                if y != 0 {
+                    if current.y > layout.range.start.y {
+                        queue!(&mut term, cursor::MoveToPreviousLine(y))?;
                     } else {
-                        for _ in 0..(layout.range.start.x - current.x) {
+                        for _ in 0..(layout.range.start.y - current.y) {
                             queue!(&mut term, style::Print("\r\n"))?;
                         }
                     }
                 }
 
-                if current.y != layout.range.start.y {
-                    queue!(&mut term, cursor::MoveToColumn(layout.range.start.y))?
+                if current.x != layout.range.start.x {
+                    queue!(&mut term, cursor::MoveToColumn(layout.range.start.x))?
                 }
             }
 
@@ -136,9 +133,10 @@ fn main() -> anyhow::Result<()> {
     let data = ShellData(
         [
             (ui.prompt, "> "),
-            (ui.insert_line, "longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglong"),
+            (ui.insert_line, "xx"),
+//            (ui.insert_line, "longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglong"),
             (ui.command_line, ":q"),
-            (ui.tips, "0")
+            (ui.tips, "<>")
         ]
             .iter()
             .map(|&(id, s)| (id, s.into()))

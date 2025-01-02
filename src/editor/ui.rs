@@ -18,32 +18,31 @@ impl ShellUi {
         let insert = layout.new_node(root, layout::Style {
             axis: layout::Axis::Horizontal,
             justify: layout::Justify::Start,
-            overflow: false
+            ..Default::default()
         });
         let prompt = layout.new_node(insert, layout::Style {
-            axis: layout::Axis::Horizontal,
             justify: layout::Justify::Start,
-            overflow: false
+            ..Default::default()
         });
         let insert_line = layout.new_node(insert, layout::Style {
-            axis: layout::Axis::Horizontal,
             justify: layout::Justify::Stretch,
-            overflow: true
+            wrap: true,
+            ..Default::default()
         });
+
+        // command line
         let command = layout.new_node(root, layout::Style {
             axis: layout::Axis::Horizontal,
             justify: layout::Justify::Start,
-            overflow: false
+            ..Default::default()
         });
         let command_line = layout.new_node(command, layout::Style {
-            axis: layout::Axis::Horizontal,
             justify: layout::Justify::Stretch,
-            overflow: false
+            ..Default::default()
         });
         let command_tips =  layout.new_node(command, layout::Style {
-            axis: layout::Axis::Horizontal,
             justify: layout::Justify::End,
-            overflow: false
+            ..Default::default()
         });
 
         Ok(ShellUi {
