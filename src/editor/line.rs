@@ -1,9 +1,13 @@
 use std::{ cmp, fmt };
 
+use logos::Source;
+
 
 #[derive(Default)]
 pub struct EditableLine {
-    buf: Vec<char>,
+    buf: String,
+    // empty when buf is ascii
+    indices: Vec<usize>,
     cur: usize,
 }
 
@@ -13,49 +17,90 @@ impl EditableLine {
     }
 
     pub fn len(&self) -> usize {
-        self.buf.iter()
-            .map(|c| c.len_utf8())
-            .sum()
+        self.buf.len()
     }
 
     pub fn first(&self) -> Option<char> {
-        self.buf.first().copied()
+        self.buf.chars().next()
+    }
+
+    fn char_len(&self) -> usize {
+        if self.indices.is_empty() {
+            self.buf.len()
+        } else {
+            self.indices.len()
+        }
+    }
+
+    fn index(&self) -> usize {
+        match self.indices.is_empty() {
+            true => self.cur,
+            false => self.indices[self.cur]
+        }
+    }
+
+    fn update<F: FnOnce() -> bool>(&mut self, is_ascii: F) {
+        let is_ascii = self.indices.is_empty() && is_ascii();
+        
+        if !is_ascii {
+            let idx = self.indices[self.cur];
+            self.indices.truncate(self.cur);
+            self.indices.extend(self.buf[idx..].char_indices().map(|(idx, _)| idx));
+        }
     }
 
     pub fn push(&mut self, c: char) {
-        self.buf.insert(self.cur, c);
+        self.buf.insert(self.index(), c);
+        self.update(|| c.is_ascii());
         self.cur += 1;
-    }
+    }    
 
     pub fn replace(&mut self, c: char) {
-        if let Some(cc) = self.buf.get_mut(self.cur) {
-            *cc = c;
+        let idx = self.index();
+
+        if let Some(cc) = self.buf[idx..].chars().next() {
+            let mut buf = [0; 4];
+            let c = c.encode_utf8(&mut buf);
+            let cc_len = cc.len_utf8();
+
+            self.buf.replace_range(idx..(idx + cc_len), c);
+
+            if cc_len != c.len() {
+                self.update(|| c.is_ascii());
+            }
         }
     }
 
-    pub fn push_str(&mut self, string: &str) {
-        for c in string.chars() {
-            self.buf.insert(self.cur, c);
-            self.cur += 1;
-        }
+    pub fn push_str(&mut self, s: &str) {
+        self.buf.insert_str(self.index(), s);
+        self.update(|| s.is_ascii());
+        self.cur += s.chars().count();
     }
 
     pub fn backspace(&mut self) {
         if self.cur != 0 {
-            self.buf.remove(self.cur - 1);
-            self.cur -= 1;
+            let idx = self.index();
+            if let Some(prev_char) = self.buf[..idx].chars().last() {
+                self.buf.remove(idx - prev_char.len_utf8());
+                self.cur -= 1;
+                self.update(|| true);
+            }
         }
     }
 
     pub fn delete(&mut self) {
-        if self.buf.len() > self.cur {
-            self.buf.remove(self.cur);
+        let idx = self.index();
+        if self.buf.len() > idx {
+            self.buf.remove(idx);
+            self.update(|| true);
         }
     }
 
     pub fn delete_to_end(&mut self) {
-        if self.buf.len() > self.cur {
-            self.buf.truncate(self.cur);
+        let idx = self.index();
+        if self.buf.len() > idx {
+            self.buf.truncate(idx);
+            self.update(|| true);
             self.cur = self.cur.saturating_sub(1);
         }
     }
@@ -65,7 +110,7 @@ impl EditableLine {
     }
 
     pub fn move_end(&mut self) {
-        self.cur = self.buf.len();
+        self.cur = self.char_len();
     }
 
     pub fn move_left(&mut self) {
@@ -73,7 +118,7 @@ impl EditableLine {
     }
 
     pub fn move_right(&mut self) {
-        self.cur = cmp::min(self.cur + 1, self.buf.len());
+        self.cur = cmp::min(self.cur + 1, self.char_len());
     }
 
     pub fn clear(&mut self) {
@@ -84,11 +129,7 @@ impl EditableLine {
 
 impl fmt::Display for EditableLine {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for &c in &self.buf {
-            write!(f, "{}", c)?;
-        }
-
-        Ok(())
+        fmt::Display::fmt(self.buf.as_str(), f)
     }
 }
 
