@@ -1,7 +1,7 @@
 use crate::ui::layout;
 use crate::util::arena::Id;
 
-pub struct ShellUi {
+pub struct Editor {
     layout: layout::Tree,
     prompt: Id<layout::Node>,
     insert_line: Id<layout::Node>,
@@ -9,8 +9,8 @@ pub struct ShellUi {
     tips: Id<layout::Node>
 }
 
-impl ShellUi {
-    pub fn new() -> anyhow::Result<ShellUi> {
+impl Editor {
+    pub fn new() -> anyhow::Result<Editor> {
         let mut layout = layout::Tree::default();
         let root = layout.root();
 
@@ -45,7 +45,7 @@ impl ShellUi {
             ..Default::default()
         });
 
-        Ok(ShellUi {
+        Ok(Editor {
             layout,
             prompt,
             insert_line,

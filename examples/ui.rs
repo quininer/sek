@@ -1,15 +1,14 @@
 use std::io;
-use std::fmt::{ self, Write };
 use std::collections::HashMap;
 use anyhow::Context;
 use unicode_width::UnicodeWidthStr;
 use crossterm::{ queue, style, cursor };
-use sek::ui::layout;
+use sek::ui::layout::{ self, Layout };
+use sek::ui::render::{ Renderer, Render, RefWriter, Fill };
 use sek::util::arena::Id;
 
 
 struct ShellUi {
-    layout: layout::Tree,
     prompt: Id<layout::Node>,
     insert_line: Id<layout::Node>,
     command_line: Id<layout::Node>,
@@ -17,124 +16,89 @@ struct ShellUi {
 }
 
 impl ShellUi {
-    fn new() -> anyhow::Result<ShellUi> {
-        let mut layout = layout::Tree::default();
-        let root = layout.root();
+    fn new(tree: &mut layout::Tree) -> anyhow::Result<ShellUi> {
+        let root = tree.root();
 
         // insert line
-        let insert = layout.new_node(root, layout::Style {
+        let insert = tree.new_node(root, layout::Style {
             axis: layout::Axis::Horizontal,
             justify: layout::Justify::Start,
             ..Default::default()
         });
-        let prompt = layout.new_node(insert, layout::Style {
+        let prompt = tree.new_node(insert, layout::Style {
             justify: layout::Justify::Start,
             ..Default::default()
         });
-        let insert_line = layout.new_node(insert, layout::Style {
+        let insert_line = tree.new_node(insert, layout::Style {
             justify: layout::Justify::Stretch,
             wrap: true,
             ..Default::default()
         });
         // command line
-        let command = layout.new_node(root, layout::Style {
+        let command = tree.new_node(root, layout::Style {
             axis: layout::Axis::Horizontal,
             justify: layout::Justify::Start,
             ..Default::default()
         });
-        let command_line = layout.new_node(command, layout::Style {
+        let command_line = tree.new_node(command, layout::Style {
             justify: layout::Justify::Stretch,
             ..Default::default()
         });
-        let command_tips =  layout.new_node(command, layout::Style {
+        let command_tips =  tree.new_node(command, layout::Style {
             justify: layout::Justify::End,
             ..Default::default()
         });
 
         Ok(ShellUi {
-            layout,
             prompt,
             insert_line,
             command_line,
             tips: command_tips
         })
     }
-
-    fn render<W: io::Write>(&self, data: &ShellData, mut term: W) -> anyhow::Result<()> {
-        let size = crossterm::terminal::size()?;
-
-        let mut output = Vec::new();
-        self.layout.layout(data, size, &mut output);
-
-        output.sort_by_key(|(_, layout)| (layout.range.start.y, layout.range.start.x));
-
-        let mut current = layout::Point {
-            x: 0,
-            y: 0
-        };
-
-        for (id, layout) in output {
-            let s = data.0.get(&id).context("not found node data")?;
-
-            if current != layout.range.start {
-                let y = current.y.abs_diff(layout.range.start.y);
-                if y != 0 {
-                    if current.y > layout.range.start.y {
-                        queue!(&mut term, cursor::MoveToPreviousLine(y))?;
-                    } else {
-                        for _ in 0..(layout.range.start.y - current.y) {
-                            queue!(&mut term, style::Print("\r\n"))?;
-                        }
-                    }
-                }
-
-                if current.x != layout.range.start.x {
-                    queue!(&mut term, cursor::MoveToColumn(layout.range.start.x))?
-                }
-            }
-
-            queue!(&mut term, style::Print(s))?;
-
-            if layout.padding != 0 {
-                queue!(&mut term, style::Print(Fill(' ', layout.padding.into())))?;
-            }
-
-            current = layout.range.end;
-        }
-
-        term.flush()?;
-
-        Ok(())        
-    }
 }
 
 struct ShellData(HashMap<Id<layout::Node>, String>);
 
-impl layout::Space for ShellData {
-    fn length(&self, leaf: Id<layout::Node>) -> Option<usize> {
-        self.0.get(&leaf).map(|s| s.width())
+struct Text;
+
+impl Render for Text {
+    type Data = ShellData;
+    type Error = anyhow::Error;
+
+    fn length(data: &Self::Data, leaf_id: Id<layout::Node>) -> Option<usize> {
+        data.0.get(&leaf_id).map(|s| s.width())
     }
-}
 
-struct Fill(char, usize);
+    fn render(
+        data: &Self::Data,
+        leaf_id: Id<layout::Node>,
+        layout: &Layout,
+        current: &mut layout::Point,
+        mut term: RefWriter<'_>
+    )
+        -> Result<(), Self::Error>
+    {
+        let s = data.0.get(&leaf_id).context("not found node data")?;
+        queue!(term, style::Print(s))?;
 
-impl fmt::Display for Fill {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for _ in 0..self.1 {
-            f.write_char(self.0)?;
+        if layout.padding != 0 {
+            queue!(term, style::Print(Fill(' ', layout.padding.into())))?;
         }
-
+        
+        current.y = layout.range.end.y;
         Ok(())
     }
 }
 
 fn main() -> anyhow::Result<()> {
-    let ui = ShellUi::new()?;
+    let mut tree = layout::Tree::default();
+    let ui = ShellUi::new(&mut tree)?;
     let data = ShellData(
         [
             (ui.prompt, "> "),
-            (ui.insert_line, "xx"),
-//            (ui.insert_line, "longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglong"),
+//            (ui.insert_line, "xx"),
+            (ui.insert_line, "longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglong"),
             (ui.command_line, ":q"),
             (ui.tips, "<>")
         ]
@@ -142,9 +106,16 @@ fn main() -> anyhow::Result<()> {
             .map(|&(id, s)| (id, s.into()))
             .collect()
     );
+
+    let mut renderer: Renderer<ShellData, anyhow::Error>
+        = Renderer::new(crossterm::terminal::size()?);
+
+    for (id, _) in data.0.iter() {
+        renderer.insert::<Text>(*id);
+    }
     
     let stdout = io::stdout();
-    let stdout = stdout.lock();
+    let mut stdout = stdout.lock();
 
-    ui.render(&data, stdout)    
+    renderer.render(&tree, &data, &mut stdout)
 }

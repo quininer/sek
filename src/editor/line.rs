@@ -1,6 +1,5 @@
 use std::{ cmp, fmt };
-
-use logos::Source;
+use std::ops::Range;
 
 
 #[derive(Default)]
@@ -8,7 +7,6 @@ pub struct EditableLine {
     buf: String,
     // empty when buf is ascii
     indices: Vec<usize>,
-    cur: usize,
 }
 
 impl EditableLine {
@@ -32,98 +30,98 @@ impl EditableLine {
         }
     }
 
-    fn index(&self) -> usize {
+    fn index(&self, cur: usize) -> usize {
         match self.indices.is_empty() {
-            true => self.cur,
-            false => self.indices[self.cur]
+            true => cur,
+            false => self.indices[cur]
         }
     }
 
-    fn update<F: FnOnce() -> bool>(&mut self, is_ascii: F) {
+    fn update<F: FnOnce() -> bool>(&mut self, cur: usize, is_ascii: F) {
         let is_ascii = self.indices.is_empty() && is_ascii();
         
         if !is_ascii {
-            let idx = self.indices[self.cur];
-            self.indices.truncate(self.cur);
+            let idx = self.indices[cur];
+            self.indices.truncate(cur);
             self.indices.extend(self.buf[idx..].char_indices().map(|(idx, _)| idx));
         }
     }
 
-    pub fn push(&mut self, c: char) {
-        self.buf.insert(self.index(), c);
-        self.update(|| c.is_ascii());
-        self.cur += 1;
-    }    
+    pub fn push(&mut self, cur: &mut usize, c: char) {
+        self.buf.insert(self.index(*cur), c);
+        self.update(*cur, || c.is_ascii());
+        *cur += 1;
+    }
 
-    pub fn replace(&mut self, c: char) {
-        let idx = self.index();
+    pub fn replace(&mut self, range: &mut Range<usize>, s: &str) {
+        let (start, end) = if range.end > range.start {
+            (&mut range.start, &mut range.end)
+        } else {
+            (&mut range.end, &mut range.start)
+        };
 
-        if let Some(cc) = self.buf[idx..].chars().next() {
-            let mut buf = [0; 4];
-            let c = c.encode_utf8(&mut buf);
-            let cc_len = cc.len_utf8();
+        let bytes_range = self.index(*start)..self.index(*end);
+        self.buf.replace_range(bytes_range.clone(), s);
 
-            self.buf.replace_range(idx..(idx + cc_len), c);
-
-            if cc_len != c.len() {
-                self.update(|| c.is_ascii());
-            }
+        if bytes_range.len() != s.len() {
+            self.update(*start, || s.is_ascii());
+            *end = *start + s.chars().count();
         }
     }
 
-    pub fn push_str(&mut self, s: &str) {
-        self.buf.insert_str(self.index(), s);
-        self.update(|| s.is_ascii());
-        self.cur += s.chars().count();
+    pub fn push_str(&mut self, cur: &mut usize, s: &str) {
+        self.buf.insert_str(self.index(*cur), s);
+        self.update(*cur, || s.is_ascii());
+        *cur += s.chars().count();
     }
 
-    pub fn backspace(&mut self) {
-        if self.cur != 0 {
-            let idx = self.index();
+    pub fn backspace(&mut self, cur: &mut usize) {
+        if *cur != 0 {
+            let idx = self.index(*cur);
             if let Some(prev_char) = self.buf[..idx].chars().last() {
                 self.buf.remove(idx - prev_char.len_utf8());
-                self.cur -= 1;
-                self.update(|| true);
+                *cur -= 1;
+                self.update(*cur, || true);
             }
         }
     }
 
-    pub fn delete(&mut self) {
-        let idx = self.index();
+    pub fn delete(&mut self, cur: usize) {
+        let idx = self.index(cur);
         if self.buf.len() > idx {
             self.buf.remove(idx);
-            self.update(|| true);
+            self.update(cur, || true);
         }
     }
 
-    pub fn delete_to_end(&mut self) {
-        let idx = self.index();
+    pub fn delete_to_end(&mut self, cur: usize) {
+        let idx = self.index(cur);
         if self.buf.len() > idx {
             self.buf.truncate(idx);
-            self.update(|| true);
-            self.cur = self.cur.saturating_sub(1);
+            self.update(cur, || true);
         }
     }
 
-    pub fn move_head(&mut self) {
-        self.cur = 0;
+    pub fn move_head(&mut self, cur: &mut usize) {
+        *cur = 0;
     }
 
-    pub fn move_end(&mut self) {
-        self.cur = self.char_len();
+    pub fn move_end(&mut self, cur: &mut usize) {
+        *cur = self.char_len();
     }
 
-    pub fn move_left(&mut self) {
-        self.cur = self.cur.saturating_sub(1);
+    pub fn move_left(&mut self, cur: &mut usize) {
+        *cur = cur.saturating_sub(1);
     }
 
-    pub fn move_right(&mut self) {
-        self.cur = cmp::min(self.cur + 1, self.char_len());
+    pub fn move_right(&mut self, cur: &mut usize) {
+        *cur = cmp::min(*cur + 1, self.char_len());
     }
 
-    pub fn clear(&mut self) {
+    pub fn clear(&mut self, range: &mut Range<usize>) {
         self.buf.clear();
-        self.cur = 0;
+        range.start = 0;
+        range.end = 0;
     }
 }
 
@@ -136,32 +134,33 @@ impl fmt::Display for EditableLine {
 #[test]
 fn test_buffer() {
     let mut buf = EditableLine::default();
-    buf.push('a');
-    buf.push('b');
-    buf.push('c');
+    let mut cur = 0;
+    buf.push(&mut cur, 'a');
+    buf.push(&mut cur, 'b');
+    buf.push(&mut cur, 'c');
     assert_eq!(format!("{}", buf), "abc");
-    assert_eq!(buf.cur, 3);
+    assert_eq!(cur, 3);
 
-    buf.backspace();
+    buf.backspace(&mut cur);
     assert_eq!(format!("{}", buf), "ab");
-    assert_eq!(buf.cur, 2);
+    assert_eq!(cur, 2);
 
-    buf.delete();
+    buf.delete(cur);
     assert_eq!(format!("{}", buf), "ab");
-    assert_eq!(buf.cur, 2);
+    assert_eq!(cur, 2);
 
-    buf.move_left();
-    buf.move_left();
-    buf.delete();
+    buf.move_left(&mut cur);
+    buf.move_left(&mut cur);
+    buf.delete(cur);
     assert_eq!(format!("{}", buf), "b");
-    assert_eq!(buf.cur, 0);
+    assert_eq!(cur, 0);
 
-    buf.backspace();
+    buf.backspace(&mut cur);
     assert_eq!(format!("{}", buf), "b");
-    assert_eq!(buf.cur, 0);
+    assert_eq!(cur, 0);
 
-    buf.move_right();
-    buf.backspace();
+    buf.move_right(&mut cur);
+    buf.backspace(&mut cur);
     assert_eq!(format!("{}", buf), "");
-    assert_eq!(buf.cur, 0);
+    assert_eq!(cur, 0);
 }

@@ -7,6 +7,11 @@ use std::marker::PhantomData;
 
 pub struct Arena<T>(Vec<T>);
 
+pub struct ArenaMap<T, V> {
+    map: Vec<Option<V>>,
+    _phantom: PhantomData<Id<T>>
+}
+
 pub struct Id<T>(u32, PhantomData<fn() -> T>);
 
 impl<T> Arena<T> {
@@ -120,5 +125,38 @@ impl<T> Iter<'_, T> {
         let next = self.index;
         self.arena.0.get(next)?;
         Some(Id(next.try_into().unwrap(), PhantomData))       
+    }
+}
+
+impl<T, V> ArenaMap<T, V> {
+    pub fn insert(&mut self, key: Id<T>, value: V) -> Option<V> {
+        let id: usize = key.0.try_into().unwrap();
+        let min_len = id + 1;
+
+        if self.map.len() < min_len {
+            self.map.resize_with(min_len, || None);
+        }
+
+        self.map[id].replace(value)
+    }
+
+    pub fn get(&self, id: Id<T>) -> Option<&V> {
+        let id: usize = id.0.try_into().unwrap();
+        self.map.get(id)?.as_ref()
+    }
+
+    pub fn remove(&mut self, id: Id<T>) -> Option<V> {
+        let id: usize = id.0.try_into().unwrap();
+        self.map.get_mut(id)?.take()
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+    }
+}
+
+impl<T, V> Default for ArenaMap<T, V> {
+    fn default() -> Self {
+        ArenaMap { map: Vec::new(), _phantom: PhantomData }
     }
 }
