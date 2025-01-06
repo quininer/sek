@@ -4,19 +4,22 @@ use crate::util::arena::{ Id, ArenaMap };
 use super::layout::{ self, Layout };
 
 
-pub struct Renderer<Shell, Error> {
+pub struct Renderer<S, G, E> {
     pub size: (u16, u16),
+    pub term: G,
+    cursor: layout::Point,
+    max_y: u16,
     queue: Vec<(Id<layout::Node>, Layout)>,
-    map: ArenaMap<layout::Node, RenderVtable<Shell, Error>>,
+    map: ArenaMap<layout::Node, RenderVtable<S, E>>,
 }
 
 pub trait Render {
-    type Data;
+    type State;
     type Error;
 
-    fn length(data: &Self::Data, leaf_id: Id<layout::Node>) -> Option<usize>;
+    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize>;
     fn render(
-        data: &Self::Data,
+        state: &Self::State,
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
@@ -25,10 +28,10 @@ pub trait Render {
         -> Result<(), Self::Error>;
 }
 
-struct RenderVtable<Data, Error> {
-    length: fn(&Data, Id<layout::Node>) -> Option<usize>,
+struct RenderVtable<State, Error> {
+    length: fn(&State, Id<layout::Node>) -> Option<usize>,
     render: fn(
-        &Data,
+        &State,
         Id<layout::Node>,
         &Layout,
         &mut layout::Point,
@@ -36,24 +39,36 @@ struct RenderVtable<Data, Error> {
     ) -> Result<(), Error>   
 }
 
-impl<Shell, Error> Renderer<Shell, Error> {
-    pub fn new(size: (u16, u16)) -> Self {
-        Renderer { size, queue: Vec::new(), map: ArenaMap::default() }
-    }
-    
+impl<Shell, GetWriter, Error> Renderer<Shell, GetWriter, Error> {
     pub fn insert<R>(&mut self, leaf_id: Id<layout::Node>)
-        where R: Render<Data = Shell, Error = Error>
+        where R: Render<State = Shell, Error = Error>
     {
         self.map.insert(leaf_id, RenderVtable {
             length: R::length,
             render: R::render
         });
     }
+}
 
-    pub fn render<W>(&mut self, tree: &layout::Tree, shell: &Shell, term: &mut W)
+impl<Shell, GetWriter, Error, Writer> Renderer<Shell, GetWriter, Error>
+where
+    GetWriter: Fn() -> Writer,
+    Writer: io::Write
+{
+    pub fn new(size: (u16, u16), term: GetWriter) -> Self {
+        Renderer {
+            size, term,
+            cursor: layout::Point { x: 0, y: 0 },
+            max_y: 0,
+            queue: Vec::new(),
+            map: ArenaMap::default()
+        }
+    }
+
+    pub fn render(&mut self, shell: &Shell)
         -> Result<(), Error>
     where
-        W: io::Write,
+        Shell: AsRef<layout::Tree>,
         Error: From<io::Error>
     {
         let space = RenderSpace {
@@ -61,40 +76,36 @@ impl<Shell, Error> Renderer<Shell, Error> {
         };
 
         self.queue.clear();
-        tree.layout(&space, self.size, &mut self.queue);
+        shell.as_ref().layout(&space, self.size, &mut self.queue);
         self.queue.sort_by_key(|(_, layout)| (layout.range.start.y, layout.range.start.x));
 
-        let mut current = layout::Point {
-            x: 0,
-            y: 0
-        };
-        let mut max_y = 0;
+        let mut term = (self.term)();
 
         for (id, layout) in &self.queue {
             let id = *id;
             let Some(vtable) = self.map.get(id)
                 else { continue };
 
-            if current != layout.range.start {
-                if current.x != layout.range.start.x {
+            if self.cursor != layout.range.start {
+                if self.cursor.x != layout.range.start.x {
                     queue!(term, cursor::MoveToColumn(layout.range.start.x))?
                 }
 
-                let diff = current.y.abs_diff(layout.range.start.y);
+                let diff = self.cursor.y.abs_diff(layout.range.start.y);
 
                 if diff != 0 {
-                    match current.y > layout.range.start.y {
+                    match self.cursor.y > layout.range.start.y {
                         true => queue!(term, cursor::MoveToPreviousLine(diff))?,
-                        false if layout.range.start.y > max_y =>
+                        false if layout.range.start.y > self.max_y =>
                             queue!(term, style::Print(Fill('\n', diff.into())))?,
                         false => queue!(term, cursor::MoveToNextLine(diff))?
                     }
                 }
             }
 
-            current = layout.range.start;
-            (vtable.render)(shell, id, layout, &mut current, RefWriter(term))?;
-            max_y = cmp::max(max_y, current.y);
+            self.cursor = layout.range.start;
+            (vtable.render)(shell, id, layout, &mut self.cursor, RefWriter(&mut term))?;
+            self.max_y = cmp::max(self.max_y, self.cursor.y);
         }
 
         term.flush()?;

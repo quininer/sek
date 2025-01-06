@@ -2,21 +2,24 @@ use std::io;
 use std::collections::HashMap;
 use anyhow::Context;
 use unicode_width::UnicodeWidthStr;
-use crossterm::{ queue, style, cursor };
+use crossterm::{ queue, style };
 use sek::ui::layout::{ self, Layout };
 use sek::ui::render::{ Renderer, Render, RefWriter, Fill };
 use sek::util::arena::Id;
 
 
 struct ShellUi {
+    tree: layout::Tree,
     prompt: Id<layout::Node>,
     insert_line: Id<layout::Node>,
     command_line: Id<layout::Node>,
     tips: Id<layout::Node>,
+    state: HashMap<Id<layout::Node>, String>,
 }
 
 impl ShellUi {
-    fn new(tree: &mut layout::Tree) -> anyhow::Result<ShellUi> {
+    fn new() -> anyhow::Result<ShellUi> {
+        let mut tree = layout::Tree::default();
         let root = tree.root();
 
         // insert line
@@ -50,28 +53,33 @@ impl ShellUi {
         });
 
         Ok(ShellUi {
-            prompt,
+            tree, prompt,
             insert_line,
             command_line,
-            tips: command_tips
+            tips: command_tips,
+            state: Default::default()
         })
     }
 }
 
-struct ShellData(HashMap<Id<layout::Node>, String>);
+impl AsRef<layout::Tree> for ShellUi {
+    fn as_ref(&self) -> &layout::Tree {
+        &self.tree
+    }
+}
 
 struct Text;
 
 impl Render for Text {
-    type Data = ShellData;
+    type State = ShellUi;
     type Error = anyhow::Error;
 
-    fn length(data: &Self::Data, leaf_id: Id<layout::Node>) -> Option<usize> {
-        data.0.get(&leaf_id).map(|s| s.width())
+    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+        state.state.get(&leaf_id).map(|s| s.width())
     }
 
     fn render(
-        data: &Self::Data,
+        state: &Self::State,
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
@@ -79,7 +87,7 @@ impl Render for Text {
     )
         -> Result<(), Self::Error>
     {
-        let s = data.0.get(&leaf_id).context("not found node data")?;
+        let s = state.state.get(&leaf_id).context("not found node data")?;
         queue!(term, style::Print(s))?;
 
         if layout.padding != 0 {
@@ -92,10 +100,8 @@ impl Render for Text {
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut tree = layout::Tree::default();
-    let ui = ShellUi::new(&mut tree)?;
-    let data = ShellData(
-        [
+    let mut ui = ShellUi::new()?;
+    ui.state = [
             (ui.prompt, "> "),
 //            (ui.insert_line, "xx"),
             (ui.insert_line, "longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglong"),
@@ -104,18 +110,16 @@ fn main() -> anyhow::Result<()> {
         ]
             .iter()
             .map(|&(id, s)| (id, s.into()))
-            .collect()
-    );
+            .collect();
 
-    let mut renderer: Renderer<ShellData, anyhow::Error>
-        = Renderer::new(crossterm::terminal::size()?);
+    let stdout = io::stdout();
 
-    for (id, _) in data.0.iter() {
+    let mut renderer: Renderer<ShellUi, _, anyhow::Error>
+        = Renderer::new(crossterm::terminal::size()?, || stdout.lock());
+
+    for (id, _) in ui.state.iter() {
         renderer.insert::<Text>(*id);
     }
-    
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
 
-    renderer.render(&tree, &data, &mut stdout)
+    renderer.render(&ui)
 }

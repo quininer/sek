@@ -10,6 +10,10 @@ pub struct EditableLine {
 }
 
 impl EditableLine {
+    pub fn as_str(&self) -> &str {
+        self.buf.as_str()
+    }
+    
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()
     }

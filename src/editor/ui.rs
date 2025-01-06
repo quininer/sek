@@ -1,12 +1,16 @@
-use crate::ui::layout;
+use crossterm::{ queue, style };
+use unicode_width::UnicodeWidthStr;
+use crate::ui::layout::{ self, Layout };
+use crate::ui::render::{ Render, RefWriter, Fill };
 use crate::util::arena::Id;
+use super::Editor as ShellEditor;
 
 pub struct Editor {
-    layout: layout::Tree,
-    prompt: Id<layout::Node>,
-    insert_line: Id<layout::Node>,
-    command_line: Id<layout::Node>,
-    tips: Id<layout::Node>
+    pub layout: layout::Tree,
+    pub prompt: Id<layout::Node>,
+    pub insert_line: Id<layout::Node>,
+    pub command_line: Id<layout::Node>,
+    pub tips: Id<layout::Node>
 }
 
 impl Editor {
@@ -52,5 +56,128 @@ impl Editor {
             command_line,
             tips: command_tips
         })
+    }
+}
+
+pub struct Prompt;
+
+const PROMPT: &str = "> ";
+
+impl Render for Prompt {
+    type State = ShellEditor;
+    type Error = anyhow::Error;
+
+    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+        assert_eq!(state.ui.prompt, leaf_id);
+
+        Some(PROMPT.width())
+    }
+
+    fn render(
+        state: &Self::State,
+        leaf_id: Id<layout::Node>,
+        layout: &Layout,
+        current: &mut layout::Point,
+        mut term: RefWriter<'_>
+    )
+        -> Result<(), Self::Error>
+    {
+        assert_eq!(state.ui.prompt, leaf_id);
+        assert_eq!(layout.padding, 0);
+
+        queue!(term, style::Print(PROMPT))?;
+
+        assert_eq!(usize::from(current.x) + PROMPT.width(), usize::from(layout.range.end.x));
+        current.x = layout.range.end.x;
+        Ok(())
+    }
+}
+
+pub struct InsertLine;
+
+impl Render for InsertLine {
+    type State = ShellEditor;
+    type Error = anyhow::Error;
+
+    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+        assert_eq!(state.ui.insert_line, leaf_id);
+
+        Some(state.line.as_str().width())
+    }
+
+    fn render(
+        state: &Self::State,
+        leaf_id: Id<layout::Node>,
+        layout: &Layout,
+        current: &mut layout::Point,
+        mut term: RefWriter<'_>
+    )
+        -> Result<(), Self::Error>
+    {
+        assert_eq!(state.ui.insert_line, leaf_id);
+
+        queue!(term, style::Print(state.line.as_str()))?;
+        queue!(term, style::Print(Fill(' ', layout.padding.into())))?;
+        current.x = layout.range.end.x;
+        Ok(())
+    }
+}
+
+pub struct CommandLine;
+
+impl Render for CommandLine {
+    type State = ShellEditor;
+    type Error = anyhow::Error;
+
+    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+        assert_eq!(state.ui.command_line, leaf_id);
+
+        Some(state.command.as_str().width())
+    }
+
+    fn render(
+        state: &Self::State,
+        leaf_id: Id<layout::Node>,
+        layout: &Layout,
+        current: &mut layout::Point,
+        mut term: RefWriter<'_>
+    )
+        -> Result<(), Self::Error>
+    {
+        assert_eq!(state.ui.command_line, leaf_id);
+
+        queue!(term, style::Print(state.command.as_str()))?;
+        queue!(term, style::Print(Fill(' ', layout.padding.into())))?;
+        current.x = layout.range.end.x;
+        Ok(())
+    }
+}
+
+pub struct Tips;
+
+impl Render for Tips {
+    type State = ShellEditor;
+    type Error = anyhow::Error;
+
+    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+        assert_eq!(state.ui.tips, leaf_id);
+
+        Some(2)
+    }
+
+    fn render(
+        state: &Self::State,
+        leaf_id: Id<layout::Node>,
+        layout: &Layout,
+        current: &mut layout::Point,
+        mut term: RefWriter<'_>
+    )
+        -> Result<(), Self::Error>
+    {
+        assert_eq!(state.ui.tips, leaf_id);
+
+        queue!(term, style::Print("<>"))?;
+        current.x = layout.range.end.x;
+        Ok(())
     }
 }

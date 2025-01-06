@@ -17,6 +17,9 @@ fn main() -> anyhow::Result<()> {
     if let Some(pwd) = options.pwd {
         env::set_current_dir(pwd)?;
     }
+
+    sek::shell::Shell::default()
+        .start()?;
     
     Ok(())
 }

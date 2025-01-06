@@ -1,44 +1,65 @@
 pub mod line;
 pub mod ui;
 
-use std::ops::Range;
+use std::io;
+use std::ops::{ Range, ControlFlow };
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
+use crate::ui::render::Renderer;
+use crate::ui::layout;
 
 pub struct Editor {
+    ui: ui::Editor,
+    mode: Mode,
     line: EditableLine,
     line_cursor: Range<usize>,
-    cmd: EditableLine,
-    cmd_cursor: Range<usize>,
-    ui: ui::Editor,
-    mode: Mode
+    command: EditableLine,
+    command_cursor: Range<usize>,
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Mode {
+pub enum Mode {
     Insert,
     Normal,
     Visual,
 }
 
+impl AsRef<layout::Tree> for Editor {
+    fn as_ref(&self) -> &layout::Tree {
+        &self.ui.layout
+    }
+}
+
 impl Editor {
     pub fn new() -> anyhow::Result<Self> {
-        let line = EditableLine::default();
-        let cmd = EditableLine::default();
-        let editor = ui::Editor::new()?;
+        let ui = ui::Editor::new()?;
 
         Ok(Editor {
-            line, line_cursor: 0..0,
-            cmd, cmd_cursor: 0..0,
-            ui: editor,
-            mode: Mode::Insert
+            ui,
+            mode: Mode::Insert,
+            line: EditableLine::default(),
+            line_cursor: 0..0,
+            command: EditableLine::default(),
+            command_cursor: 0..0
         })
     }
 
+    pub fn init_to<W>(&self, renderer: &mut Renderer<Self, W, anyhow::Error>) {
+        renderer.insert::<ui::Prompt>(self.ui.prompt);
+        renderer.insert::<ui::InsertLine>(self.ui.insert_line);
+        renderer.insert::<ui::CommandLine>(self.ui.command_line);
+        renderer.insert::<ui::Tips>(self.ui.tips);
+    }
+
     pub fn step(&mut self, event: Event)
-        -> anyhow::Result<()>
+        -> anyhow::Result<ControlFlow<()>>
     {
         match (self.mode, event) {
+            // Quit
+            (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
+                if modifiers == KM::CONTROL && code == KeyCode::Char('d')
+                    && self.line.is_empty()
+            => return Ok(ControlFlow::Break(())),
             // Insert
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
@@ -60,6 +81,17 @@ impl Editor {
             self.line_cursor.start = self.line_cursor.end;
         }
 
-        Ok(())
+        Ok(ControlFlow::Continue(()))
+    }
+
+    pub fn render<GetWriter, Writer>(
+        &self,
+        renderer: &mut Renderer<Self, GetWriter, anyhow::Error>,
+    ) -> anyhow::Result<()>
+    where
+        GetWriter: Fn() -> Writer,
+        Writer: io::Write
+    {
+        renderer.render(self)
     }
 }
