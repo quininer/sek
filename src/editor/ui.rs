@@ -1,5 +1,7 @@
+use std::convert::TryInto;
 use crossterm::{ queue, style };
 use unicode_width::UnicodeWidthStr;
+use crate::editor::Mode;
 use crate::ui::layout::{ self, Layout };
 use crate::ui::render::{ Render, RefWriter, Fill };
 use crate::util::arena::Id;
@@ -78,6 +80,7 @@ impl Render for Prompt {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
+        _cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>
@@ -85,7 +88,7 @@ impl Render for Prompt {
         assert_eq!(state.ui.prompt, leaf_id);
         assert_eq!(layout.padding, 0);
 
-        queue!(term, style::Print(PROMPT))?;
+        queue!(term, style::Print(PROMPT.get(..usize::from(layout.size.0)).unwrap_or_default()))?;
 
         assert_eq!(usize::from(current.x) + PROMPT.width(), usize::from(layout.range.end.x));
         current.x = layout.range.end.x;
@@ -110,15 +113,40 @@ impl Render for InsertLine {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
+        cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>
     {
         assert_eq!(state.ui.insert_line, leaf_id);
 
-        queue!(term, style::Print(state.line.as_str()))?;
-        queue!(term, style::Print(Fill(' ', layout.padding.into())))?;
+        let ahead = state.line_cursor.end > state.line_cursor.start;
+        let (start, end) = if ahead {
+            (state.line_cursor.start, state.line_cursor.end)
+        } else {
+            (state.line_cursor.end, state.line_cursor.start)
+        };
+        let (s0, s1, s2) = state.line.split(start, end);
+
+        queue!(term, style::Print(s0))?;
+        queue!(term, style::Print(s1))?;
+        queue!(term, style::Print(s2))?;
+
         current.x = layout.range.end.x;
+
+        if matches!(state.mode, Mode::Insert) {
+            let offset = if ahead {
+                s0.width() + s1.width()
+            } else {
+                s0.width()
+            };
+            let offset: u16 = offset.try_into().unwrap_or(u16::MAX);
+            *cursor = Some(layout::Point {
+                x: layout.range.start.x + offset,
+                y: layout.range.start.y
+            });
+        }
+        
         Ok(())
     }
 }
@@ -140,6 +168,7 @@ impl Render for CommandLine {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
+        _cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>
@@ -170,6 +199,7 @@ impl Render for Tips {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
+        _cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>

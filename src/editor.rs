@@ -61,18 +61,26 @@ impl Editor {
                     && self.line.is_empty()
             => return Ok(ControlFlow::Break(())),
             // Insert
-            (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
+            (Mode::Insert | Mode::Normal, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
-            => match code {
-                KeyCode::Char('\r') => (),
-                KeyCode::Char(c) => self.line.push(&mut self.line_cursor.end, c),
-                KeyCode::Backspace => self.line.backspace(&mut self.line_cursor.end),
-                KeyCode::Delete => self.line.delete(self.line_cursor.end),
-                KeyCode::Left => self.line.move_left(&mut self.line_cursor.end),
-                KeyCode::Right => self.line.move_right(&mut self.line_cursor.end),
-                KeyCode::Home => self.line.move_head(&mut self.line_cursor.end),
-                KeyCode::End => self.line.move_end(&mut self.line_cursor.end),
-                _ => ()
+            => {
+                let end = match self.mode {
+                    Mode::Insert => &mut self.line_cursor.end,
+                    Mode::Normal => &mut self.command_cursor.end,
+                    _ => unreachable!()
+                };
+
+                match code {
+                    KeyCode::Char('\r') => (),
+                    KeyCode::Char(c) => self.line.push(end, c),
+                    KeyCode::Backspace => self.line.backspace(end),
+                    KeyCode::Delete => self.line.delete(*end),
+                    KeyCode::Left => self.line.move_left(end),
+                    KeyCode::Right => self.line.move_right(end),
+                    KeyCode::Home => self.line.move_head(end),
+                    KeyCode::End => self.line.move_end(end),
+                    _ => ()
+                }
             },
             _ => ()
         }

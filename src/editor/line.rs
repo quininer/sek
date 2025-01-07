@@ -127,6 +127,15 @@ impl EditableLine {
         range.start = 0;
         range.end = 0;
     }
+
+    pub fn split(&self, start: usize, end: usize) -> (&str, &str, &str) {
+        let start = self.index(start);
+        let end = self.index(end);
+
+        let (head, s2) = self.buf.split_at(end);
+        let (s0, s1) = head.split_at(start);
+        (s0, s1, s2)
+    }
 }
 
 impl fmt::Display for EditableLine {
