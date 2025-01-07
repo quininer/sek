@@ -1,5 +1,5 @@
 use std::convert::TryInto;
-use crossterm::{ queue, style };
+use crossterm::{ queue, style, terminal };
 use unicode_width::UnicodeWidthStr;
 use crate::editor::Mode;
 use crate::ui::layout::{ self, Layout };
@@ -31,8 +31,9 @@ impl Editor {
             ..Default::default()
         });
         let insert_line = layout.new_node(insert, layout::Style {
+            axis: layout::Axis::Horizontal,
             justify: layout::Justify::Stretch,
-            wrap: true,
+            overflow: true,
             ..Default::default()
         });
 
@@ -43,6 +44,7 @@ impl Editor {
             ..Default::default()
         });
         let command_line = layout.new_node(command, layout::Style {
+            axis: layout::Axis::Horizontal,
             justify: layout::Justify::Stretch,
             ..Default::default()
         });
@@ -128,11 +130,14 @@ impl Render for InsertLine {
         };
         let (s0, s1, s2) = state.line.split(start, end);
 
-        queue!(term, style::Print(s0))?;
-        queue!(term, style::Print(s1))?;
-        queue!(term, style::Print(s2))?;
+        queue!(
+            term,
+            style::Print(s0),
+            style::Print(s1),
+            style::Print(s2),
+        )?;
 
-        current.x = layout.range.end.x;
+        *current = layout.range.end;
 
         if matches!(state.mode, Mode::Insert) {
             let offset = if ahead {

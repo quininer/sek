@@ -34,7 +34,7 @@ impl ShellUi {
         });
         let insert_line = tree.new_node(insert, layout::Style {
             justify: layout::Justify::Stretch,
-            wrap: true,
+            overflow: true,
             ..Default::default()
         });
         // command line
@@ -83,6 +83,7 @@ impl Render for Text {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
+        _cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>

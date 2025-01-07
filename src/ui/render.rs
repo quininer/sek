@@ -94,7 +94,7 @@ where
                 }
 
                 if diff != 0 || src.x != dst.x {
-                    queue!(term, cursor::MoveToColumn(dst.x))?
+                    queue!(term, cursor::MoveToColumn(dst.x))?;
                 }                
 
                 *src = dst;

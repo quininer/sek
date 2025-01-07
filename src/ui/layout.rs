@@ -21,7 +21,6 @@ pub struct Style {
     pub axis: Axis,
     pub justify: Justify,
     pub overflow: bool,
-    pub wrap: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +56,6 @@ impl Default for Tree {
                 axis: Axis::Vertical,
                 justify: Justify::Start,
                 overflow: false,
-                wrap: false,
             },
             children: Default::default()
         });
@@ -173,7 +171,6 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
         }
 
         assert!(!child.style.overflow);
-        assert!(!child.style.wrap);
 
         let child_layout = layout(tree, state.clone(), child_id, output);
         match node.style.axis {
@@ -203,7 +200,6 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
         let child_layout = layout(tree, state.clone(), child_id, output);
 
         assert!(!child.style.overflow);
-        assert!(!child.style.wrap);
 
         match node.style.axis {
             Axis::Horizontal => {
@@ -221,7 +217,19 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
 
     let dynamic_nodes = &node.children[start..end];
 
-    if !dynamic_nodes.is_empty() {
+    if let Some((child_id, _child)) = dynamic_nodes.first()
+        .map(|&id| (id, &tree.nodes[id]))
+        .filter(|_| dynamic_nodes.len() == 1)
+        .filter(|(_, node)| matches!(node.style.axis, Axis::Horizontal))
+        .filter(|(_, node)| matches!(node.style.justify, Justify::Stretch))
+        .filter(|(_, node)| node.style.overflow)
+    {
+        assert_eq!(node.children.len(), end);
+
+        let child_layout = layout(tree, state.clone(), child_id, output);
+        node_layout.size.0 = state.parent_size.0;
+        node_layout.size.1 += child_layout.size.1;
+    } else if !dynamic_nodes.is_empty() {
         let (step, half) = {
             let total = match node.style.axis {
                 Axis::Horizontal => usize::from(state.range.end.x - state.range.start.x),
@@ -280,10 +288,6 @@ fn layout_leaf(tree: &Tree, state: State<'_>, leaf_id: Id<Node>, output: &mut Ve
 {
     let leaf = &tree.nodes[leaf_id];
 
-    if leaf.style.wrap {
-        assert!(!leaf.style.overflow);
-    }
-    
     let mut leaf_layout = Layout {
         range: state.range.start..state.range.start,
         size: (0, 0),
@@ -359,6 +363,7 @@ fn layout_leaf(tree: &Tree, state: State<'_>, leaf_id: Id<Node>, output: &mut Ve
         } else {
             len -= line;
             leaf_layout.range.end.x = 0;
+            leaf_layout.range.end.y += 1;
             leaf_layout.size.0 = 0;
             leaf_layout.size.1 += 1;
         }
