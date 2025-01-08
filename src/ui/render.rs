@@ -24,26 +24,24 @@ pub trait Render {
     type State;
     type Error;
 
-    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize>;
+    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>);
     fn render(
         state: &Self::State,
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
-        cursor: &mut Option<layout::Point>,
         term: RefWriter<'_>
     )
         -> Result<(), Self::Error>;
 }
 
 struct RenderVtable<State, Error> {
-    length: fn(&State, Id<layout::Node>) -> Option<usize>,
+    length_and_cursor: fn(&State, Id<layout::Node>) -> (Option<usize>, Option<usize>),
     render: fn(
         &State,
         Id<layout::Node>,
         &Layout,
         &mut layout::Point,
-        &mut Option<layout::Point>,
         RefWriter<'_>
     ) -> Result<(), Error>   
 }
@@ -53,7 +51,7 @@ impl<Shell, Target, Error> Renderer<Shell, Target, Error> {
         where R: Render<State = Shell, Error = Error>
     {
         self.map.insert(leaf_id, RenderVtable {
-            length: R::length,
+            length_and_cursor: R::length_and_cursor,
             render: R::render
         });
     }
@@ -107,12 +105,12 @@ where
             shell, map: &self.map
         };
 
+        let mut cursor = None;
         self.queue.clear();
-        shell.as_ref().layout(&space, self.size, &mut self.queue);
+        shell.as_ref().layout(&space, self.size, &mut cursor, &mut self.queue);
         self.queue.sort_by_key(|(_, layout)| (layout.range.start.y, layout.range.start.x));
 
         let mut term = self.term.access();
-        let mut cursor = None;
         let mut clear = Some(());
 
         for (id, layout) in &self.queue {
@@ -126,7 +124,7 @@ where
                 queue!(term, terminal::Clear(terminal::ClearType::FromCursorDown))?;
             }
 
-            (vtable.render)(shell, id, layout, &mut self.current, &mut cursor, RefWriter(&mut term))?;
+            (vtable.render)(shell, id, layout, &mut self.current, RefWriter(&mut term))?;
             self.max_y = cmp::max(self.max_y, self.current.y);
         }
 
@@ -146,8 +144,10 @@ struct RenderSpace<'a, Shell, Error> {
 }
 
 impl<Shell, Error> layout::Space for RenderSpace<'_, Shell, Error> {
-    fn length(&self, leaf: Id<layout::Node>) -> Option<usize> {
-        (self.map.get(leaf)?.length)(self.shell, leaf)
+    fn length_and_cursor(&self, leaf: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
+        self.map.get(leaf)
+            .map(|vtable| (vtable.length_and_cursor)(self.shell, leaf))
+            .unwrap_or_default()
     }
 }
 

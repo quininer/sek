@@ -45,7 +45,7 @@ pub struct Point {
 }
 
 pub trait Space {
-    fn length(&self, leaf: Id<Node>) -> Option<usize>;
+    fn length_and_cursor(&self, leaf: Id<Node>) -> (Option<usize>, Option<usize>);
 }
 
 impl Default for Tree {
@@ -100,7 +100,13 @@ impl Tree {
         self.nodes[parent].children = list;
     }
 
-    pub fn layout(&self, space: &dyn Space, size: (u16, u16), output: &mut Vec<(Id<Node>, Layout)>) {
+    pub fn layout(
+        &self,
+        space: &dyn Space,
+        size: (u16, u16),
+        cursor: &mut Option<Point>,
+        output: &mut Vec<(Id<Node>, Layout)>
+    ) {
         let (columns, rows) = size;
         let root = &self.nodes[self.root];
 
@@ -112,7 +118,7 @@ impl Tree {
 
         assert!(matches!(root.style.axis, Axis::Vertical));
 
-        layout(self, state, self.root, output);
+        layout(self, state, self.root, cursor, output);
     }
 }
 
@@ -131,17 +137,29 @@ struct State<'s> {
 }
 
 
-fn layout(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(Id<Node>, Layout)>)
+fn layout(
+    tree: &Tree,
+    state: State<'_>,
+    node: Id<Node>,
+    cursor: &mut Option<Point>,
+    output: &mut Vec<(Id<Node>, Layout)>
+)
     -> Layout
 {
     if tree.nodes[node].children.is_empty() {
-        layout_leaf(tree, state, node, output)
+        layout_leaf(tree, state, node, cursor, output)
     } else {
-        layout_node(tree, state, node, output)
+        layout_node(tree, state, node, cursor, output)
     }
 }
 
-fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(Id<Node>, Layout)>)
+fn layout_node(
+    tree: &Tree,
+    state: State<'_>,
+    node: Id<Node>,
+    cursor: &mut Option<Point>,
+    output: &mut Vec<(Id<Node>, Layout)>
+)
     -> Layout
 {
     let node = &tree.nodes[node];
@@ -172,7 +190,7 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
 
         assert!(!child.style.overflow);
 
-        let child_layout = layout(tree, state.clone(), child_id, output);
+        let child_layout = layout(tree, state.clone(), child_id, cursor, output);
         match node.style.axis {
             Axis::Horizontal => {
                 state.range.start.x += child_layout.size.0;
@@ -197,7 +215,7 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
             break
         }
 
-        let child_layout = layout(tree, state.clone(), child_id, output);
+        let child_layout = layout(tree, state.clone(), child_id, cursor, output);
 
         assert!(!child.style.overflow);
 
@@ -226,7 +244,7 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
     {
         assert_eq!(node.children.len(), end);
 
-        let child_layout = layout(tree, state.clone(), child_id, output);
+        let child_layout = layout(tree, state.clone(), child_id, cursor, output);
         node_layout.size.0 = state.parent_size.0;
         node_layout.size.1 += child_layout.size.1;
     } else if !dynamic_nodes.is_empty() {
@@ -247,6 +265,9 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
             let child = &tree.nodes[child_id];
 
             assert_eq!(child.style.justify, Justify::Stretch);
+            if child.style.overflow {
+                assert_ne!(child.style.axis, Axis::Horizontal);
+            }
 
             let rem = match node.style.axis {
                 Axis::Horizontal => prev_end.x - state.range.start.x,
@@ -263,7 +284,7 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
                 Axis::Vertical => state.range.end.y = state.range.start.y + step
             }
 
-            let child_layout = layout(tree, state.clone(), child_id, output);
+            let child_layout = layout(tree, state.clone(), child_id, cursor, output);
 
             match node.style.axis {
                 Axis::Horizontal => {
@@ -283,7 +304,13 @@ fn layout_node(tree: &Tree, state: State<'_>, node: Id<Node>, output: &mut Vec<(
     node_layout
 }
 
-fn layout_leaf(tree: &Tree, state: State<'_>, leaf_id: Id<Node>, output: &mut Vec<(Id<Node>, Layout)>)
+fn layout_leaf(
+    tree: &Tree,
+    state: State<'_>,
+    leaf_id: Id<Node>,
+    cursor: &mut Option<Point>,
+    output: &mut Vec<(Id<Node>, Layout)>,
+)
     -> Layout
 {
     let leaf = &tree.nodes[leaf_id];
@@ -299,22 +326,31 @@ fn layout_leaf(tree: &Tree, state: State<'_>, leaf_id: Id<Node>, output: &mut Ve
         leaf_layout.range.end.x = state.range.end.x;
     }
     
-    let mut len = match state.space.length(leaf_id) {
-        Some(len) => len,
-        None => return leaf_layout
+    let (mut len, mut cursor_len) = match state.space.length_and_cursor(leaf_id) {
+        (Some(len), cursor_len) => (len, cursor_len),
+        (None, _) => return leaf_layout
     };
     let first_line = state.range.end.x - state.range.start.x;
     let full_line = state.parent_size.0;
 
+    if let Some(cursor_len) = cursor_len {
+        assert!(cursor_len <= len);
+    }
+
     match leaf.style.justify {
         Justify::Start => {
-            if usize::from(first_line) > len {
-                let len: u16 = len.try_into().unwrap();
-                leaf_layout.range.end.x += len;
-                leaf_layout.size.0 += len;
-            } else {
-                leaf_layout.range.end.x += first_line;
-                leaf_layout.size.0 += first_line;
+            let len = cmp::min(len, first_line.into());
+            let len: u16 = len.try_into().unwrap();
+            leaf_layout.range.end.x += len;
+            leaf_layout.size.0 += len;
+
+            if let Some(cursor_len) = cursor_len {
+                let cursor_len = cmp::min(cursor_len, first_line.into());
+                let cursor_len: u16 = cursor_len.try_into().unwrap();
+                *cursor = Some(Point {
+                    x: leaf_layout.range.start.x + cursor_len,
+                    y: leaf_layout.range.start.y
+                });
             }
 
             output.push((leaf_id, leaf_layout.clone()));
@@ -322,30 +358,55 @@ fn layout_leaf(tree: &Tree, state: State<'_>, leaf_id: Id<Node>, output: &mut Ve
         },
         Justify::Stretch => (),
         Justify::End => {
-            if usize::from(first_line) > len {
-                let len: u16 = len.try_into().unwrap();
-                leaf_layout.range.start.x -= len;
-                leaf_layout.size.0 += len;
-            } else {
-                leaf_layout.range.start.x -= first_line;
-                leaf_layout.size.0 += first_line;
-            }
+            let len = cmp::min(len, first_line.into());
+            let len: u16 = len.try_into().unwrap();
+            leaf_layout.range.start.x -= len;
+            leaf_layout.size.0 += len;
+
+            if let Some(cursor_len) = cursor_len {
+                let cursor_len = cmp::min(cursor_len, first_line.into());
+                let cursor_len: u16 = cursor_len.try_into().unwrap();
+                *cursor = Some(Point {
+                    x: leaf_layout.range.start.x + cursor_len,
+                    y: leaf_layout.range.start.y
+                });
+            }           
 
             output.push((leaf_id, leaf_layout.clone()));
             return leaf_layout; 
         }
     }
 
+    let mut cursor_point = None;
+
     for line in iter::once(first_line)
         .chain(iter::repeat(full_line))
-        .map(usize::from)
         .take(usize::from(state.range.end.y - state.range.start.y))
     {
-        if let Some(rem) = line.checked_sub(len) {
+        if let Some(cursor_len) = cursor_len.as_mut()
+            .filter(|_| cursor_point.is_none())
+        {
+            if usize::from(line) >= *cursor_len {
+                let cursor_len: u16 = (*cursor_len).try_into().unwrap();
+                cursor_point = Some(Point {
+                    x: leaf_layout.range.end.x + cursor_len,
+                    y: leaf_layout.range.end.y
+                });                
+            } else if !leaf.style.overflow {
+                cursor_point = Some(Point {
+                    x: line,
+                    y: leaf_layout.range.end.y
+                });
+            } else {
+                *cursor_len -= usize::from(line);
+            }
+        }
+        
+        if let Some(rem) = usize::from(line).checked_sub(len) {
             let len: u16 = len.try_into().unwrap();
             let rem: u16 = rem.try_into().unwrap();
             leaf_layout.range.end.x += len;
-            leaf_layout.size.0 += len;
+            leaf_layout.size.0 = cmp::max(leaf_layout.size.0, len);
             leaf_layout.size.1 += 1;
 
             if matches!(leaf.style.justify, Justify::Stretch) {
@@ -355,18 +416,21 @@ fn layout_leaf(tree: &Tree, state: State<'_>, leaf_id: Id<Node>, output: &mut Ve
 
             break
         } if !leaf.style.overflow {
-            let line: u16 = line.try_into().unwrap();
             leaf_layout.range.end.x = line;
             leaf_layout.size.0 = line;
             leaf_layout.size.1 = 1;
             break
         } else {
-            len -= line;
+            len -= usize::from(line);
             leaf_layout.range.end.x = 0;
             leaf_layout.range.end.y += 1;
-            leaf_layout.size.0 = 0;
+            leaf_layout.size.0 = line;
             leaf_layout.size.1 += 1;
         }
+    }
+
+    if cursor_len.is_some() && cursor_point.is_some() {
+        *cursor = cursor_point;
     }
 
     output.push((leaf_id, leaf_layout.clone()));

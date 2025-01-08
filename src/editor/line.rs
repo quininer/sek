@@ -128,7 +128,12 @@ impl EditableLine {
         range.end = 0;
     }
 
-    pub fn split(&self, start: usize, end: usize) -> (&str, &str, &str) {
+    pub fn split(&self, mid: usize) -> (&str, &str) {
+        let mid = self.index(mid);
+        self.buf.split_at(mid)
+    }    
+
+    pub fn split3(&self, start: usize, end: usize) -> (&str, &str, &str) {
         let start = self.index(start);
         let end = self.index(end);
 

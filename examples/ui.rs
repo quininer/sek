@@ -74,8 +74,8 @@ impl Render for Text {
     type State = ShellUi;
     type Error = anyhow::Error;
 
-    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
-        state.state.get(&leaf_id).map(|s| s.width())
+    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
+        (state.state.get(&leaf_id).map(|s| s.width()), None)
     }
 
     fn render(
@@ -83,7 +83,6 @@ impl Render for Text {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
-        _cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>

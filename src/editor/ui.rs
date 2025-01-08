@@ -71,10 +71,10 @@ impl Render for Prompt {
     type State = ShellEditor;
     type Error = anyhow::Error;
 
-    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
         assert_eq!(state.ui.prompt, leaf_id);
 
-        Some(PROMPT.width())
+        (Some(PROMPT.width()), None)
     }
 
     fn render(
@@ -82,7 +82,6 @@ impl Render for Prompt {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
-        _cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>
@@ -104,10 +103,17 @@ impl Render for InsertLine {
     type State = ShellEditor;
     type Error = anyhow::Error;
 
-    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
         assert_eq!(state.ui.insert_line, leaf_id);
 
-        Some(state.line.as_str().width())
+        let (s0, s1) = state.line.split(state.line_cursor.end);
+        let s0_len = s0.width();
+        let s1_len = s1.width();
+
+        let cursor_len = matches!(state.mode, Mode::Insert)
+            .then_some(s0_len);
+
+        (Some(s0_len + s1_len), cursor_len)
     }
 
     fn render(
@@ -115,42 +121,18 @@ impl Render for InsertLine {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
-        cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>
     {
         assert_eq!(state.ui.insert_line, leaf_id);
 
-        let ahead = state.line_cursor.end > state.line_cursor.start;
-        let (start, end) = if ahead {
-            (state.line_cursor.start, state.line_cursor.end)
-        } else {
-            (state.line_cursor.end, state.line_cursor.start)
-        };
-        let (s0, s1, s2) = state.line.split(start, end);
-
         queue!(
             term,
-            style::Print(s0),
-            style::Print(s1),
-            style::Print(s2),
+            style::Print(state.line.as_str()),
         )?;
 
         *current = layout.range.end;
-
-        if matches!(state.mode, Mode::Insert) {
-            let offset = if ahead {
-                s0.width() + s1.width()
-            } else {
-                s0.width()
-            };
-            let offset: u16 = offset.try_into().unwrap_or(u16::MAX);
-            *cursor = Some(layout::Point {
-                x: layout.range.start.x + offset,
-                y: layout.range.start.y
-            });
-        }
         
         Ok(())
     }
@@ -162,10 +144,10 @@ impl Render for CommandLine {
     type State = ShellEditor;
     type Error = anyhow::Error;
 
-    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
         assert_eq!(state.ui.command_line, leaf_id);
 
-        Some(state.command.as_str().width())
+        (Some(state.command.as_str().width()), None)
     }
 
     fn render(
@@ -173,7 +155,6 @@ impl Render for CommandLine {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
-        _cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>
@@ -193,10 +174,10 @@ impl Render for Tips {
     type State = ShellEditor;
     type Error = anyhow::Error;
 
-    fn length(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<usize> {
+    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
         assert_eq!(state.ui.tips, leaf_id);
 
-        Some(2)
+        (Some(2), None)
     }
 
     fn render(
@@ -204,7 +185,6 @@ impl Render for Tips {
         leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
-        _cursor: &mut Option<layout::Point>,
         mut term: RefWriter<'_>
     )
         -> Result<(), Self::Error>
