@@ -7,13 +7,14 @@ use crate::util::arena::{ self, Arena };
 use crate::util::ScopeGuard;
 
 
+#[derive(Default)]
 pub struct Parser {
     tokens: Arena<TokenItem>,
     nodes: Arena<Node>
 }
 
 impl Parser {
-    pub fn parse(&mut self, input: &str) -> Result<NodeId, ParseFailed> {
+    pub fn new(&mut self, input: &str) -> Result<NodeId, ParseFailed> {
         self.tokens.clear();
         self.nodes.clear();
 

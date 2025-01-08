@@ -1,4 +1,5 @@
 pub mod arena;
+pub mod stdout;
 
 macro_rules! matches2 {
     ( $expr:expr, $item:path ) => {

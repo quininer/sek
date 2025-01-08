@@ -1,20 +1,19 @@
 pub mod line;
 pub mod ui;
 
-use std::io;
-use std::ops::{ Range, ControlFlow };
+use std::ops::Range;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
-use crate::ui::render::Renderer;
+use crate::ui::render::{ Renderer, Target };
 use crate::ui::layout;
 
 pub struct Editor {
     ui: ui::Editor,
-    mode: Mode,
-    line: EditableLine,
-    line_cursor: Range<usize>,
-    command: EditableLine,
-    command_cursor: Range<usize>,
+    pub mode: Mode,
+    pub line: EditableLine,
+    pub line_cursor: Range<usize>,
+    pub command: EditableLine,
+    pub command_cursor: Range<usize>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -22,6 +21,13 @@ pub enum Mode {
     Insert,
     Normal,
     Visual,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Action {
+    Continue,
+    Execute,
+    Break,
 }
 
 impl AsRef<layout::Tree> for Editor {
@@ -52,14 +58,14 @@ impl Editor {
     }
 
     pub fn step(&mut self, event: Event)
-        -> anyhow::Result<ControlFlow<()>>
+        -> anyhow::Result<Action>
     {
         match (self.mode, event) {
             // Quit
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers == KM::CONTROL && code == KeyCode::Char('d')
                     && self.line.is_empty()
-            => return Ok(ControlFlow::Break(())),
+            => return Ok(Action::Break),
             // Insert
             (Mode::Insert | Mode::Normal, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
@@ -79,6 +85,7 @@ impl Editor {
                     KeyCode::Right => self.line.move_right(end),
                     KeyCode::Home => self.line.move_head(end),
                     KeyCode::End => self.line.move_end(end),
+                    KeyCode::Enter => return Ok(Action::Execute),
                     _ => ()
                 }
             },
@@ -89,17 +96,13 @@ impl Editor {
             self.line_cursor.start = self.line_cursor.end;
         }
 
-        Ok(ControlFlow::Continue(()))
+        Ok(Action::Continue)
     }
 
-    pub fn render<GetWriter, Writer>(
+    pub fn render<T: Target>(
         &self,
-        renderer: &mut Renderer<Self, GetWriter, anyhow::Error>,
-    ) -> anyhow::Result<()>
-    where
-        GetWriter: Fn() -> Writer,
-        Writer: io::Write
-    {
+        renderer: &mut Renderer<Self, T, anyhow::Error>,
+    ) -> anyhow::Result<()> {
         renderer.render(self)
     }
 }

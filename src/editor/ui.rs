@@ -1,5 +1,4 @@
-use std::convert::TryInto;
-use crossterm::{ queue, style, terminal };
+use crossterm::{ queue, style };
 use unicode_width::UnicodeWidthStr;
 use crate::editor::Mode;
 use crate::ui::layout::{ self, Layout };
