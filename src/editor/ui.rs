@@ -2,7 +2,8 @@ use crossterm::{ queue, style };
 use unicode_width::UnicodeWidthStr;
 use crate::editor::Mode;
 use crate::ui::layout::{ self, Layout };
-use crate::ui::render::{ Render, RefWriter, Fill };
+use crate::ui::render::{ Render, Fill };
+use crate::util::RefWriter;
 use crate::util::arena::Id;
 use super::Editor as ShellEditor;
 

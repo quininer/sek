@@ -1,6 +1,7 @@
 use std::{ fmt, cmp };
 use std::io::{ self, Write };
 use crossterm::{ queue, cursor, style, terminal };
+use crate::util::RefWriter;
 use crate::util::arena::{ Id, ArenaMap };
 use super::layout::{ self, Layout };
 
@@ -178,18 +179,6 @@ impl fmt::Display for Fill {
         }
 
         Ok(())
-    }
-}
-
-pub struct RefWriter<'a>(pub &'a mut dyn io::Write);
-
-impl io::Write for RefWriter<'_> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
     }
 }
 

@@ -2,38 +2,48 @@ pub mod syntax;
 
 use std::io;
 use crossterm::terminal;
+use crate::config::Config;
 use crate::ui::render::Renderer;
 use crate::editor::{ Editor, Action };
 use crate::util::ScopeGuard;
 use crate::util::stdout::Stdout;
 
 
-#[derive(Default)]
 pub struct Shell {
-    //
+    config: Config,
+    editor: Editor,
+    parser: syntax::Parser
 }
 
 impl Shell {
-    pub fn start(self) -> anyhow::Result<()> {
+    pub fn new() -> anyhow::Result<Self> {
+        let editor = Editor::new()?;
+        let parser = syntax::Parser::default();
+        
+        Ok(Shell {
+            config: Config::default(),
+            editor, parser
+        })        
+    }
+    
+    pub fn start(mut self) -> anyhow::Result<()> {
         let stdout = Stdout::from(io::stdout());
         let size = terminal::size()?;
         
-        let mut editor = Editor::new()?;
-        let mut parser = syntax::Parser::default();
         let mut renderer = Renderer::new(size, || stdout.lock());
 
-        editor.init_to(&mut renderer);
+        self.editor.init_to(&mut renderer);
 
         let _guard = ScopeGuard(terminal::enable_raw_mode(), |_| {
             let _ = terminal::disable_raw_mode();
         });
 
         loop {
-            editor.render(&mut renderer)?;
+            self.editor.render(&mut renderer)?;
             
             let event = crossterm::event::read()?;
 
-            match editor.step(event)? {
+            match self.editor.step(event)? {
                 Action::Continue => continue,
                 Action::Execute => (),
                 Action::Break => break
@@ -45,14 +55,14 @@ impl Shell {
 
             renderer.new_line()?;
 
-            match parser.parse(editor.line.as_str()) {
+            match self.parser.parse(self.editor.line.as_str()) {
                 Ok(_root) => (),
                 Err(err) => {
                     dbg!(err);
                 }
             }
             
-            editor.line.clear(&mut editor.line_cursor);
+            self.editor.line.clear(&mut self.editor.line_cursor);
         }
 
         Ok(())

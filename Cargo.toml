@@ -16,6 +16,8 @@ smallvec = "1"
 # options
 argh = "0.1"
 directories = "5"
+serde = { version = "1", features = [ "derive" ] }
+serde-tuple-vec-map = "1"
 
 # ui
 crossterm = "0.28"

@@ -2,6 +2,7 @@ pub mod error;
 pub mod token;
 pub mod raw;
 pub mod parse;
+pub mod highlight;
 
 use logos::Span;
 use token::Token;
@@ -76,15 +77,22 @@ impl Iterator for Link<'_> {
             _ => unreachable!()
         };
         self.link = link.next;
-        Some(link.current)
+        match &self.parser.nodes[link.current] {
+            raw::Node::Null => None,
+            _ => Some(link.current)
+        }
     }
 }
 
 impl Command {
-    pub fn exe(self, parser: &Parser) -> Option<Literal> {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+    
+    pub fn exe(self, parser: &Parser) -> Literal {
         let cmd = matches2!(&parser.nodes[self.0], raw::Node::Command).unwrap();
-        matches2!(&parser.nodes[cmd.exe], raw::Node::Literal)?;
-        Some(Literal(cmd.exe))
+        matches2!(&parser.nodes[cmd.exe], raw::Node::Literal).unwrap();
+        Literal(cmd.exe)
     }
 
     pub fn args(self, parser: &Parser)
@@ -111,6 +119,10 @@ impl Command {
 }
 
 impl Argument {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+    
     pub fn slice(self, parser: &Parser)
         -> impl Iterator<Item = ArgSlice> + use<'_>
     {
@@ -128,6 +140,24 @@ impl Argument {
 }
 
 impl DoubleStr {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+
+    pub fn start(self, parser: &Parser) -> Span {
+        let s = matches2!(&parser.nodes[self.0], raw::Node::DoubleStr).unwrap();
+        let (token, span) = &parser.tokens[s.start_token];
+        assert_eq!(token, &Token::DoubleQuote);
+        span.clone()
+    }
+
+    pub fn end(self, parser: &Parser) -> Option<Span> {
+        let s = matches2!(&parser.nodes[self.0], raw::Node::DoubleStr).unwrap();
+        let (token, span) = &parser.tokens[s.end_token?];
+        assert_eq!(token, &Token::DoubleQuote);
+        Some(span.clone())
+    }    
+
     pub fn slice(self, parser: &Parser)
         -> impl Iterator<Item = StrSlice> + use<'_>
     {
@@ -143,6 +173,10 @@ impl DoubleStr {
 }
 
 impl Literal {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+
     pub fn span(self, parser: &Parser) -> Span {
         let lit = matches2!(&parser.nodes[self.0], raw::Node::Literal).unwrap();
         lit.0.clone()
@@ -150,15 +184,23 @@ impl Literal {
 }
 
 impl Variable {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+
     pub fn span(self, parser: &Parser) -> Span {
         let var = matches2!(&parser.nodes[self.0], raw::Node::Variable).unwrap();
         let (token, span) = &parser.tokens[var.0];
-        assert_eq!(token, &Token::Text);
+        assert_eq!(token, &Token::Variable);
         span.clone()
     }
 }
 
 impl Escape {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+
     pub fn backslash(self, parser: &Parser) -> Span {
         let escape = matches2!(&parser.nodes[self.0], raw::Node::Escape).unwrap();
         let (token, span) = &parser.tokens[escape.backslash];
@@ -175,6 +217,10 @@ impl Escape {
 }
 
 impl SingleStr {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+    
     pub fn start(self, parser: &Parser) -> Span {
         let s = matches2!(&parser.nodes[self.0], raw::Node::SingleStr).unwrap();
         let (token, span) = &parser.tokens[s.start_token];
@@ -191,6 +237,10 @@ impl SingleStr {
 }
 
 impl SubShell {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+        
     pub fn start(self, parser: &Parser) -> Span {
         let subshell = matches2!(&parser.nodes[self.0], raw::Node::SubShell).unwrap();
         let (token, span) = &parser.tokens[subshell.start_token];
@@ -212,6 +262,10 @@ impl SubShell {
 }
 
 impl Chain {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+        
     pub fn token(self, parser: &Parser) -> Span {
         let chain = matches2!(&parser.nodes[self.0], raw::Node::Chain).unwrap();
         let (token, span) = &parser.tokens[chain.token];
@@ -231,6 +285,10 @@ impl Chain {
 }
 
 impl Redirect {
+    pub fn node_id(self) -> raw::NodeId {
+        self.0
+    }
+    
     pub fn token(self, parser: &Parser) -> Span {
         let redirect = matches2!(&parser.nodes[self.0], raw::Node::Redirect).unwrap();
         let (token, span) = &parser.tokens[redirect.token];

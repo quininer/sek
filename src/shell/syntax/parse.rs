@@ -1,5 +1,6 @@
 use std::mem;
 use std::ops::ControlFlow;
+use super::Command;
 use super::error::{ ParseFailed, ErrorKind };
 use super::token::{ Token, TokenId, TokenItem };
 use super::raw::{ self as syntax, Node, NodeId };
@@ -14,7 +15,11 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse(&mut self, input: &str) -> Result<NodeId, ParseFailed> {
+    pub fn parse(&mut self, input: &str) -> Result<Command, ParseFailed> {
+        self.parse_raw(input).map(Command)
+    }
+    
+    pub(super) fn parse_raw(&mut self, input: &str) -> Result<NodeId, ParseFailed> {
         self.tokens.clear();
         self.nodes.clear();
 

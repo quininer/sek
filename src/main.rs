@@ -18,8 +18,7 @@ fn main() -> anyhow::Result<()> {
         env::set_current_dir(pwd)?;
     }
 
-    sek::shell::Shell::default()
-        .start()?;
+    sek::shell::Shell::new()?.start()?;
     
     Ok(())
 }

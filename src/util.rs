@@ -1,6 +1,8 @@
 pub mod arena;
 pub mod stdout;
 
+use std::io;
+
 macro_rules! matches2 {
     ( $expr:expr, $item:path ) => {
         match $expr {
@@ -27,5 +29,23 @@ impl<T, F: Fn(&mut T)> AsMut<T> for ScopeGuard<T, F> {
 impl<T, F: Fn(&mut T)> Drop for ScopeGuard<T, F> {
     fn drop(&mut self) {
         (self.1)(&mut self.0);
+    }
+}
+
+pub struct RefWriter<'a>(pub &'a mut dyn io::Write);
+
+impl RefWriter<'_> {
+    pub fn reborrow(&mut self) -> RefWriter<'_> {
+        RefWriter(self.0)
+    }
+}
+
+impl io::Write for RefWriter<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
     }
 }
