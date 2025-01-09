@@ -12,13 +12,15 @@ macro_rules! matches2 {
 
 pub struct ScopeGuard<T, F: Fn(&mut T)>(pub T, pub F);
 
-impl<T, F: Fn(&mut T)> ScopeGuard<T, F> {
-    pub fn as_mut(&mut self) -> &mut T {
-        &mut self.0
+impl<T, F: Fn(&mut T)> AsRef<T> for ScopeGuard<T, F> {
+    fn as_ref(&self) -> &T {
+        &self.0
     }
-    
-    pub fn forget(self) {
-        std::mem::forget(self);
+}
+
+impl<T, F: Fn(&mut T)> AsMut<T> for ScopeGuard<T, F> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.0
     }
 }
 

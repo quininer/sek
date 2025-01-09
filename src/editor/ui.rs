@@ -33,7 +33,6 @@ impl Editor {
             axis: layout::Axis::Horizontal,
             justify: layout::Justify::Stretch,
             overflow: true,
-            ..Default::default()
         });
 
         // command line

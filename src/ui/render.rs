@@ -35,15 +35,18 @@ pub trait Render {
         -> Result<(), Self::Error>;
 }
 
+type LengthAndCursorMethod<State> = fn(&State, Id<layout::Node>) -> (Option<usize>, Option<usize>);
+type RenderMethod<State, Error> = fn(
+    &State,
+    Id<layout::Node>,
+    &Layout,
+    &mut layout::Point,
+    RefWriter<'_>
+) -> Result<(), Error>;
+
 struct RenderVtable<State, Error> {
-    length_and_cursor: fn(&State, Id<layout::Node>) -> (Option<usize>, Option<usize>),
-    render: fn(
-        &State,
-        Id<layout::Node>,
-        &Layout,
-        &mut layout::Point,
-        RefWriter<'_>
-    ) -> Result<(), Error>   
+    length_and_cursor: LengthAndCursorMethod<State>,
+    render: RenderMethod<State, Error>
 }
 
 impl<Shell, Target, Error> Renderer<Shell, Target, Error> {

@@ -2,19 +2,19 @@ use std::mem;
 use std::ops::ControlFlow;
 use super::error::{ ParseFailed, ErrorKind };
 use super::token::{ Token, TokenId, TokenItem };
-use super::syntax::{ self, Node, NodeId };
+use super::raw::{ self as syntax, Node, NodeId };
 use crate::util::arena::{ self, Arena };
 use crate::util::ScopeGuard;
 
 
 #[derive(Default)]
 pub struct Parser {
-    tokens: Arena<TokenItem>,
-    nodes: Arena<Node>
+    pub(super) tokens: Arena<TokenItem>,
+    pub(super) nodes: Arena<Node>
 }
 
 impl Parser {
-    pub fn new(&mut self, input: &str) -> Result<NodeId, ParseFailed> {
+    pub fn parse(&mut self, input: &str) -> Result<NodeId, ParseFailed> {
         self.tokens.clear();
         self.nodes.clear();
 
@@ -203,7 +203,7 @@ impl State<'_> {
         // first token
         let mut substate = {
             let token = self.iter.next()
-                .ok_or_else(|| ParseFailed {
+                .ok_or(ParseFailed {
                     token: None,
                     kind: ErrorKind::EmptyCommand,
                     span: None
@@ -331,7 +331,7 @@ impl State<'_> {
 
         let mut end_token = None;
 
-        while let Some(token) = self.iter.next() {
+        for token in self.iter.by_ref() {
             if matches!(&self.tokens[token], (Token::SingleQuote, _)) {
                 end_token = Some(token);
                 break
@@ -447,7 +447,7 @@ impl State<'_> {
             Err(failed(&self.tokens[token]).with_kind(ErrorKind::UnknownEscape))
         } else {
             self.iter.bump();
-            Ok(self.nodes.alloc(Node::Escape(syntax::Escape { token, value })))
+            Ok(self.nodes.alloc(Node::Escape(syntax::Escape { backslash: token, value })))
         }
     }
 

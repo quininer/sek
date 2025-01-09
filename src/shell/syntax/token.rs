@@ -5,7 +5,7 @@ use crate::util::arena;
 pub type TokenItem = (Token, Span);
 pub type TokenId = arena::Id<TokenItem>;
 
-#[derive(Logos, Debug, PartialEq, Copy, Clone)]
+#[derive(Logos, Debug, PartialEq, Eq, Copy, Clone)]
 #[logos(error = LexingError)]
 pub enum Token {
     #[token("'")]

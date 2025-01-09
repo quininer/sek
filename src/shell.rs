@@ -1,4 +1,4 @@
-pub mod parser;
+pub mod syntax;
 
 use std::io;
 use crossterm::terminal;
@@ -6,7 +6,6 @@ use crate::ui::render::Renderer;
 use crate::editor::{ Editor, Action };
 use crate::util::ScopeGuard;
 use crate::util::stdout::Stdout;
-use parser::Parser;
 
 
 #[derive(Default)]
@@ -20,7 +19,7 @@ impl Shell {
         let size = terminal::size()?;
         
         let mut editor = Editor::new()?;
-        let mut parser = Parser::default();
+        let mut parser = syntax::Parser::default();
         let mut renderer = Renderer::new(size, || stdout.lock());
 
         editor.init_to(&mut renderer);
@@ -46,7 +45,7 @@ impl Shell {
 
             renderer.new_line()?;
 
-            match parser.new(editor.line.as_str()) {
+            match parser.parse(editor.line.as_str()) {
                 Ok(_root) => (),
                 Err(err) => {
                     dbg!(err);

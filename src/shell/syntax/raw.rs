@@ -58,7 +58,7 @@ pub struct Variable(pub TokenId);
 #[derive(Debug)]
 pub struct Escape {
     /// escape token
-    pub token: TokenId,
+    pub backslash: TokenId,
     /// value token
     pub value: TokenId
 }

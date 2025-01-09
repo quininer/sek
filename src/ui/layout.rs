@@ -415,7 +415,7 @@ fn layout_leaf(
             }
 
             break
-        } if !leaf.style.overflow {
+        } else if !leaf.style.overflow {
             leaf_layout.range.end.x = line;
             leaf_layout.size.0 = line;
             leaf_layout.size.1 = 1;
