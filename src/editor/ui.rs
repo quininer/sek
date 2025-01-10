@@ -5,7 +5,7 @@ use crate::ui::layout::{ self, Layout };
 use crate::ui::render::{ Render, Fill };
 use crate::util::RefWriter;
 use crate::util::arena::Id;
-use super::Editor as ShellEditor;
+use crate::shell::Shell;
 
 pub struct Editor {
     pub layout: layout::Tree,
@@ -67,11 +67,11 @@ pub struct Prompt;
 const PROMPT: &str = "> ";
 
 impl Render for Prompt {
-    type State = ShellEditor;
+    type State = Shell;
     type Error = anyhow::Error;
 
     fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
-        assert_eq!(state.ui.prompt, leaf_id);
+        assert_eq!(state.editor.ui.prompt, leaf_id);
 
         (Some(PROMPT.width()), None)
     }
@@ -85,7 +85,7 @@ impl Render for Prompt {
     )
         -> Result<(), Self::Error>
     {
-        assert_eq!(state.ui.prompt, leaf_id);
+        assert_eq!(state.editor.ui.prompt, leaf_id);
         assert_eq!(layout.padding, 0);
 
         queue!(term, style::Print(PROMPT.get(..usize::from(layout.size.0)).unwrap_or_default()))?;
@@ -99,17 +99,17 @@ impl Render for Prompt {
 pub struct InsertLine;
 
 impl Render for InsertLine {
-    type State = ShellEditor;
+    type State = Shell;
     type Error = anyhow::Error;
 
     fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
-        assert_eq!(state.ui.insert_line, leaf_id);
+        assert_eq!(state.editor.ui.insert_line, leaf_id);
 
-        let (s0, s1) = state.line.split(state.line_cursor.end);
+        let (s0, s1) = state.editor.line.split(state.editor.line_cursor.end);
         let s0_len = s0.width();
         let s1_len = s1.width();
 
-        let cursor_len = matches!(state.mode, Mode::Insert)
+        let cursor_len = matches!(state.editor.mode, Mode::Insert)
             .then_some(s0_len);
 
         (Some(s0_len + s1_len), cursor_len)
@@ -124,12 +124,18 @@ impl Render for InsertLine {
     )
         -> Result<(), Self::Error>
     {
-        assert_eq!(state.ui.insert_line, leaf_id);
+        use crate::shell::syntax::highlight::colour;
+        
+        assert_eq!(state.editor.ui.insert_line, leaf_id);
 
-        queue!(
-            term,
-            style::Print(state.line.as_str()),
-        )?;
+        if let Some(cmd) = state.ast {
+            colour(state, cmd, state.editor.line.as_str(), term)?;
+        } else {
+            queue!(
+                term,
+                style::Print(state.editor.line.as_str()),
+            )?;
+        }
 
         *current = layout.range.end;
         
@@ -140,13 +146,13 @@ impl Render for InsertLine {
 pub struct CommandLine;
 
 impl Render for CommandLine {
-    type State = ShellEditor;
+    type State = Shell;
     type Error = anyhow::Error;
 
     fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
-        assert_eq!(state.ui.command_line, leaf_id);
+        assert_eq!(state.editor.ui.command_line, leaf_id);
 
-        (Some(state.command.as_str().width()), None)
+        (Some(state.editor.command.as_str().width()), None)
     }
 
     fn render(
@@ -158,9 +164,9 @@ impl Render for CommandLine {
     )
         -> Result<(), Self::Error>
     {
-        assert_eq!(state.ui.command_line, leaf_id);
+        assert_eq!(state.editor.ui.command_line, leaf_id);
 
-        queue!(term, style::Print(state.command.as_str()))?;
+        queue!(term, style::Print(state.editor.command.as_str()))?;
         queue!(term, style::Print(Fill(' ', layout.padding.into())))?;
         current.x = layout.range.end.x;
         Ok(())
@@ -170,11 +176,11 @@ impl Render for CommandLine {
 pub struct Tips;
 
 impl Render for Tips {
-    type State = ShellEditor;
+    type State = Shell;
     type Error = anyhow::Error;
 
     fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
-        assert_eq!(state.ui.tips, leaf_id);
+        assert_eq!(state.editor.ui.tips, leaf_id);
 
         (Some(2), None)
     }
@@ -188,7 +194,7 @@ impl Render for Tips {
     )
         -> Result<(), Self::Error>
     {
-        assert_eq!(state.ui.tips, leaf_id);
+        assert_eq!(state.editor.ui.tips, leaf_id);
 
         queue!(term, style::Print("<>"))?;
         current.x = layout.range.end.x;

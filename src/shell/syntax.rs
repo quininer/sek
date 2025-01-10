@@ -74,7 +74,7 @@ impl Iterator for Link<'_> {
         let link = match &self.parser.nodes[link] {
             raw::Node::Link(link) => link,
             raw::Node::Null => return None,
-            _ => unreachable!()
+            node => unreachable!("hint {:?}", node)
         };
         self.link = link.next;
         match &self.parser.nodes[link.current] {
@@ -106,7 +106,7 @@ impl Command {
         -> impl Iterator<Item = Redirect> + use<'_>
     {
         let cmd = matches2!(&parser.nodes[self.0], raw::Node::Command).unwrap();
-        Link::new(parser, cmd.args).map(Redirect)
+        Link::new(parser, cmd.redirect).map(Redirect)
     }
 
     pub fn chain(self, parser: &Parser)
@@ -161,7 +161,8 @@ impl DoubleStr {
     pub fn slice(self, parser: &Parser)
         -> impl Iterator<Item = StrSlice> + use<'_>
     {
-        Link::new(parser, self.0)
+        let s = matches2!(&parser.nodes[self.0], raw::Node::DoubleStr).unwrap();
+        Link::new(parser, s.list)
             .map(move |id| match &parser.nodes[id] {
                 raw::Node::Literal(_) => StrSlice::Literal(Literal(id)),
                 raw::Node::Variable(_) => StrSlice::Variable(Variable(id)),

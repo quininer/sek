@@ -1,8 +1,10 @@
 pub mod syntax;
+pub mod execute;
 
 use std::io;
 use crossterm::terminal;
-use crate::config::Config;
+use crate::config::{ Config, default_theme };
+use crate::ui::layout;
 use crate::ui::render::Renderer;
 use crate::editor::{ Editor, Action };
 use crate::util::ScopeGuard;
@@ -10,19 +12,22 @@ use crate::util::stdout::Stdout;
 
 
 pub struct Shell {
-    config: Config,
-    editor: Editor,
-    parser: syntax::Parser
+    pub config: Config,
+    pub editor: Editor,
+    pub parser: syntax::Parser,
+    pub ast: Option<syntax::Command>,
 }
 
 impl Shell {
     pub fn new() -> anyhow::Result<Self> {
+        let mut config = Config::default();
+        config.theme = default_theme();
         let editor = Editor::new()?;
         let parser = syntax::Parser::default();
         
         Ok(Shell {
-            config: Config::default(),
-            editor, parser
+            ast: None,
+            editor, parser, config
         })        
     }
     
@@ -32,39 +37,61 @@ impl Shell {
         
         let mut renderer = Renderer::new(size, || stdout.lock());
 
-        self.editor.init_to(&mut renderer);
+        init_to(&self.editor, &mut renderer);
 
         let _guard = ScopeGuard(terminal::enable_raw_mode(), |_| {
             let _ = terminal::disable_raw_mode();
         });
 
         loop {
-            self.editor.render(&mut renderer)?;
+            renderer.render(&self)?;
             
             let event = crossterm::event::read()?;
-
-            match self.editor.step(event)? {
-                Action::Continue => continue,
-                Action::Execute => (),
+            let is_execute = match self.editor.step(event)? {
+                Action::Continue => false,
+                Action::Execute => true,
                 Action::Break => break
-            }
+            };
 
             let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
                 let _ = terminal::enable_raw_mode();
             });
 
-            renderer.new_line()?;
+            let result = self.parser.parse(self.editor.line.as_str());
+            self.ast = result.as_ref().ok().copied();
 
-            match self.parser.parse(self.editor.line.as_str()) {
-                Ok(_root) => (),
-                Err(err) => {
+            match result {
+                Ok(_) => (),
+                Err(err) if is_execute => {
                     dbg!(err);
-                }
+
+                    // TODO render error
+                },
+                Err(_) => ()
             }
-            
-            self.editor.line.clear(&mut self.editor.line_cursor);
+
+            if is_execute {
+                self.ast = None;
+                self.editor.line.clear(&mut self.editor.line_cursor);
+                renderer.new_line()?;
+            }
         }
 
         Ok(())
+    }
+}
+
+fn init_to<W>(editor: &Editor, renderer: &mut Renderer<Shell, W, anyhow::Error>) {
+    use crate::editor::ui;
+    
+    renderer.insert::<ui::Prompt>(editor.ui.prompt);
+    renderer.insert::<ui::InsertLine>(editor.ui.insert_line);
+    renderer.insert::<ui::CommandLine>(editor.ui.command_line);
+    renderer.insert::<ui::Tips>(editor.ui.tips);
+}
+
+impl AsRef<layout::Tree> for Shell {
+    fn as_ref(&self) -> &layout::Tree {
+        self.editor.as_ref()
     }
 }

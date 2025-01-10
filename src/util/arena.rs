@@ -5,6 +5,7 @@ use std::convert::TryInto;
 use std::marker::PhantomData;
 
 
+#[derive(Debug)]
 pub struct Arena<T>(Vec<T>);
 
 pub struct ArenaMap<T, V> {
@@ -107,21 +108,11 @@ impl<T> Iterator for Iter<'_, T> {
 }
 
 impl<T> Iter<'_, T> {
-    pub fn back(&mut self) {
-        self.index = self.index.saturating_sub(1);
-    }
-
     pub fn bump(&mut self) {
         self.next();
     }
 
     pub fn peek(&self) -> Option<Id<T>> {
-        let next = self.index + 1;
-        self.arena.0.get(next)?;
-        Some(Id(next.try_into().unwrap(), PhantomData))
-    }
-
-    pub fn current(&self) -> Option<Id<T>> {
         let next = self.index;
         self.arena.0.get(next)?;
         Some(Id(next.try_into().unwrap(), PhantomData))       

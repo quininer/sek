@@ -8,7 +8,7 @@ use crate::ui::render::{ Renderer, Target };
 use crate::ui::layout;
 
 pub struct Editor {
-    ui: ui::Editor,
+    pub ui: ui::Editor,
     pub mode: Mode,
     pub line: EditableLine,
     pub line_cursor: Range<usize>,
@@ -48,13 +48,6 @@ impl Editor {
             command: EditableLine::default(),
             command_cursor: 0..0
         })
-    }
-
-    pub fn init_to<W>(&self, renderer: &mut Renderer<Self, W, anyhow::Error>) {
-        renderer.insert::<ui::Prompt>(self.ui.prompt);
-        renderer.insert::<ui::InsertLine>(self.ui.insert_line);
-        renderer.insert::<ui::CommandLine>(self.ui.command_line);
-        renderer.insert::<ui::Tips>(self.ui.tips);
     }
 
     pub fn step(&mut self, event: Event)

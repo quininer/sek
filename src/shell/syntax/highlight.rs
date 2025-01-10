@@ -5,10 +5,13 @@ use crate::config::Style;
 use crate::shell::Shell;
 use crate::ui::render::Fill;
 use crate::util::{ RefWriter, ScopeGuard };
-use super::{ ArgSlice, Argument, Chain, Command, DoubleStr, Escape, Literal, Parser, Redirect, SingleStr, StrSlice, SubShell, Variable };
+use super::{
+    ArgSlice, Argument, Chain, Command, DoubleStr, Escape, Literal,
+    Parser, Redirect, SingleStr, StrSlice, SubShell, Variable
+};
 
 
-pub fn colour(shell: &Shell, parser: &Parser, cmd: Command, input: &str, term: RefWriter<'_>)
+pub fn colour(shell: &Shell, cmd: Command, input: &str, term: RefWriter<'_>)
     -> anyhow::Result<()>
 {
     let mut term = ScopeGuard(term, |term| {
@@ -20,7 +23,7 @@ pub fn colour(shell: &Shell, parser: &Parser, cmd: Command, input: &str, term: R
     let term = term.as_mut();
 
     let input = Input {
-        shell, parser,
+        shell, parser: &shell.parser,
         buf: input
     };
     let mut state = State {

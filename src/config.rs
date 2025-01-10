@@ -25,7 +25,7 @@ pub struct ConfigFormat<'a> {
     pub push_path: Vec<Cow<'a, Path>>,
     #[serde(default)]
     pub alias: HashMap<String, String>,
-    pub theme: Theme
+    pub theme: Option<Theme>
 }
 
 #[derive(Deserialize, Default)]
@@ -84,5 +84,21 @@ impl Style {
         } else {
             None
         }
+    }
+}
+
+pub fn default_theme() -> Theme {
+    Theme {
+        exe: Style::new(27),
+        literal: Style::new(33),
+        variable: Style::new(39),
+        escape: Style::new(128),
+        subshell: Style::new(39),
+        single_str: Style::new(3),
+        double_str: Style::new(3),
+        chain: Style::new(39),
+        redirect: Style::new(39),
+        comment: Style::new(128),
+        error: Style::new(9),
     }
 }

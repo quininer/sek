@@ -237,6 +237,15 @@ impl State<'_> {
             SubState::Argument(args)
         };
 
+        // skip empty
+        while let Some(token) = self.iter.peek() {
+            if matches!(&self.tokens[token], (Token::Empty, _)) {
+                self.iter.bump();
+            } else {
+                break
+            }
+        }
+
         // args token
         while let Some(token_id) = self.iter.peek() {
             let (token, _span) = &self.tokens[token_id];
@@ -413,7 +422,10 @@ impl State<'_> {
         }
 
         let start_token = self.iter.next().unwrap();
-        assert!(matches!(&self.tokens[start_token], (Token::DoubleQuote, _)));        
+        assert!(
+            matches!(&self.tokens[start_token], (Token::DoubleQuote, _)),
+            "{:?}", &self.tokens[start_token]
+        );
 
         let link = self.nodes.alloc(Node::Link(syntax::Link {
             current: self.null,
