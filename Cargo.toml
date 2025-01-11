@@ -12,6 +12,7 @@ path = "src/main.rs"
 # utils
 anyhow = "1"
 smallvec = "1"
+bstr = "1"
 
 # options
 argh = "0.1"

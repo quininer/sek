@@ -77,7 +77,10 @@ where
 
     pub fn new_line(&mut self) -> io::Result<()> {
         let mut term = self.term.access();
-        queue!(term, style::Print("\r\n"))?;
+        queue!(term,
+            style::Print("\r\n"),
+            terminal::Clear(terminal::ClearType::FromCursorDown)
+        )?;
 
         self.max_y = 0;
         self.current = layout::Point {
@@ -85,7 +88,7 @@ where
             y: 0
         };
 
-        Ok(())
+        term.flush()
     }    
 
     pub fn render(&mut self, shell: &S)
