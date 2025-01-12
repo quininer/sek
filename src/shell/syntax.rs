@@ -211,8 +211,7 @@ impl Escape {
     
     pub fn value(self, parser: &Parser) -> Span {
         let escape = matches2!(&parser.nodes[self.0], raw::Node::Escape).unwrap();
-        let (token, span) = &parser.tokens[escape.value];
-        assert_eq!(token, &Token::Text);
+        let (_token, span) = &parser.tokens[escape.value];
         span.clone()
     }
 }
