@@ -237,15 +237,6 @@ impl State<'_> {
             SubState::Argument(args)
         };
 
-        // skip empty
-        while let Some(token) = self.iter.peek() {
-            if matches!(&self.tokens[token], (Token::Empty, _)) {
-                self.iter.bump();
-            } else {
-                break
-            }
-        }
-
         // args token
         while let Some(token_id) = self.iter.peek() {
             let (token, _span) = &self.tokens[token_id];

@@ -1,5 +1,6 @@
 use std::fmt;
 use logos::Span;
+use annotate_snippets::{ Level, Snippet, Message };
 use super::token::Token;
 
 
@@ -33,6 +34,20 @@ impl ParseFailed {
         self.kind = kind;
         self
     }
+
+    pub fn to_message<'a>(&self, input: &'a str) -> Message<'a> {
+        let span = self.span.clone().unwrap_or_else(|| 0..input.len());
+        
+        Level::Error
+            .title("Syntax error")
+            .snippet(Snippet::source(input)
+                .fold(true)
+                .annotation(Level::Error
+                    .span(span)
+                    .label(self.kind.as_str())
+                )
+            )
+    }
 }
 
 impl ErrorKind {
@@ -42,14 +57,11 @@ impl ErrorKind {
             "command was empty",
             "unexpected token",
             "unexpected close token",
-            "unsupported redirect type",
-            "unclosed subshell",
-            "unclosed single quote",
-            "unclosed double quote",
-            "redirect has no target",
             "unexpected argument",
             "incomplete escape",
-            "unknown character escape"
+            "unknown character escape",
+            "unknown redirect target",
+            "invalid token",
         ];
 
         STRINGS[self as usize]

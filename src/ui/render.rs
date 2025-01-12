@@ -75,10 +75,11 @@ where
         }
     }
 
-    pub fn new_line(&mut self) -> io::Result<()> {
+    pub fn new_line(&mut self, with_message: &dyn fmt::Display) -> io::Result<()> {
         let mut term = self.term.access();
         queue!(term,
             style::Print("\r\n"),
+            style::Print(with_message),
             terminal::Clear(terminal::ClearType::FromCursorDown)
         )?;
 

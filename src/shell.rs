@@ -4,6 +4,7 @@ pub mod process;
 pub mod execute;
 
 use std::io;
+use std::cell::RefCell;
 use crossterm::terminal;
 use crate::config::{ Config, default_theme };
 use crate::ui::layout;
@@ -12,14 +13,17 @@ use crate::editor::{ Editor, Action };
 use crate::util::ScopeGuard;
 use crate::util::stdout::Stdout;
 use environment::Environment;
+use process::Morgue;
 
 
 pub struct Shell {
     pub config: Config,
     pub env: Environment,
+    pub morgue: Morgue,
     pub editor: Editor,
     pub parser: syntax::Parser,
     pub ast: Option<syntax::Command>,
+    pub tmpbuf: RefCell<Box<[u8]>>,
 }
 
 impl Shell {
@@ -32,6 +36,8 @@ impl Shell {
         Ok(Shell {
             ast: None,
             env: Environment::new()?,
+            morgue: Morgue::default(),
+            tmpbuf: RefCell::new(vec![0; 1024].into_boxed_slice()),
             editor, parser, config
         })        
     }
@@ -39,8 +45,10 @@ impl Shell {
     pub fn start(mut self) -> anyhow::Result<()> {
         let stdout = Stdout::from(io::stdout());
         let size = terminal::size()?;
-        
+
         let mut renderer = Renderer::new(size, || stdout.lock());
+        let error_renderer = annotate_snippets::Renderer::styled()
+            .term_width(size.1.into());
 
         init_to(&self.editor, &mut renderer);
 
@@ -58,21 +66,29 @@ impl Shell {
                 Action::Break => break
             };
 
-            let result = self.parser.parse(self.editor.line.as_str());
+            let line = self.editor.line.as_str();
+
+            let result = self.parser.parse(line);
             self.ast = result.as_ref().ok().copied();
 
             match result {
                 Ok(_) => (),
                 Err(err) if is_execute => {
-                    dbg!(err);
+                    let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
+                        let _ = terminal::enable_raw_mode();
+                    });
 
+
+                    let display = error_renderer.render(err.to_message(line));
+                    renderer.new_line(&display)?;
+                    
                     // TODO render error
                 },
                 Err(_) => ()
             }
 
             if is_execute {
-                renderer.new_line()?;
+                renderer.new_line(&"")?;
                 
                 if let Some(cmd) = self.ast {
                     let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
@@ -85,6 +101,8 @@ impl Shell {
                 self.ast = None;
                 self.editor.line.clear(&mut self.editor.line_cursor);
             }
+
+            self.morgue.wait()?;
         }
 
         Ok(())

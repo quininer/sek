@@ -30,7 +30,7 @@ pub fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow::Resu
     let status = if let Some(chain) = cmd.chain(&shell.parser) {
         chain.eval(shell, input, shell_cmd, None)?
     } else {
-        shell_cmd.spawn()?.wait()?
+        shell_cmd.spawn(shell)?.wait()?
     };
 
     Ok(status)    
@@ -250,13 +250,13 @@ impl syntax::Chain {
             ChainKind::Pipe(stdio_kind) => {
                 prev_cmd.stdout(Stdio::piped());
 
-                let mut prev_child = prev_cmd.spawn()?;
+                let mut prev_child = prev_cmd.spawn(shell)?;
 
                 match stdio_kind {
-                    StdioKind::Out => if let Some(stdout) = prev_child.stdout.take() {
+                    StdioKind::Out => if let Some(stdout) = prev_child.stdout().take() {
                         shell_cmd.stdin(stdout.into());
                     },
-                    StdioKind::Err => if let Some(stderr) = prev_child.stderr.take() {
+                    StdioKind::Err => if let Some(stderr) = prev_child.stderr().take() {
                         shell_cmd.stdin(stderr.into());
                     },
                     StdioKind::All => todo!()
@@ -268,7 +268,6 @@ impl syntax::Chain {
                     spawn_and_push(shell_cmd, shell, &mut push)?
                 };
 
-                // TODO wait by pgid
                 prev_child.wait()?;
 
                 Ok(status)
@@ -312,30 +311,27 @@ impl syntax::Chain {
     }
 }
 
-fn spawn_and_push(mut cmd: ShellCommand, _shell: &Shell, push: &mut Option<Push<'_>>)
+fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<Push<'_>>)
     -> anyhow::Result<ExitStatus>
 {
-    let ret = if let Some(push) = push.as_mut()
+    if let Some(push) = push.as_mut()
         .filter(|_| cmd.is_stdout_available())
     {
         cmd.stdout(Stdio::piped());
 
-        let mut child = cmd.spawn()?;
+        let mut child = cmd.spawn(shell)?;
 
-        if let Some(stdout) = child.stdout.take() {
-            let mut tmpbuf = vec![0; 1024];
+        if let Some(stdout) = child.stdout().take() {
+            let mut tmpbuf = shell.tmpbuf.borrow_mut();
             read_to_end(stdout, &mut tmpbuf, push)?;
         }
 
-        child.wait()
-            .map_err(Into::into)
+        child.wait().map_err(Into::into)
     } else {
-        cmd.spawn()?
+        cmd.spawn(shell)?
             .wait()
             .map_err(Into::into)
-    };
-
-    ret
+    }
 }
 
 fn read_to_end<R: io::Read>(
@@ -344,12 +340,12 @@ fn read_to_end<R: io::Read>(
     push: Push<'_>
 ) -> anyhow::Result<()> {
     loop {
-        let n = reader.read(tmpbuf)?;
-        if n == 0 {
-            break
+        match reader.read(tmpbuf) {
+            Ok(0) => break,
+            Ok(n) => push(&tmpbuf[..n])?,
+            Err(ref err) if err.kind() == io::ErrorKind::Interrupted => (),
+            Err(err) => return Err(err.into())
         }
-
-        push(&tmpbuf[..n])?;
     }
 
     Ok(())

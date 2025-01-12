@@ -27,3 +27,6 @@ annotate-snippets = "0.11"
 
 # lang
 logos = "0.15"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

@@ -1,10 +1,26 @@
-use std::process::{ Command, Stdio, Child };
+use std::io;
+use std::rc::Rc;
+use std::cell::RefCell;
+use std::process::{ self, Command, Stdio };
 use bstr::ByteSlice;
+use super::Shell;
 
 
 pub struct ShellCommand {
     cmd: Command,
     redirect_stdout: bool,
+}
+
+pub struct Child {
+    child: Option<process::Child>,
+    morgue: Morgue
+}
+
+#[derive(Clone)]
+pub struct Morgue {
+    #[cfg(unix)]
+    pgid: libc::pid_t,
+    queue: Rc<RefCell<Vec<process::Child>>>
 }
 
 impl ShellCommand {
@@ -38,14 +54,72 @@ impl ShellCommand {
         !self.redirect_stdout
     }
 
-    pub fn spawn(&mut self) -> anyhow::Result<Child> {
+    pub fn spawn(&mut self, shell: &Shell) -> anyhow::Result<Child> {
         #[cfg(unix)] {
-            use std::process;
             use std::os::unix::process::CommandExt;
 
-            self.cmd.process_group(process::id() as _);
+            self.cmd.process_group(shell.morgue.pgid);
         }
-        
-        self.cmd.spawn().map_err(Into::into)
+
+        let child = self.cmd
+            .current_dir(shell.env.pwd())
+            .envs(&shell.env.map)
+            .spawn()?;
+
+        Ok(Child {
+            child: Some(child),
+            morgue: shell.morgue.clone()
+        })
+    }
+}
+
+impl Child {
+    pub fn stdout(&mut self) -> &mut Option<process::ChildStdout> {
+        &mut self.child.as_mut().unwrap().stdout
+    }
+
+    pub fn stderr(&mut self) -> &mut Option<process::ChildStderr> {
+        &mut self.child.as_mut().unwrap().stderr
+    }    
+    
+    pub fn wait(&mut self) -> io::Result<process::ExitStatus> {
+        let child = self.child.as_mut().unwrap();
+        self.morgue.wait_one(child)
+    }
+}
+
+impl Drop for Child {
+    fn drop(&mut self) {
+        let child = self.child.take().unwrap();
+        self.morgue.queue.borrow_mut().push(child);
+    }
+}
+
+impl Default for Morgue {
+    fn default() -> Self {
+        Morgue {
+            pgid: unsafe {
+                libc::getpid()
+            },
+            queue: Default::default()
+        }
+    }
+}
+
+impl Morgue {
+    fn wait_one(&self, child: &mut process::Child)
+        -> io::Result<process::ExitStatus>
+    {
+        child.wait()
+    }
+    
+    pub fn wait(&mut self) -> io::Result<()> {
+        let mut queue = self.queue.borrow_mut();
+
+        for mut ghost in queue.drain(..) {
+            self.wait_one(&mut ghost)?;
+        }
+
+        Ok(())        
     }
 }

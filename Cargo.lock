@@ -383,6 +383,7 @@ dependencies = [
  "bstr",
  "crossterm",
  "directories",
+ "libc",
  "logos",
  "serde",
  "serde-tuple-vec-map",
