@@ -79,8 +79,8 @@ where
         let mut term = self.term.access();
         queue!(term,
             style::Print("\r\n"),
+            terminal::Clear(terminal::ClearType::FromCursorDown),
             style::Print(with_message),
-            terminal::Clear(terminal::ClearType::FromCursorDown)
         )?;
 
         self.max_y = 0;

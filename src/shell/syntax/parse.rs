@@ -16,10 +16,10 @@ pub struct Parser {
 
 impl Parser {
     pub fn parse(&mut self, input: &str) -> Result<Command, ParseFailed> {
-        self.parse_raw(input).map(Command)
+        self.parse_raw(input, false).map(Command)
     }
     
-    pub(super) fn parse_raw(&mut self, input: &str) -> Result<NodeId, ParseFailed> {
+    pub(super) fn parse_raw(&mut self, input: &str, incomplete: bool) -> Result<NodeId, ParseFailed> {
         self.tokens.clear();
         self.nodes.clear();
 
@@ -46,7 +46,7 @@ impl Parser {
             iter: self.tokens.iter(),
 
             is_subshell: false,
-            null
+            null, incomplete
         };
 
         state.command()
@@ -62,6 +62,7 @@ struct State<'p> {
 
     null: NodeId,
     is_subshell: bool,
+    incomplete: bool,
 }
 
 macro_rules! lookup {
@@ -208,10 +209,11 @@ impl State<'_> {
         // first token
         let mut substate = {
             let token = self.iter.next()
-                .ok_or(ParseFailed {
+                .ok_or_else(|| ParseFailed {
                     token: None,
                     kind: ErrorKind::EmptyCommand,
-                    span: None
+                    span: self.iter.prev()
+                        .map(|id| self.tokens[id].1.clone())
                 })?;
             let item = &self.tokens[token];
             let (token, span) = item;
@@ -343,6 +345,10 @@ impl State<'_> {
             }
         }
 
+        if !self.incomplete && end_token.is_none() {
+            // TODO return error
+        }        
+
         Ok(self.nodes.alloc(Node::SingleStr(syntax::SingleStr {
             start_token, end_token
         })))
@@ -438,6 +444,10 @@ impl State<'_> {
             }
         }
 
+        if !self.incomplete && end_token.is_none() {
+            // TODO return error
+        }
+
         Ok(self.nodes.alloc(Node::DoubleStr(syntax::DoubleStr {
             start_token, end_token,
             list: link
@@ -469,7 +479,6 @@ impl State<'_> {
         let state = state.as_mut();
 
         let cmd = state.command()?;
-
         let mut end_token = None;
 
         if let Some(token) = state.iter.peek() {
@@ -477,6 +486,10 @@ impl State<'_> {
                 state.iter.bump();
                 end_token = Some(token);
             }
+        }
+
+        if !state.incomplete && end_token.is_none() {
+            // TODO return error
         }
 
         Ok(state.nodes.alloc(Node::SubShell(syntax::SubShell {

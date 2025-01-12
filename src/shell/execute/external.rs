@@ -194,11 +194,13 @@ impl syntax::Redirect {
         let append = self.append(&shell.parser);
         
         let mut push = |osstr: &[u8]| {
+            let path = osstr.to_path()?;
             let fd = fs::OpenOptions::new()
-                .create(true)
+                .create_new(true)
                 .write(true)
                 .append(append)
-                .open(osstr.to_path()?)?;
+                .open(path)
+                .context("failed to open redirect target")?;
 
             match kind {
                 StdioKind::Out => cmd.stdout(fd.into()),
@@ -322,8 +324,7 @@ fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<Push<'
         let mut child = cmd.spawn(shell)?;
 
         if let Some(stdout) = child.stdout().take() {
-            let mut tmpbuf = shell.tmpbuf.borrow_mut();
-            read_to_end(stdout, &mut tmpbuf, push)?;
+            read_to_end(stdout, push)?;
         }
 
         child.wait().map_err(Into::into)
@@ -336,13 +337,14 @@ fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<Push<'
 
 fn read_to_end<R: io::Read>(
     mut reader: R,
-    tmpbuf: &mut [u8],
     push: Push<'_>
 ) -> anyhow::Result<()> {
+    let mut buf = [0; 1024];
+    
     loop {
-        match reader.read(tmpbuf) {
+        match reader.read(&mut buf) {
             Ok(0) => break,
-            Ok(n) => push(&tmpbuf[..n])?,
+            Ok(n) => push(&buf[..n])?,
             Err(ref err) if err.kind() == io::ErrorKind::Interrupted => (),
             Err(err) => return Err(err.into())
         }

@@ -115,7 +115,13 @@ impl<T> Iter<'_, T> {
     pub fn peek(&self) -> Option<Id<T>> {
         let next = self.index;
         self.arena.0.get(next)?;
-        Some(Id(next.try_into().unwrap(), PhantomData))       
+        Some(Id(next.try_into().unwrap(), PhantomData))
+    }
+
+    pub fn prev(&self) -> Option<Id<T>> {
+        let prev = self.index.saturating_sub(1);
+        self.arena.0.get(prev)?;
+        Some(Id(prev.try_into().unwrap(), PhantomData))
     }
 }
 

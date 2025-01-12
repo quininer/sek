@@ -1,8 +1,7 @@
-use std::path::Path;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use serde::Deserialize;
 use crossterm::style::{ Color, Attributes, Attribute };
+use crate::util::CowStr;
 
 
 #[derive(Default)]
@@ -14,15 +13,16 @@ pub struct Config {
 #[derive(Deserialize, Default)]
 pub struct ConfigFormat<'a> {
     #[serde(default)]
+    #[serde(borrow)]
     #[serde(with = "tuple_vec_map")]
     #[serde(rename = "set-env")]
-    pub set_env: Vec<(Cow<'a, str>, String)>,
+    pub set_env: Vec<(CowStr<'a>, String)>,
     #[serde(default)]
     #[serde(rename = "unset-env")]
-    pub unset_env: Vec<Cow<'a, str>>,
+    pub unset_env: Vec<CowStr<'a>>,
     #[serde(default)]
     #[serde(rename = "push-path")]
-    pub push_path: Vec<Cow<'a, Path>>,
+    pub push_path: Vec<CowStr<'a>>,
     #[serde(default)]
     pub alias: HashMap<String, String>,
     pub theme: Option<Theme>

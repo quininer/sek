@@ -3,14 +3,13 @@ pub mod syntax;
 pub mod process;
 pub mod execute;
 
-use std::io;
-use std::cell::RefCell;
-use crossterm::terminal;
+use std::io::{self, Write};
+use crossterm::{ queue, style, terminal };
 use crate::config::{ Config, default_theme };
 use crate::ui::layout;
 use crate::ui::render::Renderer;
 use crate::editor::{ Editor, Action };
-use crate::util::ScopeGuard;
+use crate::util::{ ScopeGuard, FmtDebug };
 use crate::util::stdout::Stdout;
 use environment::Environment;
 use process::Morgue;
@@ -23,7 +22,6 @@ pub struct Shell {
     pub editor: Editor,
     pub parser: syntax::Parser,
     pub ast: Option<syntax::Command>,
-    pub tmpbuf: RefCell<Box<[u8]>>,
 }
 
 impl Shell {
@@ -37,7 +35,6 @@ impl Shell {
             ast: None,
             env: Environment::new()?,
             morgue: Morgue::default(),
-            tmpbuf: RefCell::new(vec![0; 1024].into_boxed_slice()),
             editor, parser, config
         })        
     }
@@ -57,6 +54,7 @@ impl Shell {
         });
 
         loop {
+            self.morgue.wait()?;
             renderer.render(&self)?;
             
             let event = crossterm::event::read()?;
@@ -73,36 +71,44 @@ impl Shell {
 
             match result {
                 Ok(_) => (),
+                // syntax error
                 Err(err) if is_execute => {
                     let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
                         let _ = terminal::enable_raw_mode();
                     });
 
-
                     let display = error_renderer.render(err.to_message(line));
                     renderer.new_line(&display)?;
-                    
-                    // TODO render error
                 },
-                Err(_) => ()
+                Err(_) => continue
             }
 
             if is_execute {
                 renderer.new_line(&"")?;
                 
-                if let Some(cmd) = self.ast {
+                if let Some(cmd) = self.ast.take() {
                     let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
                         let _ = terminal::enable_raw_mode();
                     });
                     
-                    execute::execute(&self, self.editor.line.as_str(), cmd)?;
+                    match execute::execute(&self, self.editor.line.as_str(), cmd) {
+                        // TODO set prompt
+                        Ok(_status) => (),
+                        Err(err) => {
+                            let mut term = (renderer.term)();
+                            queue!(
+                                term,
+                                style::Print(concat!(env!("CARGO_PKG_NAME"), ": ")),
+                                style::Print(FmtDebug(&err)),
+                                style::Print("\r\n")
+                            )?;
+                            term.flush()?;
+                        }
+                    }
                 }
                 
-                self.ast = None;
                 self.editor.line.clear(&mut self.editor.line_cursor);
             }
-
-            self.morgue.wait()?;
         }
 
         Ok(())

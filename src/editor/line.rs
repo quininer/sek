@@ -45,9 +45,13 @@ impl EditableLine {
         let is_ascii = self.indices.is_empty() && is_ascii();
         
         if !is_ascii {
-            let idx = self.indices[cur];
-            self.indices.truncate(cur);
-            self.indices.extend(self.buf[idx..].char_indices().map(|(idx, _)| idx));
+            let idx = self.indices.get(cur).copied().unwrap_or(cur);
+            if self.indices.is_empty() {
+                self.indices.extend(self.buf.char_indices().map(|(idx, _)| idx));
+            } else {
+                self.indices.truncate(cur);
+                self.indices.extend(self.buf[idx..].char_indices().map(|(idx, _)| idx));
+            }
         }
     }
 
@@ -181,4 +185,7 @@ fn test_buffer() {
     buf.backspace(&mut cur);
     assert_eq!(format!("{}", buf), "");
     assert_eq!(cur, 0);
+
+    buf.push(&mut cur, '中');
+    buf.push(&mut cur, '文');
 }
