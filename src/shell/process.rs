@@ -2,6 +2,7 @@ use std::io;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::process::{ self, Command, Stdio };
+use anyhow::Context;
 use bstr::ByteSlice;
 use super::Shell;
 
@@ -61,15 +62,17 @@ impl ShellCommand {
             self.cmd.process_group(shell.morgue.pgid);
         }
 
-        let child = self.cmd
+        match self.cmd
             .current_dir(shell.env.pwd())
             .envs(&shell.env.map)
-            .spawn()?;
-
-        Ok(Child {
-            child: Some(child),
-            morgue: shell.morgue.clone()
-        })
+            .spawn()
+        {
+            Ok(child) => Ok(Child {
+                child: Some(child),
+                morgue: shell.morgue.clone()
+            }),
+            Err(err) => Err(err).context("spawn failed")
+        }
     }
 }
 

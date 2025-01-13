@@ -206,6 +206,15 @@ impl State<'_> {
             chain: self.null
         }));
 
+        // skip empty
+        while let Some(token) = self.iter.peek() {
+            if matches!(&self.tokens[token], (Token::Empty, _)) {
+                self.iter.bump();
+            } else {
+                break
+            }
+        }        
+
         // first token
         let mut substate = {
             let token = self.iter.next()
