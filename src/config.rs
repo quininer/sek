@@ -1,7 +1,11 @@
+use std::path::{ Path, PathBuf };
+use std::ffi::OsStr;
 use std::collections::HashMap;
+use std::process::{ Command, Stdio };
 use serde::Deserialize;
 use crossterm::style::{ Color, Attributes, Attribute };
 use crate::util::CowStr;
+use crate::shell::environment::Environment;
 
 
 #[derive(Default)]
@@ -87,7 +91,7 @@ impl Style {
     }
 }
 
-pub fn default_theme() -> Theme {
+fn default_theme() -> Theme {
     Theme {
         exe: Style::new(27),
         literal: Style::new(33),
@@ -101,4 +105,44 @@ pub fn default_theme() -> Theme {
         comment: Style::new(128),
         error: Style::new(9),
     }
+}
+
+pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
+    let buf;
+    let config = if config.exists() {
+        let child = Command::new(config)
+            .current_dir(env.pwd())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()?;
+
+        let output = child.wait_with_output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::format_err!("build config failed: {}", output.status));
+        }
+
+        buf = output.stdout;
+        serde_json::from_slice(&buf)?
+    } else {
+        ConfigFormat::default()
+    };
+
+    for (key, val) in config.set_env {
+        env.set(OsStr::new(key.as_ref()), val.into());
+    }
+
+    for key in config.unset_env {
+        env.remove(OsStr::new(key.as_ref()));
+    }
+
+    for path in config.push_path {
+        env.push_path(Path::new(path.as_ref()))?;
+    }
+
+    Ok(Config {
+        alias: config.alias,
+        theme: config.theme.unwrap_or_else(default_theme)
+    })
 }

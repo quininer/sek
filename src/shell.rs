@@ -3,9 +3,10 @@ pub mod syntax;
 pub mod process;
 pub mod execute;
 
+use std::path::PathBuf;
 use std::io::{self, Write};
 use crossterm::{ queue, style, terminal };
-use crate::config::{ Config, default_theme };
+use crate::config::{ self, Config };
 use crate::ui::layout;
 use crate::ui::render::Renderer;
 use crate::editor::{ Editor, Action };
@@ -25,17 +26,17 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new() -> anyhow::Result<Self> {
-        let mut config = Config::default();
-        config.theme = default_theme();
+    pub fn new(pwd: PathBuf, config_path: PathBuf) -> anyhow::Result<Self> {
+        let mut env = Environment::new(pwd)?;
+        let config = config::load(&mut env, config_path)?;
+        
         let editor = Editor::new()?;
         let parser = syntax::Parser::default();
         
         Ok(Shell {
             ast: None,
-            env: Environment::new()?,
             morgue: Morgue::default(),
-            editor, parser, config
+            env, editor, parser, config
         })        
     }
     

@@ -59,6 +59,12 @@ pub struct CowStr<'s>(
     pub Cow<'s, str>
 );
 
+impl AsRef<str> for CowStr<'_> {
+    fn as_ref(&self) -> &str {
+        &*self.0
+    }
+}
+
 fn deserialize_cow<'de, D>(deserializer: D) -> Result<Cow<'de, str>, D::Error>
 where
     D: serde::de::Deserializer<'de>,

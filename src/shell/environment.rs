@@ -1,4 +1,5 @@
 use std::{ io, env, mem };
+use std::borrow::Cow;
 use std::ffi::{ OsStr, OsString };
 use std::path::{ Path, PathBuf };
 use std::collections::BTreeMap;
@@ -14,13 +15,13 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(pwd: PathBuf) -> anyhow::Result<Self> {
         Ok(Environment {
             map: env::vars_os().collect(),
             userdir: UserDirs::new()
                 .context("Unable to retrieve user path from system")?,
             prev_pwd: None,
-            pwd: env::current_dir()?
+            pwd
         })
     }
 
@@ -69,9 +70,12 @@ impl Environment {
         }
     }
 
-    pub fn push_path(&mut self, val: PathBuf) -> anyhow::Result<()> {
+    pub fn push_path(&mut self, val: &Path) -> anyhow::Result<()> {
         let paths = self.get("PATH".as_ref()).unwrap_or_default();
-        let paths = env::split_paths(paths).chain(Some(val));
+        let paths = env::split_paths(paths)
+            .map(PathBuf::into_os_string)
+            .map(Cow::Owned)
+            .chain(Some(Cow::Borrowed(val.as_os_str())));
         let paths = env::join_paths(paths)?;
 
         self.set("PATH".as_ref(), paths);
