@@ -25,7 +25,7 @@ pub trait Render {
     type State;
     type Error;
 
-    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>);
+    fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo>;
     fn render(
         state: &Self::State,
         leaf_id: Id<layout::Node>,
@@ -36,7 +36,7 @@ pub trait Render {
         -> Result<(), Self::Error>;
 }
 
-type LengthAndCursorMethod<State> = fn(&State, Id<layout::Node>) -> (Option<usize>, Option<usize>);
+type SpaceInfoMethod<State> = fn(&State, Id<layout::Node>) -> Option<layout::SpaceInfo>;
 type RenderMethod<State, Error> = fn(
     &State,
     Id<layout::Node>,
@@ -46,7 +46,7 @@ type RenderMethod<State, Error> = fn(
 ) -> Result<(), Error>;
 
 struct RenderVtable<State, Error> {
-    length_and_cursor: LengthAndCursorMethod<State>,
+    info: SpaceInfoMethod<State>,
     render: RenderMethod<State, Error>
 }
 
@@ -55,7 +55,7 @@ impl<Shell, Target, Error> Renderer<Shell, Target, Error> {
         where R: Render<State = Shell, Error = Error>
     {
         self.map.insert(leaf_id, RenderVtable {
-            length_and_cursor: R::length_and_cursor,
+            info: R::info,
             render: R::render
         });
     }
@@ -165,10 +165,9 @@ struct RenderSpace<'a, Shell, Error> {
 }
 
 impl<Shell, Error> layout::Space for RenderSpace<'_, Shell, Error> {
-    fn length_and_cursor(&self, leaf: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
-        self.map.get(leaf)
-            .map(|vtable| (vtable.length_and_cursor)(self.shell, leaf))
-            .unwrap_or_default()
+    fn info(&self, leaf: Id<layout::Node>) -> Option<layout::SpaceInfo> {
+        let vtable = self.map.get(leaf)?;
+        (vtable.info)(self.shell, leaf)
     }
 }
 

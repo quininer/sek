@@ -44,8 +44,13 @@ pub struct Point {
     pub y: u16
 }
 
+pub struct SpaceInfo {
+    pub length: usize,
+    pub cursor: Option<usize>
+}
+
 pub trait Space {
-    fn length_and_cursor(&self, leaf: Id<Node>) -> (Option<usize>, Option<usize>);
+    fn info(&self, leaf: Id<Node>) -> Option<SpaceInfo>;
 }
 
 impl Default for Tree {
@@ -326,9 +331,9 @@ fn layout_leaf(
         leaf_layout.range.end.x = state.range.end.x;
     }
     
-    let (mut len, mut cursor_len) = match state.space.length_and_cursor(leaf_id) {
-        (Some(len), cursor_len) => (len, cursor_len),
-        (None, _) => return leaf_layout
+    let (mut len, mut cursor_len) = match state.space.info(leaf_id) {
+        Some(info) => (info.length, info.cursor),
+        None => return leaf_layout
     };
     let first_line = state.range.end.x - state.range.start.x;
     let full_line = state.parent_size.0;

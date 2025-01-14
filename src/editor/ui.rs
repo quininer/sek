@@ -70,10 +70,13 @@ impl Render for Prompt {
     type State = Shell;
     type Error = anyhow::Error;
 
-    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
+    fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.prompt, leaf_id);
 
-        (Some(PROMPT.width()), None)
+        Some(layout::SpaceInfo {
+            length: PROMPT.width(),
+            cursor: None
+        })
     }
 
     fn render(
@@ -102,7 +105,7 @@ impl Render for InsertLine {
     type State = Shell;
     type Error = anyhow::Error;
 
-    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
+    fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.insert_line, leaf_id);
 
         let (s0, s1) = state.editor.line.split(state.editor.line_cursor.end);
@@ -112,7 +115,10 @@ impl Render for InsertLine {
         let cursor_len = matches!(state.editor.mode, Mode::Insert)
             .then_some(s0_len);
 
-        (Some(s0_len + s1_len), cursor_len)
+        Some(layout::SpaceInfo {
+            length: s0_len + s1_len,
+            cursor: cursor_len
+        })
     }
 
     fn render(
@@ -149,10 +155,13 @@ impl Render for CommandLine {
     type State = Shell;
     type Error = anyhow::Error;
 
-    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
+    fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.command_line, leaf_id);
 
-        (Some(state.editor.command.as_str().width()), None)
+        Some(layout::SpaceInfo {
+            length: state.editor.command.as_str().width(),
+            cursor: None
+        })
     }
 
     fn render(
@@ -179,10 +188,13 @@ impl Render for Tips {
     type State = Shell;
     type Error = anyhow::Error;
 
-    fn length_and_cursor(state: &Self::State, leaf_id: Id<layout::Node>) -> (Option<usize>, Option<usize>) {
+    fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.tips, leaf_id);
 
-        (Some(2), None)
+        Some(layout::SpaceInfo {
+            length: 2,
+            cursor: None
+        })
     }
 
     fn render(
