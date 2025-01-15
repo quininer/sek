@@ -67,7 +67,7 @@ impl Shell {
                 Action::Break => break
             };
 
-            let line = self.editor.line.as_str();
+            let line = self.editor.insert.as_str();
             let result = self.parser.parse(line);
             self.ast = result.as_ref().ok().copied();
 
@@ -93,7 +93,7 @@ impl Shell {
                         let _ = terminal::enable_raw_mode();
                     });
                     
-                    match execute::execute(&self, self.editor.line.as_str(), cmd) {
+                    match execute::execute(&self, self.editor.insert.as_str(), cmd) {
                         // TODO set prompt
                         Ok(_status) => (),
                         Err(err) => {
@@ -108,8 +108,9 @@ impl Shell {
                         }
                     }
                 }
-                
-                self.editor.line.clear(&mut self.editor.line_cursor);
+
+                self.editor.insert.clear();
+                self.editor.insert_cursor = 0..0;
             }
         }
 

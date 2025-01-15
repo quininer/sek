@@ -144,11 +144,9 @@ impl EditableLine {
         *cur = cmp::min(*cur + 1, self.char_len());
     }
 
-    pub fn clear(&mut self, range: &mut Range<usize>) {
+    pub fn clear(&mut self) {
         self.indices.clear();
         self.buf.clear();
-        range.start = 0;
-        range.end = 0;
     }
 
     pub fn split(&self, mid: usize) -> (&str, &str) {
@@ -219,7 +217,8 @@ fn test_buffer() {
     assert_eq!(x, "aaa中文");
     assert_eq!(y, "");
 
-    buf.clear(&mut range);
+    buf.clear();
+    range = 0..0;
     buf.push(&mut range.end, '中');
     buf.push(&mut range.end, '文');
     buf.move_left(&mut range.end);

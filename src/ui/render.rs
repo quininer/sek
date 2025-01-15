@@ -121,7 +121,7 @@ where
 
                 if diff != 0 || src.x != dst.x {
                     queue!(term, cursor::MoveToColumn(dst.x))?;
-                }                
+                }
 
                 *src = dst;
             }
@@ -157,7 +157,10 @@ where
         }
 
         if let Some(cursor) = cursor {
+            queue!(term, cursor::Show)?;
             move_to(&mut term, &mut self.current, self.max_y, cursor)?;
+        } else {
+            queue!(term, cursor::Hide)?;
         }
 
         term.flush()?;

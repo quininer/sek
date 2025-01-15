@@ -10,17 +10,17 @@ use crate::ui::layout;
 pub struct Editor {
     pub ui: ui::Editor,
     pub mode: Mode,
-    pub line: EditableLine,
-    pub line_cursor: Range<usize>,
+    pub insert: EditableLine,
+    pub insert_cursor: Range<usize>,
     pub command: EditableLine,
     pub command_cursor: usize,
+    pub ready: Option<char>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Mode {
     Insert,
     Normal,
-    Visual,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -43,10 +43,11 @@ impl Editor {
         Ok(Editor {
             ui,
             mode: Mode::Insert,
-            line: EditableLine::default(),
-            line_cursor: 0..0,
+            insert: EditableLine::default(),
+            insert_cursor: 0..0,
             command: EditableLine::default(),
-            command_cursor: 0
+            command_cursor: 0,
+            ready: None
         })
     }
 
@@ -57,36 +58,78 @@ impl Editor {
             // Quit
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers == KM::CONTROL && code == KeyCode::Char('d')
-                    && self.line.is_empty()
+                    && self.insert.is_empty()
             => return Ok(Action::Break),
-            // Insert
-            (Mode::Insert | Mode::Normal, Event::Key(KeyEvent { modifiers, code, .. }))
-                if modifiers.contains(KM::SHIFT & KM::NONE)
+            // Insert to Normal
+            (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
+                if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
+                    || (modifiers == KM::NONE && code == KeyCode::Esc)
+                    || (modifiers == KM::ALT && code == KeyCode::Char(' '))
             => {
-                let end = match self.mode {
-                    Mode::Insert => &mut self.line_cursor.end,
-                    Mode::Normal => &mut self.command_cursor,
-                    _ => unreachable!()
-                };
-
-                match code {
-                    KeyCode::Char('\r') => (),
-                    KeyCode::Char(c) => self.line.push(end, c),
-                    KeyCode::Backspace => self.line.backspace(end),
-                    KeyCode::Delete => self.line.delete(*end),
-                    KeyCode::Left => self.line.move_left(end),
-                    KeyCode::Right => self.line.move_right(end),
-                    KeyCode::Home => self.line.move_head(end),
-                    KeyCode::End => self.line.move_end(end),
-                    KeyCode::Enter => return Ok(Action::Execute),
-                    _ => ()
-                }
+                self.mode = Mode::Normal;
             },
+            // Insert
+            (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
+                if modifiers.contains(KM::SHIFT & KM::NONE)
+            => match code {
+                KeyCode::Char('\r') => (),
+                KeyCode::Char(c) => self.insert.push(&mut self.insert_cursor.end, c),
+                KeyCode::Backspace => self.insert.backspace(&mut self.insert_cursor.end),
+                KeyCode::Delete => self.insert.delete(self.insert_cursor.end),
+                KeyCode::Left => self.insert.move_left(&mut self.insert_cursor.end),
+                KeyCode::Right => self.insert.move_right(&mut self.insert_cursor.end),
+                KeyCode::Home => self.insert.move_head(&mut self.insert_cursor.end),
+                KeyCode::End => self.insert.move_end(&mut self.insert_cursor.end),
+                KeyCode::Enter => return Ok(Action::Execute),
+                _ => ()
+            },
+            // Noraml
+            (Mode::Normal, Event::Key(KeyEvent { modifiers, code, .. }))
+                if modifiers.contains(KM::SHIFT & KM::NONE)
+            => match (self.ready.take(), self.command.first(), code) {
+                // mode switch
+                (None, None, KeyCode::Char(':' | ';')) => self.command.push(&mut self.command_cursor, ':'),
+                (None, None, KeyCode::Char('/')) => self.command.push(&mut self.command_cursor, '/'),
+                (None, None, KeyCode::Char('v')) => self.command.push(&mut self.command_cursor, 'v'),
+                (None, Some('v'), KeyCode::Char('v')) => {
+                    self.command.clear();
+                    self.command_cursor = 0;
+                },
+                (None, None, KeyCode::Char('i')) => self.mode = Mode::Insert,
+                (None, None, KeyCode::Char('a')) => {
+                    self.insert.move_right(&mut self.insert_cursor.end);
+                    self.mode = Mode::Insert;
+                },
+
+                // visual mode
+                (_, Some('v'), _) => (),
+
+                // input
+                (_, _, KeyCode::Char('\r')) => (),
+                (None, Some(_), KeyCode::Char(c)) => self.command.push(&mut self.command_cursor, c),
+                (None, Some(_), KeyCode::Backspace) => self.command.backspace(&mut self.command_cursor),
+                (None, Some(_), KeyCode::Delete) => self.command.delete(self.command_cursor),
+                (None, Some(_), KeyCode::Left) => self.command.move_left(&mut self.command_cursor),
+                (None, Some(_), KeyCode::Right) => self.command.move_right(&mut self.command_cursor),
+                (None, Some(_), KeyCode::Esc) => {
+                    self.command.clear();
+                    self.command_cursor = 0;
+                },                
+
+                // ready
+                (None, None, KeyCode::Char('d')) => self.ready = Some('d'),
+                (Some('d'), None, KeyCode::Char('d')) => {
+                    self.insert.clear();
+                    self.insert_cursor = 0..0;
+                }
+                _ => ()
+            },
+
             _ => ()
         }
 
         if matches!(self.mode, Mode::Insert) {
-            self.line_cursor.start = self.line_cursor.end;
+            self.insert_cursor.start = self.insert_cursor.end;
         }
 
         Ok(Action::Continue)

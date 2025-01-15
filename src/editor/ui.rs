@@ -1,5 +1,5 @@
-use crossterm::{ queue, style };
-use unicode_width::UnicodeWidthStr;
+use crossterm::{ queue, style, terminal };
+use unicode_width::{ UnicodeWidthChar, UnicodeWidthStr };
 use crate::editor::Mode;
 use crate::ui::layout::{ self, Layout };
 use crate::ui::render::{ Render, Fill };
@@ -98,7 +98,7 @@ impl Render for Prompt {
         queue!(term, style::Print(PROMPT.get(..usize::from(layout.size.0)).unwrap_or_default()))?;
 
         assert_eq!(usize::from(current.x) + PROMPT.width(), usize::from(layout.range.end.x));
-        current.x = layout.range.end.x;
+        current.x += layout.size.0;
         Ok(())
     }
 }
@@ -115,7 +115,7 @@ impl Render for InsertLine {
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.insert_line, leaf_id);
 
-        let (s0, s1) = state.editor.line.split(state.editor.line_cursor.end);
+        let (s0, s1) = state.editor.insert.split(state.editor.insert_cursor.end);
         let s0_len = s0.width();
         let s1_len = s1.width();
 
@@ -142,11 +142,11 @@ impl Render for InsertLine {
         assert_eq!(state.editor.ui.insert_line, leaf_id);
 
         if let Some(cmd) = state.ast {
-            colour(state, cmd, state.editor.line.as_str(), term)?;
+            colour(state, cmd, state.editor.insert.as_str(), term)?;
         } else {
             queue!(
                 term,
-                style::Print(state.editor.line.as_str()),
+                style::Print(state.editor.insert.as_str()),
             )?;
         }
 
@@ -168,9 +168,17 @@ impl Render for CommandLine {
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.command_line, leaf_id);
 
+        matches!(state.editor.mode, Mode::Normal).then_some(())?;
+
+        let (s0, s1) = state.editor.command.split(state.editor.command_cursor);
+        let s0_len = s0.width();
+        let s1_len = s1.width();
+
         Some(layout::SpaceInfo {
-            length: state.editor.command.as_str().width(),
-            cursor: None
+            length: s0_len + s1_len,
+            cursor: state.editor.ready.is_none()
+                .then_some(s0_len)
+                .filter(|_| !state.editor.command.is_empty())
         })
     }
 
@@ -185,9 +193,18 @@ impl Render for CommandLine {
     {
         assert_eq!(state.editor.ui.command_line, leaf_id);
 
-        queue!(term, style::Print(state.editor.command.as_str()))?;
-        queue!(term, style::Print(Fill(' ', layout.padding.into())))?;
-        current.x = layout.range.end.x;
+        if matches!(state.editor.mode, Mode::Normal) {
+            queue!(term,
+                terminal::DisableLineWrap,
+                style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
+                style::Print(state.editor.command.as_str()),
+                style::Print(Fill(' ', layout.padding.into())),
+                style::ResetColor,
+                terminal::EnableLineWrap
+            )?
+        }
+
+        current.x += layout.size.0;
         Ok(())
     }
 }
@@ -204,10 +221,11 @@ impl Render for Tips {
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.tips, leaf_id);
 
-        Some(layout::SpaceInfo {
-            length: 2,
-            cursor: None
-        })
+        state.editor.ready
+            .map(|c| layout::SpaceInfo {
+                length: c.width().unwrap_or_default() + 2,
+                cursor: None
+            })
     }
 
     fn render(
@@ -221,8 +239,17 @@ impl Render for Tips {
     {
         assert_eq!(state.editor.ui.tips, leaf_id);
 
-        queue!(term, style::Print("<>"))?;
-        current.x = layout.range.end.x;
+        if let Some(ready) = state.editor.ready {
+            queue!(term,
+                style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
+                style::Print("<"),
+                style::Print(ready),
+                style::Print(">"),
+                style::ResetColor,
+            )?;
+        }
+
+        current.x += layout.size.0;
         Ok(())
     }
 }
