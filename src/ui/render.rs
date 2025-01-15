@@ -6,24 +6,26 @@ use crate::util::arena::{ Id, ArenaMap };
 use super::layout::{ self, Layout };
 
 
-pub struct Renderer<S, T, E> {
+pub struct Renderer<S: 'static, T, E: 'static> {
     pub size: (u16, u16),
     pub term: T,
     current: layout::Point,
     max_y: u16,
     queue: Vec<(Id<layout::Node>, Layout)>,
-    map: ArenaMap<layout::Node, RenderVtable<S, E>>,
+    map: ArenaMap<layout::Node, &'static RenderVtable<S, E>>,
 }
 
-pub trait Target {
+pub trait TermTarget {
     type Writer: io::Write;
 
     fn access(&self) -> Self::Writer;
 }
 
 pub trait Render {
-    type State;
-    type Error;
+    type State: 'static;
+    type Error: 'static;
+
+    const VTABLE: &'static RenderVtable<Self::State, Self::Error>;
 
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo>;
     fn render(
@@ -45,25 +47,30 @@ type RenderMethod<State, Error> = fn(
     RefWriter<'_>
 ) -> Result<(), Error>;
 
-struct RenderVtable<State, Error> {
+pub struct RenderVtable<State, Error> {
     info: SpaceInfoMethod<State>,
     render: RenderMethod<State, Error>
 }
 
-impl<Shell, Target, Error> Renderer<Shell, Target, Error> {
-    pub fn insert<R>(&mut self, leaf_id: Id<layout::Node>)
-        where R: Render<State = Shell, Error = Error>
+impl<S, E> RenderVtable<S, E> {
+    pub const fn new<R>() -> RenderVtable<S, E>
+    where R: Render<State = S, Error = E>
     {
-        self.map.insert(leaf_id, RenderVtable {
-            info: R::info,
-            render: R::render
-        });
+        RenderVtable { info: R::info, render: R::render }
+    }
+}
+
+impl<S, T, E> Renderer<S, T, E> {
+    pub fn insert<R>(&mut self, leaf_id: Id<layout::Node>)
+        where R: Render<State = S, Error = E>
+    {
+        self.map.insert(leaf_id, R::VTABLE);
     }
 }
 
 impl<S, T, E> Renderer<S, T, E>
 where
-    T: Target
+    T: TermTarget
 {
     pub fn new(size: (u16, u16), term: T) -> Self {
         Renderer {
@@ -159,12 +166,12 @@ where
     }
 }
 
-struct RenderSpace<'a, Shell, Error> {
-    shell: &'a Shell,
-    map: &'a ArenaMap<layout::Node, RenderVtable<Shell, Error>>
+struct RenderSpace<'a, S: 'static, E: 'static> {
+    shell: &'a S,
+    map: &'a ArenaMap<layout::Node, &'static RenderVtable<S, E>>
 }
 
-impl<Shell, Error> layout::Space for RenderSpace<'_, Shell, Error> {
+impl<S, E> layout::Space for RenderSpace<'_, S, E> {
     fn info(&self, leaf: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         let vtable = self.map.get(leaf)?;
         (vtable.info)(self.shell, leaf)
@@ -185,7 +192,7 @@ impl fmt::Display for Fill {
     }
 }
 
-impl<F, W> Target for F
+impl<F, W> TermTarget for F
 where
     F: Fn() -> W,
     W: io::Write

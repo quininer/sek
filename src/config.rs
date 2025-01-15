@@ -5,7 +5,7 @@ use std::process::{ Command, Stdio };
 use serde::Deserialize;
 use crossterm::style::{ Color, Attributes, Attribute };
 use crate::util::CowStr;
-use crate::shell::environment::Environment;
+use crate::shell::env::Environment;
 
 
 #[derive(Default)]

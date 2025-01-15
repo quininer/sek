@@ -251,7 +251,7 @@ fn layout_node(
 
         let child_layout = layout(tree, state.clone(), child_id, cursor, output);
         node_layout.size.0 = state.parent_size.0;
-        node_layout.size.1 += child_layout.size.1;
+        node_layout.size.1 = cmp::max(node_layout.size.1, child_layout.size.1);
     } else if !dynamic_nodes.is_empty() {
         let (step, half) = {
             let total = match node.style.axis {
@@ -330,7 +330,7 @@ fn layout_leaf(
         leaf_layout.range.start.x = state.range.end.x;
         leaf_layout.range.end.x = state.range.end.x;
     }
-    
+
     let (mut len, mut cursor_len) = match state.space.info(leaf_id) {
         Some(info) => (info.length, info.cursor),
         None => return leaf_layout
@@ -348,6 +348,7 @@ fn layout_leaf(
             let len: u16 = len.try_into().unwrap();
             leaf_layout.range.end.x += len;
             leaf_layout.size.0 += len;
+            leaf_layout.size.1 = 1;
 
             if let Some(cursor_len) = cursor_len {
                 let cursor_len = cmp::min(cursor_len, first_line.into());
@@ -367,6 +368,7 @@ fn layout_leaf(
             let len: u16 = len.try_into().unwrap();
             leaf_layout.range.start.x -= len;
             leaf_layout.size.0 += len;
+            leaf_layout.size.1 = 1;
 
             if let Some(cursor_len) = cursor_len {
                 let cursor_len = cmp::min(cursor_len, first_line.into());

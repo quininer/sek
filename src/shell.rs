@@ -1,4 +1,4 @@
-pub mod environment;
+pub mod env;
 pub mod syntax;
 pub mod process;
 pub mod execute;
@@ -12,7 +12,7 @@ use crate::ui::render::Renderer;
 use crate::editor::{ Editor, Action };
 use crate::util::{ ScopeGuard, FmtDebug };
 use crate::util::stdout::Stdout;
-use environment::Environment;
+use env::Environment;
 use process::Morgue;
 
 
@@ -28,10 +28,12 @@ pub struct Shell {
 impl Shell {
     pub fn new(pwd: PathBuf, config_path: PathBuf) -> anyhow::Result<Self> {
         let mut env = Environment::new(pwd)?;
-        let config = config::load(&mut env, config_path)?;
+        let mut config = config::load(&mut env, config_path)?;
         
         let editor = Editor::new()?;
         let parser = syntax::Parser::default();
+
+        config.alias.shrink_to_fit();
         
         Ok(Shell {
             ast: None,
@@ -66,7 +68,6 @@ impl Shell {
             };
 
             let line = self.editor.line.as_str();
-
             let result = self.parser.parse(line);
             self.ast = result.as_ref().ok().copied();
 
@@ -118,7 +119,7 @@ impl Shell {
 
 fn init_to<W>(editor: &Editor, renderer: &mut Renderer<Shell, W, anyhow::Error>) {
     use crate::editor::ui;
-    
+
     renderer.insert::<ui::Prompt>(editor.ui.prompt);
     renderer.insert::<ui::InsertLine>(editor.ui.insert_line);
     renderer.insert::<ui::CommandLine>(editor.ui.command_line);

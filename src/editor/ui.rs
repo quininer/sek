@@ -6,6 +6,7 @@ use crate::ui::render::{ Render, Fill };
 use crate::util::RefWriter;
 use crate::util::arena::Id;
 use crate::shell::Shell;
+use crate::ui::render::RenderVtable;
 
 pub struct Editor {
     pub layout: layout::Tree,
@@ -70,6 +71,9 @@ impl Render for Prompt {
     type State = Shell;
     type Error = anyhow::Error;
 
+    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
+        = &RenderVtable::new::<Self>();
+
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.prompt, leaf_id);
 
@@ -104,6 +108,9 @@ pub struct InsertLine;
 impl Render for InsertLine {
     type State = Shell;
     type Error = anyhow::Error;
+
+    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
+        = &RenderVtable::new::<Self>();    
 
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.insert_line, leaf_id);
@@ -155,6 +162,9 @@ impl Render for CommandLine {
     type State = Shell;
     type Error = anyhow::Error;
 
+    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
+        = &RenderVtable::new::<Self>();
+
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.command_line, leaf_id);
 
@@ -187,6 +197,9 @@ pub struct Tips;
 impl Render for Tips {
     type State = Shell;
     type Error = anyhow::Error;
+
+    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
+        = &RenderVtable::new::<Self>();    
 
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.tips, leaf_id);

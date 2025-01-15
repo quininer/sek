@@ -4,7 +4,7 @@ pub mod ui;
 use std::ops::Range;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
-use crate::ui::render::{ Renderer, Target };
+use crate::ui::render::{ Renderer, TermTarget };
 use crate::ui::layout;
 
 pub struct Editor {
@@ -13,7 +13,7 @@ pub struct Editor {
     pub line: EditableLine,
     pub line_cursor: Range<usize>,
     pub command: EditableLine,
-    pub command_cursor: Range<usize>,
+    pub command_cursor: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -46,7 +46,7 @@ impl Editor {
             line: EditableLine::default(),
             line_cursor: 0..0,
             command: EditableLine::default(),
-            command_cursor: 0..0
+            command_cursor: 0
         })
     }
 
@@ -65,7 +65,7 @@ impl Editor {
             => {
                 let end = match self.mode {
                     Mode::Insert => &mut self.line_cursor.end,
-                    Mode::Normal => &mut self.command_cursor.end,
+                    Mode::Normal => &mut self.command_cursor,
                     _ => unreachable!()
                 };
 
@@ -92,7 +92,7 @@ impl Editor {
         Ok(Action::Continue)
     }
 
-    pub fn render<T: Target>(
+    pub fn render<T: TermTarget>(
         &self,
         renderer: &mut Renderer<Self, T, anyhow::Error>,
     ) -> anyhow::Result<()> {
