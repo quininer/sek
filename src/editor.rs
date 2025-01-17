@@ -60,6 +60,7 @@ impl Editor {
                 if modifiers == KM::CONTROL && code == KeyCode::Char('d')
                     && self.insert.is_empty()
             => return Ok(Action::Break),
+
             // Insert to Normal
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
@@ -68,21 +69,27 @@ impl Editor {
             => {
                 self.mode = Mode::Normal;
             },
+
             // Insert
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
-            => match code {
-                KeyCode::Char('\r') => (),
-                KeyCode::Char(c) => self.insert.push(&mut self.insert_cursor.end, c),
-                KeyCode::Backspace => self.insert.backspace(&mut self.insert_cursor.end),
-                KeyCode::Delete => self.insert.delete(self.insert_cursor.end),
-                KeyCode::Left => self.insert.move_left(&mut self.insert_cursor.end),
-                KeyCode::Right => self.insert.move_right(&mut self.insert_cursor.end),
-                KeyCode::Home => self.insert.move_head(&mut self.insert_cursor.end),
-                KeyCode::End => self.insert.move_end(&mut self.insert_cursor.end),
-                KeyCode::Enter => return Ok(Action::Execute),
-                _ => ()
+            => {
+                match code {
+                    KeyCode::Char('\r') => (),
+                    KeyCode::Char(c) => self.insert.push(&mut self.insert_cursor.end, c),
+                    KeyCode::Backspace => self.insert.backspace(&mut self.insert_cursor.end),
+                    KeyCode::Delete => self.insert.delete(self.insert_cursor.end),
+                    KeyCode::Left => self.insert.move_left(&mut self.insert_cursor.end),
+                    KeyCode::Right => self.insert.move_right(&mut self.insert_cursor.end),
+                    KeyCode::Home => self.insert.move_head(&mut self.insert_cursor.end),
+                    KeyCode::End => self.insert.move_end(&mut self.insert_cursor.end),
+                    KeyCode::Enter => return Ok(Action::Execute),
+                    _ => ()
+                }
+
+                self.insert_cursor.start = self.insert_cursor.end;
             },
+
             // Noraml
             (Mode::Normal, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
@@ -90,19 +97,15 @@ impl Editor {
                 // mode switch
                 (None, None, KeyCode::Char(':' | ';')) => self.command.push(&mut self.command_cursor, ':'),
                 (None, None, KeyCode::Char('/')) => self.command.push(&mut self.command_cursor, '/'),
-                (None, None, KeyCode::Char('v')) => self.command.push(&mut self.command_cursor, 'v'),
-                (None, Some('v'), KeyCode::Char('v')) => {
-                    self.command.clear();
-                    self.command_cursor = 0;
-                },
                 (None, None, KeyCode::Char('i')) => self.mode = Mode::Insert,
                 (None, None, KeyCode::Char('a')) => {
                     self.insert.move_right(&mut self.insert_cursor.end);
                     self.mode = Mode::Insert;
                 },
 
-                // visual mode
-                (_, Some('v'), _) => (),
+                // move
+                (None, None, KeyCode::Char('h')) => self.insert.move_left(&mut self.insert_cursor.end),
+                (None, None, KeyCode::Char('l')) => self.insert.move_right(&mut self.insert_cursor.end),
 
                 // input
                 (_, _, KeyCode::Char('\r')) => (),
@@ -124,12 +127,7 @@ impl Editor {
                 }
                 _ => ()
             },
-
             _ => ()
-        }
-
-        if matches!(self.mode, Mode::Insert) {
-            self.insert_cursor.start = self.insert_cursor.end;
         }
 
         Ok(Action::Continue)
@@ -140,5 +138,20 @@ impl Editor {
         renderer: &mut Renderer<Self, T, anyhow::Error>,
     ) -> anyhow::Result<()> {
         renderer.render(self)
+    }
+}
+
+impl Mode {
+    fn str(self) -> Option<&'static str> {
+        const STR: &[Option<&str>] = &[
+            // insert
+            None,
+            // normal
+            None,
+            // visual
+            Some("VIS")
+        ];
+
+        STR[self as usize]
     }
 }

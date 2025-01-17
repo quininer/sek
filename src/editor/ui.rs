@@ -1,6 +1,6 @@
 use crossterm::{ queue, style, terminal };
 use unicode_width::{ UnicodeWidthChar, UnicodeWidthStr };
-use crate::editor::Mode;
+use crate::editor;
 use crate::ui::layout::{ self, Layout };
 use crate::ui::render::{ Render, Fill };
 use crate::util::RefWriter;
@@ -48,7 +48,7 @@ impl Editor {
             justify: layout::Justify::Stretch,
             ..Default::default()
         });
-        let command_tips =  layout.new_node(command, layout::Style {
+        let tips =  layout.new_node(command, layout::Style {
             justify: layout::Justify::End,
             ..Default::default()
         });
@@ -58,7 +58,7 @@ impl Editor {
             prompt,
             insert_line,
             command_line,
-            tips: command_tips
+            tips
         })
     }
 }
@@ -119,7 +119,7 @@ impl Render for InsertLine {
         let s0_len = s0.width();
         let s1_len = s1.width();
 
-        let cursor_len = matches!(state.editor.mode, Mode::Insert)
+        let cursor_len = state.editor.command.is_empty()
             .then_some(s0_len);
 
         Some(layout::SpaceInfo {
@@ -168,7 +168,8 @@ impl Render for CommandLine {
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.command_line, leaf_id);
 
-        matches!(state.editor.mode, Mode::Normal).then_some(())?;
+        matches!(state.editor.mode, editor::Mode::Normal)
+            .then_some(())?;
 
         let (s0, s1) = state.editor.command.split(state.editor.command_cursor);
         let s0_len = s0.width();
@@ -193,7 +194,7 @@ impl Render for CommandLine {
     {
         assert_eq!(state.editor.ui.command_line, leaf_id);
 
-        if matches!(state.editor.mode, Mode::Normal) {
+        if matches!(state.editor.mode, editor::Mode::Normal) {
             queue!(term,
                 terminal::DisableLineWrap,
                 style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
