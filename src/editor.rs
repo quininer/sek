@@ -1,6 +1,7 @@
 pub mod line;
 pub mod ui;
 
+use std::mem;
 use std::ops::Range;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
@@ -93,6 +94,13 @@ impl Editor {
 
             // Noraml && Visual
             (Mode::Normal | Mode::Visual, Event::Key(KeyEvent { modifiers, code, .. }))
+                if modifiers.contains(KM::ALT) && code == KeyCode::Char(';')
+            => {
+                mem::swap(&mut self.insert_cursor.start, &mut self.insert_cursor.end);
+            }
+
+            // Noraml && Visual
+            (Mode::Normal | Mode::Visual, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
             => match (self.mode, self.ready.take(), self.command.first(), code) {
                 // mode switch
@@ -122,6 +130,29 @@ impl Editor {
                     self.insert.move_right(&mut self.insert_cursor.end);
                     if matches!(self.mode, Mode::Normal) {
                         self.insert_cursor.start = self.insert_cursor.end;
+                    }
+                },
+                (_, None, None, KeyCode::Char('x')) => {
+                    self.insert_cursor.start = 0;
+                    self.insert_cursor.end = self.insert.char_len();
+                },
+                (_, None, None, KeyCode::Char('w')) => {
+                    let span = self.insert.move_right_word(self.insert_cursor.end);
+                    match self.mode {
+                        Mode::Normal => self.insert_cursor = span,
+                        Mode::Visual => self.insert_cursor.end = span.end,
+                        _ => unreachable!()
+                    }
+                },
+                (_, None, None, KeyCode::Char('b')) => {
+                    let span = self.insert.move_left_word(self.insert_cursor.end);
+                    match self.mode {
+                        Mode::Normal => {
+                            self.insert_cursor.start = span.end;
+                            self.insert_cursor.end= span.start;
+                        },
+                        Mode::Visual => self.insert_cursor.end = span.start,
+                        _ => unreachable!()
                     }
                 },
 

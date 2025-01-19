@@ -105,3 +105,44 @@ impl<T: std::fmt::Debug> fmt::Display for FmtDebug<T> {
         std::fmt::Debug::fmt(&self.0, f)
     }
 }
+
+pub struct MapWindows2<I: Iterator, F> {
+    iter: I,
+    f: F,
+    buffer: Option<[I::Item; 2]>
+}
+
+impl<I, F, U> MapWindows2<I, F>
+where
+    I: Iterator,
+    F: FnMut(&[I::Item; 2]) -> U
+{    
+    pub fn new(mut iter: I, f: F) -> Self {
+        let buffer = iter.next()
+            .zip(iter.next())
+            .map(|(x, y)| [x, y]);
+        MapWindows2 { iter, f, buffer }
+    }
+}
+
+impl<I, F, U> Iterator for MapWindows2<I, F>
+where
+    I: Iterator,
+    F: FnMut(&[I::Item; 2]) -> U
+{
+    type Item = U;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let items = self.buffer.as_mut()?;
+        let result = (self.f)(items);
+
+        if let Some(next) = self.iter.next() {
+            items[0] = next;
+            items.swap(0, 1);
+        } else {
+            self.buffer = None;
+        }
+
+        Some(result)
+    }
+}

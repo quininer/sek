@@ -96,7 +96,7 @@ impl Style {
 
 fn default_theme() -> Theme {
     Theme {
-        selected: Style::new(128),
+        selected: Style::new(7),
         
         exe: Style::new(27),
         literal: Style::new(33),

@@ -1,12 +1,24 @@
 use std::{ cmp, fmt };
 use std::ops::Range;
+use icu_segmenter::WordSegmenter;
+use crate::util::MapWindows2;
 
 
-#[derive(Default)]
 pub struct EditableLine {
     buf: String,
     // empty when buf is ascii
     indices: Vec<usize>,
+    segmenter: WordSegmenter
+}
+
+impl Default for EditableLine {
+    fn default() -> Self {
+        EditableLine {
+            buf: String::new(),
+            indices: Vec::new(),
+            segmenter: WordSegmenter::new_auto()
+        }
+    }
 }
 
 impl EditableLine {
@@ -18,8 +30,16 @@ impl EditableLine {
         self.buf.is_empty()
     }
 
-    pub fn len(&self) -> usize {
+    pub fn bytes_len(&self) -> usize {
         self.buf.len()
+    }
+
+    pub fn char_len(&self) -> usize {
+        if self.indices.is_empty() {
+            self.buf.len()
+        } else {
+            self.indices.len()
+        }
     }
 
     pub fn first(&self) -> Option<char> {
@@ -33,14 +53,6 @@ impl EditableLine {
             start..end
         } else {
             end..start
-        }
-    }
-
-    fn char_len(&self) -> usize {
-        if self.indices.is_empty() {
-            self.buf.len()
-        } else {
-            self.indices.len()
         }
     }
 
@@ -154,6 +166,38 @@ impl EditableLine {
         *cur = cmp::min(*cur + 1, self.char_len());
     }
 
+    pub fn move_left_word(&self, cur: usize) -> Range<usize> {
+        let idx = self.index(cur);
+        let buf = &self.buf[..idx];
+
+        let iter = self.segmenter.segment_str(buf);
+        let iter = MapWindows2::new(iter, |&[start, end]| start..end);
+
+        if let Some(span) = iter.last() {
+            let start = buf[..span.start].chars().count();
+            let end = start + buf[span].chars().count();
+            start..end
+        } else {
+            cur..cur
+        }
+    }
+
+    pub fn move_right_word(&self, cur: usize) -> Range<usize> {
+        let idx = self.index(cur);
+        let buf = &self.buf[idx..];
+
+        let iter = self.segmenter.segment_str(buf);
+        let mut iter = MapWindows2::new(iter, |&[start, end]| start..end);
+
+        if let Some(span) = iter.next() {
+            let start = cur + buf[..span.start].chars().count();
+            let end = start + buf[span].chars().count();
+            start..end
+        } else {
+            cur..cur
+        }
+    }
+
     pub fn clear(&mut self) {
         self.indices.clear();
         self.buf.clear();
@@ -178,30 +222,30 @@ fn test_buffer() {
     buf.push(&mut range.end, 'a');
     buf.push(&mut range.end, 'b');
     buf.push(&mut range.end, 'c');
-    assert_eq!(format!("{}", buf), "abc");
+    assert_eq!(buf.as_str(), "abc");
     assert_eq!(range.end, 3);
 
     buf.backspace(&mut range.end);
-    assert_eq!(format!("{}", buf), "ab");
+    assert_eq!(buf.as_str(), "ab");
     assert_eq!(range.end, 2);
 
     buf.delete(range.end);
-    assert_eq!(format!("{}", buf), "ab");
+    assert_eq!(buf.as_str(), "ab");
     assert_eq!(range.end, 2);
 
     buf.move_left(&mut range.end);
     buf.move_left(&mut range.end);
     buf.delete(range.end);
-    assert_eq!(format!("{}", buf), "b");
+    assert_eq!(buf.as_str(), "b");
     assert_eq!(range.end, 0);
 
     buf.backspace(&mut range.end);
-    assert_eq!(format!("{}", buf), "b");
+    assert_eq!(buf.as_str(), "b");
     assert_eq!(range.end, 0);
 
     buf.move_right(&mut range.end);
     buf.backspace(&mut range.end);
-    assert_eq!(format!("{}", buf), "");
+    assert_eq!(buf.as_str(), "");
     assert_eq!(range.end, 0);
 
     buf.push(&mut range.end, '中');
@@ -226,4 +270,26 @@ fn test_buffer() {
 
     let (x, y) = buf.split(range.end);
     assert_eq!(x, "中");
-    assert_eq!(y, "文");}
+    assert_eq!(y, "文");
+
+    buf.push_str(&mut range.end, "hello world");
+    buf.move_head(&mut range.end);
+    range.start = range.end;
+
+    range = buf.move_right_word(range.end);
+    assert_eq!(&buf.as_str()[buf.span(range.clone())], "中");
+    range = buf.move_right_word(range.end);
+    assert_eq!(&buf.as_str()[buf.span(range.clone())], "hello");
+    range = buf.move_right_word(range.end);
+    assert_eq!(&buf.as_str()[buf.span(range.clone())], " ");
+    range = buf.move_right_word(range.end);
+    assert_eq!(&buf.as_str()[buf.span(range.clone())], "world");
+    range = buf.move_right_word(range.end);
+    assert_eq!(&buf.as_str()[buf.span(range.clone())], "文");
+
+    range.start = range.end;
+    range = buf.move_left_word(range.start);
+    assert_eq!(&buf.as_str()[buf.span(range.clone())], "文");
+    range = buf.move_left_word(range.start);
+    assert_eq!(&buf.as_str()[buf.span(range.clone())], "world");
+}
