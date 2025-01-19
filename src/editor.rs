@@ -171,11 +171,17 @@ impl Editor {
                 (Mode::Normal, None, Some(_), KeyCode::Esc) => {
                     self.command.clear();
                     self.command_cursor = 0;
-                },                
+                },
+
+                // delete selection
+                (Mode::Visual, None, None, KeyCode::Char('d')) => {
+                    self.insert.replace_str(&mut self.insert_cursor, "");
+                    self.mode = Mode::Normal;
+                },
 
                 // ready
-                (_, None, None, KeyCode::Char('d')) => self.ready = Some('d'),
-                (_, Some('d'), None, KeyCode::Char('d')) => {
+                (Mode::Normal, None, None, KeyCode::Char('d')) => self.ready = Some('d'),
+                (Mode::Normal, Some('d'), None, KeyCode::Char('d')) => {
                     self.insert.clear();
                     self.insert_cursor = 0..0;
                 }

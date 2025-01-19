@@ -86,7 +86,7 @@ On the contrary, it is designed to satisfy my personal use.
 
 + [ ] Cross platform
 + [ ] Basic shell command
-+ [ ] Basic VI mode
++ [ ] Basic helix mode
 + [ ] Path selector
 + [ ] Completion UI
 + [ ] History and Completion (daemon)

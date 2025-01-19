@@ -1,14 +1,16 @@
-use std::fs;
-use std::io;
+use std::{ fs, io };
+use std::marker::Unpin;
+use std::convert::TryInto;
 use std::process::{ Stdio, ExitStatus };
 use anyhow::Context;
 use bstr::ByteSlice;
+use tokio::io::{ AsyncRead, AsyncReadExt };
 use crate::shell::Shell;
 use crate::shell::syntax::{ self, ArgSlice, StrSlice, StdioKind, ChainKind };
 use crate::shell::process::ShellCommand;
 
 
-pub fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow::Result<ExitStatus> {
+pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow::Result<ExitStatus> {
     let mut shell_cmd = None;
     let mut cmd_new = |osstr: &[u8]| {
         shell_cmd = Some(ShellCommand::new(osstr)?);
@@ -20,17 +22,17 @@ pub fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow::Resu
     let mut push = |osstr: &[u8]| shell_cmd.push(osstr);
 
     for arg in cmd.args(&shell.parser) {
-        arg.eval(shell, input, &mut push)?;
+        arg.eval(shell, input, &mut push).await?;
     }
 
     for redirect in cmd.redirect(&shell.parser) {
-        redirect.eval(shell, input, &mut shell_cmd)?;
+        redirect.eval(shell, input, &mut shell_cmd).await?;
     }
 
     let status = if let Some(chain) = cmd.chain(&shell.parser) {
-        chain.eval(shell, input, shell_cmd, None)?
+        chain.eval(shell, input, shell_cmd, None).await?
     } else {
-        shell_cmd.spawn(shell)?.wait()?
+        shell_cmd.spawn(shell)?.wait().await?
     };
 
     Ok(status)    
@@ -86,7 +88,7 @@ impl syntax::Escape {
 }
 
 impl syntax::SubShell {
-    fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
+    async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
         let mut shell_cmd = None;
         let mut cmd_new = |osstr: &[u8]| {
             shell_cmd = Some(ShellCommand::new(osstr)?);
@@ -100,17 +102,17 @@ impl syntax::SubShell {
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in cmd.args(&shell.parser) {
-            arg.eval(shell, input, &mut cmd_push)?;
+            Box::pin(arg.eval(shell, input, &mut cmd_push)).await?;
         }
 
         for redirect in cmd.redirect(&shell.parser) {
-            redirect.eval(shell, input, &mut shell_cmd)?;
+            Box::pin(redirect.eval(shell, input, &mut shell_cmd)).await?;
         }
 
         if let Some(chain) = cmd.chain(&shell.parser) {
-            chain.eval(shell, input, shell_cmd, Some(push))?;
+            Box::pin(chain.eval(shell, input, shell_cmd, Some(push))).await?;
         } else {
-            spawn_and_push(shell_cmd, shell, &mut Some(push))?;
+            spawn_and_push(shell_cmd, shell, &mut Some(push)).await?;
         }
 
         Ok(())
@@ -129,7 +131,7 @@ impl syntax::SingleStr {
 }
 
 impl syntax::DoubleStr {
-    fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
+    async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
         // TODO arg max
         
         let arg_max = 1024 * 4;
@@ -149,7 +151,7 @@ impl syntax::DoubleStr {
                 StrSlice::Literal(val) => val.eval(shell, input, &mut push2)?,
                 StrSlice::Variable(val) => val.eval(shell, input, &mut push2)?,
                 StrSlice::Escape(val) => val.eval(shell, input, &mut push2)?,
-                StrSlice::SubShell(cmd) => cmd.eval(shell, input, &mut push2)?,
+                StrSlice::SubShell(cmd) => cmd.eval(shell, input, &mut push2).await?,
             }
         }
 
@@ -158,7 +160,7 @@ impl syntax::DoubleStr {
 }
 
 impl syntax::Argument {
-    fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
+    async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
         // TODO arg max
 
         let arg_max = 1024 * 4;
@@ -179,8 +181,8 @@ impl syntax::Argument {
                 ArgSlice::Variable(v) => v.eval(shell, input, &mut push2)?,
                 ArgSlice::Escape(v) => v.eval(shell, input, &mut push2)?,
                 ArgSlice::SingleStr(v) => v.eval(shell, input, &mut push2)?,
-                ArgSlice::DoubleStr(v) => v.eval(shell, input, &mut push2)?,
-                ArgSlice::SubShell(v) => v.eval(shell, input, &mut push2)?,
+                ArgSlice::DoubleStr(v) => v.eval(shell, input, &mut push2).await?,
+                ArgSlice::SubShell(v) => v.eval(shell, input, &mut push2).await?,
             }
         }
 
@@ -189,7 +191,7 @@ impl syntax::Argument {
 }
 
 impl syntax::Redirect {
-    fn eval(self, shell: &Shell, input: &str, cmd: &mut ShellCommand) -> anyhow::Result<()> {
+    async fn eval(self, shell: &Shell, input: &str, cmd: &mut ShellCommand) -> anyhow::Result<()> {
         let kind = self.kind(&shell.parser);
         let append = self.append(&shell.parser);
         
@@ -216,12 +218,12 @@ impl syntax::Redirect {
         };
 
         self.value(&shell.parser)
-            .eval(shell, input, &mut push)
+            .eval(shell, input, &mut push).await
     }
 }
 
 impl syntax::Chain {
-    fn eval(self, shell: &Shell, input: &str, mut prev_cmd: ShellCommand, mut push: Option<Push<'_>>)
+    async fn eval(self, shell: &Shell, input: &str, mut prev_cmd: ShellCommand, mut push: Option<Push<'_>>)
         -> anyhow::Result<ExitStatus>
     {
         let kind = self.kind(&shell.parser);
@@ -239,11 +241,11 @@ impl syntax::Chain {
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in subshell.args(&shell.parser) {
-            arg.eval(shell, input, &mut cmd_push)?;
+            Box::pin(arg.eval(shell, input, &mut cmd_push)).await?;
         }
 
         for redirect in subshell.redirect(&shell.parser) {
-            redirect.eval(shell, input, &mut shell_cmd)?;
+            Box::pin(redirect.eval(shell, input, &mut shell_cmd)).await?;
         }
 
         let chain = subshell.chain(&shell.parser);
@@ -256,54 +258,54 @@ impl syntax::Chain {
 
                 match stdio_kind {
                     StdioKind::Out => if let Some(stdout) = prev_child.stdout().take() {
-                        shell_cmd.stdin(stdout.into());
+                        shell_cmd.stdin(stdout.try_into()?);
                     },
                     StdioKind::Err => if let Some(stderr) = prev_child.stderr().take() {
-                        shell_cmd.stdin(stderr.into());
+                        shell_cmd.stdin(stderr.try_into()?);
                     },
                     StdioKind::All => todo!()
                 }
 
                 let status = if let Some(chain) = chain.as_ref() {
-                    chain.eval(shell, input, shell_cmd, push)?
+                    Box::pin(chain.eval(shell, input, shell_cmd, push)).await?
                 } else {
-                    spawn_and_push(shell_cmd, shell, &mut push)?
+                    spawn_and_push(shell_cmd, shell, &mut push).await?
                 };
 
-                prev_child.wait()?;
+                prev_child.wait().await?;
 
                 Ok(status)
             },
             ChainKind::Then => {
-                spawn_and_push(prev_cmd, shell, &mut push)?;
+                spawn_and_push(prev_cmd, shell, &mut push).await?;
 
                 if let Some(chain) = chain.as_ref() {
-                    chain.eval(shell, input, shell_cmd, push)
+                    Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                 } else {
-                    spawn_and_push(shell_cmd, shell, &mut push)
+                    spawn_and_push(shell_cmd, shell, &mut push).await
                 }
             },
             ChainKind::AndIf => {
-                let status = spawn_and_push(prev_cmd, shell, &mut push)?;
+                let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
 
                 if status.success() {
                     if let Some(chain) = chain.as_ref() {
-                        chain.eval(shell, input, shell_cmd, push)
+                        Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                     } else {
-                        spawn_and_push(shell_cmd, shell, &mut push)
+                        spawn_and_push(shell_cmd, shell, &mut push).await
                     }
                 } else {
                     Ok(status)
                 }
             },
             ChainKind::OrIf => {
-                let status = spawn_and_push(prev_cmd, shell, &mut push)?;
+                let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
 
                 if !status.success() {
                     if let Some(chain) = chain.as_ref() {
-                        chain.eval(shell, input, shell_cmd, push)
+                        Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                     } else {
-                        spawn_and_push(shell_cmd, shell, &mut push)
+                        spawn_and_push(shell_cmd, shell, &mut push).await
                     }
                 } else {
                     Ok(status)
@@ -313,7 +315,7 @@ impl syntax::Chain {
     }
 }
 
-fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<Push<'_>>)
+async fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<Push<'_>>)
     -> anyhow::Result<ExitStatus>
 {
     if let Some(push) = push.as_mut()
@@ -324,25 +326,26 @@ fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<Push<'
         let mut child = cmd.spawn(shell)?;
 
         if let Some(stdout) = child.stdout().take() {
-            read_to_end(stdout, push)?;
+            read_to_end(stdout, push).await?;
         }
 
-        child.wait().map_err(Into::into)
+        child.wait().await.map_err(Into::into)
     } else {
         cmd.spawn(shell)?
             .wait()
+            .await
             .map_err(Into::into)
     }
 }
 
-fn read_to_end<R: io::Read>(
+async fn read_to_end<R: AsyncRead + Unpin>(
     mut reader: R,
     push: Push<'_>
 ) -> anyhow::Result<()> {
     let mut buf = [0; 1024];
     
     loop {
-        match reader.read(&mut buf) {
+        match reader.read(&mut buf).await {
             Ok(0) => break,
             Ok(n) => push(&buf[..n])?,
             Err(ref err) if err.kind() == io::ErrorKind::Interrupted => (),

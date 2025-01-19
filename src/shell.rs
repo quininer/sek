@@ -42,7 +42,7 @@ impl Shell {
         })        
     }
     
-    pub fn start(mut self) -> anyhow::Result<()> {
+    pub async fn start(mut self) -> anyhow::Result<()> {
         let stdout = Stdout::from(io::stdout());
         let size = terminal::size()?;
 
@@ -57,7 +57,8 @@ impl Shell {
         });
 
         loop {
-            self.morgue.wait()?;
+            self.morgue.wait().await?;
+
             renderer.render(&self)?;
             
             let event = crossterm::event::read()?;
@@ -93,7 +94,7 @@ impl Shell {
                         let _ = terminal::enable_raw_mode();
                     });
                     
-                    match execute::execute(&self, self.editor.insert.as_str(), cmd) {
+                    match execute::execute(&self, self.editor.insert.as_str(), cmd).await {
                         // TODO set prompt
                         Ok(_status) => (),
                         Err(err) => {

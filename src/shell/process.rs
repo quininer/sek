@@ -1,7 +1,8 @@
 use std::io;
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::process::{ self, Command, Stdio };
+use std::process::{ ExitStatus, Stdio };
+use tokio::process::{ self, Command };
 use anyhow::Context;
 use bstr::ByteSlice;
 use super::Shell;
@@ -59,7 +60,7 @@ impl ShellCommand {
         #[cfg(unix)] {
             use std::os::unix::process::CommandExt;
 
-            self.cmd.process_group(shell.morgue.pgid);
+            self.cmd.as_std_mut().process_group(shell.morgue.pgid);
         }
 
         match self.cmd
@@ -85,9 +86,9 @@ impl Child {
         &mut self.child.as_mut().unwrap().stderr
     }    
     
-    pub fn wait(&mut self) -> io::Result<process::ExitStatus> {
+    pub async fn wait(&mut self) -> io::Result<ExitStatus> {
         let child = self.child.as_mut().unwrap();
-        self.morgue.wait_one(child)
+        self.morgue.wait_one(child).await
     }
 }
 
@@ -110,17 +111,17 @@ impl Default for Morgue {
 }
 
 impl Morgue {
-    fn wait_one(&self, child: &mut process::Child)
-        -> io::Result<process::ExitStatus>
+    async fn wait_one(&self, child: &mut process::Child)
+        -> io::Result<ExitStatus>
     {
-        child.wait()
+        child.wait().await
     }
     
-    pub fn wait(&mut self) -> io::Result<()> {
+    pub async fn wait(&mut self) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 
         for mut ghost in queue.drain(..) {
-            self.wait_one(&mut ghost)?;
+            self.wait_one(&mut ghost).await?;
         }
 
         Ok(())        

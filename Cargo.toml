@@ -32,5 +32,8 @@ logos = "0.15"
 # editor
 icu_segmenter = "1"
 
+# command
+tokio = { version = "1", features = [ "rt", "io-util", "signal", "process" ] }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

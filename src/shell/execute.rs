@@ -4,8 +4,8 @@ use std::process::ExitStatus;
 use super::{ syntax, Shell };
 
 
-pub fn execute(shell: &Shell, input: &str, cmd: syntax::Command)
+pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command)
     -> anyhow::Result<ExitStatus>
 {
-    external::execute(shell, input, cmd)
+    external::execute(shell, input, cmd).await
 }

@@ -2,6 +2,7 @@ use std::env;
 use std::path::PathBuf;
 use argh::FromArgs;
 use anyhow::Context;
+use tokio::runtime;
 use directories::ProjectDirs;
 
 
@@ -32,9 +33,13 @@ fn main() -> anyhow::Result<()> {
         let projdir = ProjectDirs::from("", "", env!("CARGO_PKG_NAME"))
             .context("Unable to retrieve project path from system")?;
         projdir.config_dir().join("config")
-    };    
+    };
 
-    sek::shell::Shell::new(pwd, confpath)?.start()?;
-    
-    Ok(())
+    let rt = runtime::Builder::new_current_thread()
+        .enable_io()
+        .build()?;
+
+    let shell = sek::shell::Shell::new(pwd, confpath)?;
+
+    rt.block_on(shell.start())
 }
