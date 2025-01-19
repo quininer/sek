@@ -1,3 +1,4 @@
+use std::cmp;
 use logos::Span;
 use crossterm::{ queue, style };
 use crossterm::style::{ Color, Attributes };
@@ -26,20 +27,19 @@ pub fn colour(shell: &Shell, cmd: Command, input: &str, term: RefWriter<'_>)
         shell, parser: &shell.parser,
         buf: input
     };
-    let mut state = State {
-        current: 0,
-        color: None,
-        attr: None,
-        is_doublestr: false,
-    };
+    let mut state = State::default();
 
     cmd.colour(&mut state, input, term.reborrow())?;
 
-    if state.current < input.buf.len() {
-        if let Some(pos) = input.buf[state.current..].find('#') {
-            Comment(state.current + pos..input.buf.len())
-                .colour(&mut state, input, term.reborrow())?;
-        }
+    if let Some(tail) = input.buf.get(state.current..)
+        .filter(|buf| !buf.is_empty())
+    {
+        let pos = tail
+            .find('#')
+            .unwrap_or(tail.len());
+
+        Comment(state.current + pos..input.buf.len())
+            .colour(&mut state, input, term.reborrow())?;
     }
 
     Ok(())
@@ -52,11 +52,19 @@ struct Input<'a> {
     buf: &'a str,
 }
 
+#[derive(Default)]
 struct State {
     current: usize,
     color: Option<Color>,
+    background: Option<Color>,
     attr: Option<Attributes>,
     is_doublestr: bool,
+}
+
+struct SelectedBoundary {
+    head: Span,
+    selected: Span,
+    tail: Span
 }
 
 impl State {
@@ -82,11 +90,43 @@ impl State {
         Ok(())
     }
 
-    fn fill(&mut self, new_span: Span, mut term: RefWriter<'_>) -> anyhow::Result<()> {
-        if let Some(len) = new_span.start.checked_sub(self.current) {
+    fn set_background_color(&mut self, color: Option<Color>, mut term: RefWriter<'_>) -> anyhow::Result<()> {
+        if color != self.background {
+            queue!(term, style::SetBackgroundColor(color.unwrap_or(Color::Reset)))?;
+            self.background = color;
+        }
+
+        Ok(())
+    }
+
+
+    fn fill(&mut self,
+        shell: &Shell,
+        new_start: usize,
+        selected: Span,
+        mut term: RefWriter<'_>
+    ) -> anyhow::Result<()> {
+        if self.current < new_start {
+            let boundary = selected_boundary(self.current..new_start, selected);
+
             self.set_style(Style::default(), term.reborrow())?;
-            queue!(term, style::Print(Fill(' ', len)))?;
-            self.current = new_span.start;
+
+            if !boundary.head.is_empty() {
+                self.set_background_color(None, term.reborrow())?;
+                queue!(term, style::Print(Fill(' ', boundary.head.len())))?;
+            }
+
+            if !boundary.selected.is_empty() {
+                self.set_background_color(shell.config.theme.selected.color(), term.reborrow())?;
+                queue!(term, style::Print(Fill(' ', boundary.selected.len())))?;
+            }
+
+            if !boundary.tail.is_empty() {
+                self.set_background_color(None, term.reborrow())?;
+                queue!(term, style::Print(Fill(' ', boundary.tail.len())))?;
+            }
+
+            self.current = new_start;
         }
 
         Ok(())        
@@ -95,9 +135,28 @@ impl State {
     fn push_to(&mut self, style: Style, input: Input<'_>, span: Span, mut term: RefWriter<'_>)
         -> anyhow::Result<()>
     {
-        self.fill(span.clone(), term.reborrow())?;
+        let selected = input.shell.editor.insert.span(input.shell.editor.insert_cursor.clone());
+        self.fill(input.shell, span.start, selected.clone(), term.reborrow())?;
+
+        let boundary = selected_boundary(span.clone(), selected);
+
         self.set_style(style, term.reborrow())?;
-        queue!(term, style::Print(&input.buf[span.clone()]))?;
+
+        if !boundary.head.is_empty() {
+            self.set_background_color(None, term.reborrow())?;
+            queue!(term, style::Print(&input.buf[boundary.head]))?;
+        }
+
+        if !boundary.selected.is_empty() {
+            self.set_background_color(input.shell.config.theme.selected.color(), term.reborrow())?;
+            queue!(term, style::Print(&input.buf[boundary.selected]))?;
+        }
+
+        if !boundary.tail.is_empty() {
+            self.set_background_color(None, term.reborrow())?;
+            queue!(term, style::Print(&input.buf[boundary.tail]))?;
+        }        
+
         self.current += span.len();
 
         Ok(())
@@ -253,4 +312,61 @@ impl Comment {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
         state.push_to(input.shell.config.theme.comment, input, self.0, term)
     }
+}
+
+
+fn selected_boundary(span: Span, selected_span: Span) -> SelectedBoundary {
+    let head = span.start..cmp::min(selected_span.start, span.end);
+    let selected = cmp::max(selected_span.start, span.start)
+        ..cmp::min(selected_span.end, span.end);
+    let tail = cmp::max(selected_span.end, span.start)..span.end;
+
+    assert_eq!(span.len(), head.len() + selected.len() + tail.len(), "{:?} vs {:?}", span, (head, selected, tail));
+
+    SelectedBoundary { head, selected, tail }
+}    
+
+#[test]
+fn test_selected_boundary() {
+    // [ ( ) ]
+    let boundary = selected_boundary(0..10, 3..7);
+    assert_eq!(boundary.head, 0..3);
+    assert_eq!(boundary.selected, 3..7);
+    assert_eq!(boundary.tail, 7..10);
+
+    // [ | ]
+    let boundary = selected_boundary(0..10, 3..3);
+    assert_eq!(boundary.head, 0..3);
+    assert_eq!(boundary.selected, 3..3);
+    assert_eq!(boundary.tail, 3..10);
+
+    // [ ( ] )
+    let boundary = selected_boundary(0..7, 3..10);
+    assert_eq!(boundary.head, 0..3);
+    assert_eq!(boundary.selected, 3..7);
+    assert_eq!(boundary.tail, 10..7);
+
+    // ( [ ) ]
+    let boundary = selected_boundary(3..10, 0..7);
+    assert_eq!(boundary.head, 3..0);
+    assert_eq!(boundary.selected, 3..7);
+    assert_eq!(boundary.tail, 7..10);
+
+    // ( [ ] )
+    let boundary = selected_boundary(3..7, 0..10);
+    assert_eq!(boundary.head, 3..0);
+    assert_eq!(boundary.selected, 3..7);
+    assert_eq!(boundary.tail, 10..7);
+
+    // [ ] ( )
+    let boundary = selected_boundary(0..3, 7..10);
+    assert_eq!(boundary.head, 0..3);
+    assert_eq!(boundary.selected, 7..3);
+    assert_eq!(boundary.tail, 10..3);
+
+    // ( ) [ ]
+    let boundary = selected_boundary(7..10, 0..3);
+    assert_eq!(boundary.head, 7..0);
+    assert_eq!(boundary.selected, 7..3);
+    assert_eq!(boundary.tail, 7..10);    
 }

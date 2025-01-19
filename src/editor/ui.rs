@@ -12,6 +12,7 @@ pub struct Editor {
     pub layout: layout::Tree,
     pub prompt: Id<layout::Node>,
     pub insert_line: Id<layout::Node>,
+    pub mode: Id<layout::Node>,
     pub command_line: Id<layout::Node>,
     pub tips: Id<layout::Node>
 }
@@ -43,6 +44,11 @@ impl Editor {
             justify: layout::Justify::Start,
             ..Default::default()
         });
+        let mode = layout.new_node(command, layout::Style {
+            axis: layout::Axis::Horizontal,
+            justify: layout::Justify::Start,
+            ..Default::default()
+        });
         let command_line = layout.new_node(command, layout::Style {
             axis: layout::Axis::Horizontal,
             justify: layout::Justify::Stretch,
@@ -57,6 +63,7 @@ impl Editor {
             layout,
             prompt,
             insert_line,
+            mode,
             command_line,
             tips
         })
@@ -156,6 +163,50 @@ impl Render for InsertLine {
     }
 }
 
+pub struct Mode;
+
+impl Render for Mode {
+    type State = Shell;
+    type Error = anyhow::Error;
+
+    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
+        = &RenderVtable::new::<Self>();    
+
+    fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
+        assert_eq!(state.editor.ui.mode, leaf_id);
+
+        state.editor.mode.str()
+            .map(|s| layout::SpaceInfo {
+                length: s.width() + 1,
+                cursor: None
+            })
+    }
+
+    fn render(
+        state: &Self::State,
+        leaf_id: Id<layout::Node>,
+        layout: &Layout,
+        current: &mut layout::Point,
+        mut term: RefWriter<'_>
+    )
+        -> Result<(), Self::Error>
+    {
+        assert_eq!(state.editor.ui.mode, leaf_id);
+
+        if let Some(s) = state.editor.mode.str() {
+            queue!(term,
+                style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
+                style::Print(" "),
+                style::Print(s),
+                style::ResetColor,
+            )?;
+        }
+
+        current.x += layout.size.0;
+        Ok(())
+    }
+}
+
 pub struct CommandLine;
 
 impl Render for CommandLine {
@@ -168,7 +219,7 @@ impl Render for CommandLine {
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.command_line, leaf_id);
 
-        matches!(state.editor.mode, editor::Mode::Normal)
+        matches!(state.editor.mode, editor::Mode::Normal | editor::Mode::Visual)
             .then_some(())?;
 
         let (s0, s1) = state.editor.command.split(state.editor.command_cursor);
@@ -194,7 +245,7 @@ impl Render for CommandLine {
     {
         assert_eq!(state.editor.ui.command_line, leaf_id);
 
-        if matches!(state.editor.mode, editor::Mode::Normal) {
+        if matches!(state.editor.mode, editor::Mode::Normal | editor::Mode::Visual) {
             queue!(term,
                 terminal::DisableLineWrap,
                 style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),

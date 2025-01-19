@@ -123,6 +123,7 @@ fn init_to<W>(editor: &Editor, renderer: &mut Renderer<Shell, W, anyhow::Error>)
 
     renderer.insert::<ui::Prompt>(editor.ui.prompt);
     renderer.insert::<ui::InsertLine>(editor.ui.insert_line);
+    renderer.insert::<ui::Mode>(editor.ui.mode);
     renderer.insert::<ui::CommandLine>(editor.ui.command_line);
     renderer.insert::<ui::Tips>(editor.ui.tips);
 }

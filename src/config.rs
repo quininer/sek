@@ -34,6 +34,9 @@ pub struct ConfigFormat<'a> {
 
 #[derive(Deserialize, Default)]
 pub struct Theme {
+    // background color
+    pub selected: Style,
+
     pub exe: Style,
     pub literal: Style,
     pub variable: Style,
@@ -44,7 +47,7 @@ pub struct Theme {
     pub chain: Style,
     pub redirect: Style,
     pub comment: Style,
-    pub error: Style
+    pub error: Style,
 }
 
 #[derive(Deserialize, Default, Clone, Copy)]
@@ -93,6 +96,8 @@ impl Style {
 
 fn default_theme() -> Theme {
     Theme {
+        selected: Style::new(128),
+        
         exe: Style::new(27),
         literal: Style::new(33),
         variable: Style::new(39),

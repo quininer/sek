@@ -26,6 +26,16 @@ impl EditableLine {
         self.buf.chars().next()
     }
 
+    pub fn span(&self, cursor: Range<usize>) -> Range<usize> {
+        let start = self.index(cursor.start);
+        let end = self.index(cursor.end);
+        if start <= end {
+            start..end
+        } else {
+            end..start
+        }
+    }
+
     fn char_len(&self) -> usize {
         if self.indices.is_empty() {
             self.buf.len()
@@ -153,15 +163,6 @@ impl EditableLine {
         let mid = self.index(mid);
         self.buf.split_at(mid)
     }    
-
-    pub fn split3(&self, start: usize, end: usize) -> (&str, &str, &str) {
-        let start = self.index(start);
-        let end = self.index(end);
-
-        let (head, s2) = self.buf.split_at(end);
-        let (s0, s1) = head.split_at(start);
-        (s0, s1, s2)
-    }
 }
 
 impl fmt::Display for EditableLine {
