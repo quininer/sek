@@ -87,21 +87,23 @@ impl Child {
     }    
     
     pub async fn wait(&mut self) -> io::Result<ExitStatus> {
-        let child = self.child.as_mut().unwrap();
-        self.morgue.wait_one(child).await
+        let mut child = self.child.take().unwrap();
+        self.morgue.wait_one(&mut child).await
     }
 }
 
 impl Drop for Child {
     fn drop(&mut self) {
-        let child = self.child.take().unwrap();
-        self.morgue.queue.borrow_mut().push(child);
+        if let Some(child) = self.child.take() {
+            self.morgue.queue.borrow_mut().push(child);
+        }
     }
 }
 
 impl Default for Morgue {
     fn default() -> Self {
         Morgue {
+            #[cfg(unix)]
             pgid: unsafe {
                 libc::getpid()
             },

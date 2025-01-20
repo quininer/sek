@@ -576,6 +576,7 @@ dependencies = [
  "icu_segmenter",
  "libc",
  "logos",
+ "pin-project-lite",
  "serde",
  "serde-tuple-vec-map",
  "serde_json",

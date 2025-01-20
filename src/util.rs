@@ -2,6 +2,9 @@ pub mod arena;
 pub mod stdout;
 
 use std::{ io, fmt };
+use std::pin::Pin;
+use std::future::Future;
+use std::task::{ Context, Poll };
 use std::borrow::Cow;
 use serde::Deserialize;
 
@@ -144,5 +147,47 @@ where
         }
 
         Some(result)
+    }
+}
+
+pub enum Either<L, R> {
+    Left(L),
+    Right(R)
+}
+
+pin_project_lite::pin_project! {
+    pub struct Select<L, R> {
+        #[pin]
+        left: L,
+        #[pin]
+        right: R,
+        flag: bool
+    }
+}
+
+impl<L, R> Select<L, R> {
+    pub fn new(left: L, right: R) -> Self {
+        Select { left, right, flag: false }
+    }
+}
+
+impl<L: Future, R: Future> Future for Select<L, R> {
+    type Output = Either<L::Output, R::Output>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        *this.flag = !*this.flag;
+
+        if *this.flag {
+            match this.left.poll(cx) {
+                Poll::Ready(result) => Poll::Ready(Either::Left(result)),
+                Poll::Pending => this.right.poll(cx).map(Either::Right)
+            }
+        } else {
+            match this.right.poll(cx) {
+                Poll::Ready(result) => Poll::Ready(Either::Right(result)),
+                Poll::Pending => this.left.poll(cx).map(Either::Left)
+            }           
+        }
     }
 }

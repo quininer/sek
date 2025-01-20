@@ -96,7 +96,9 @@ impl Shell {
                     
                     match execute::execute(&self, self.editor.insert.as_str(), cmd).await {
                         // TODO set prompt
-                        Ok(_status) => (),
+                        Ok(Some(_status)) => (),
+                        // ctrl-c
+                        Ok(None) => (),
                         Err(err) => {
                             let mut term = (renderer.term)();
                             queue!(
