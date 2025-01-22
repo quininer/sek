@@ -6,6 +6,7 @@ pub mod execute;
 use std::path::PathBuf;
 use std::io::{self, Write};
 use crossterm::{ queue, style, terminal };
+use directories::ProjectDirs;
 use crate::config::{ self, Config };
 use crate::ui::layout;
 use crate::ui::render::Renderer;
@@ -26,7 +27,9 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(pwd: PathBuf, config_path: PathBuf) -> anyhow::Result<Self> {
+    pub fn new(projdir: ProjectDirs, pwd: PathBuf, config_path: PathBuf)
+        -> anyhow::Result<Self>
+    {
         let mut env = Environment::new(pwd)?;
         let mut config = config::load(&mut env, config_path)?;
         
