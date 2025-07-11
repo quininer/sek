@@ -1,6 +1,6 @@
 use std::{ cmp, fmt };
 use std::ops::Range;
-use icu_segmenter::WordSegmenter;
+use icu_segmenter::{ WordSegmenter, WordSegmenterBorrowed };
 use crate::util::MapWindows2;
 
 
@@ -8,7 +8,7 @@ pub struct EditableLine {
     buf: String,
     // empty when buf is ascii
     indices: Vec<usize>,
-    segmenter: WordSegmenter
+    segmenter: WordSegmenterBorrowed<'static>
 }
 
 impl Default for EditableLine {
@@ -16,7 +16,7 @@ impl Default for EditableLine {
         EditableLine {
             buf: String::new(),
             indices: Vec::new(),
-            segmenter: WordSegmenter::new_auto()
+            segmenter: WordSegmenter::new_auto(Default::default())
         }
     }
 }
