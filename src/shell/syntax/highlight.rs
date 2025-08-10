@@ -2,8 +2,9 @@ use std::cmp;
 use logos::Span;
 use crossterm::{ queue, style };
 use crossterm::style::{ Color, Attributes };
-use crate::config::Style;
+use crate::editor::Mode;
 use crate::shell::Shell;
+use crate::config::Style;
 use crate::ui::render::Fill;
 use crate::util::{ RefWriter, ScopeGuard };
 use super::{
@@ -135,7 +136,10 @@ impl State {
     fn push_to(&mut self, style: Style, input: Input<'_>, span: Span, mut term: RefWriter<'_>)
         -> anyhow::Result<()>
     {
-        let selected = input.shell.editor.insert.span(input.shell.editor.insert_cursor.clone());
+        let insert_cursor = matches!(input.shell.editor.mode, Mode::Visual)
+            .then(|| input.shell.editor.insert.inclusive(input.shell.editor.insert_cursor.clone()))
+            .unwrap_or_else(|| input.shell.editor.insert_cursor.clone());
+        let selected = input.shell.editor.insert.span(insert_cursor);
         self.fill(input.shell, span.start, selected.clone(), term.reborrow())?;
 
         let boundary = selected_boundary(span.clone(), selected);

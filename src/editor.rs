@@ -175,6 +175,7 @@ impl Editor {
 
                 // delete selection
                 (Mode::Visual, None, None, KeyCode::Char('d')) => {
+                    self.insert_cursor = self.insert.inclusive(self.insert_cursor.clone());
                     self.insert.replace_str(&mut self.insert_cursor, "");
                     self.mode = Mode::Normal;
                 },

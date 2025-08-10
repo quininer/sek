@@ -1,4 +1,4 @@
-use std::{ cmp, fmt };
+use std::{ cmp, fmt, hint };
 use std::ops::Range;
 use icu_segmenter::{ WordSegmenter, WordSegmenterBorrowed };
 use crate::util::MapWindows2;
@@ -44,6 +44,15 @@ impl EditableLine {
 
     pub fn first(&self) -> Option<char> {
         self.buf.chars().next()
+    }
+
+    pub fn inclusive(&self, cursor: Range<usize>) -> Range<usize> {
+        let (start, end) = if cursor.end > cursor.start {
+            (cursor.start, cursor.end)
+        } else {
+            (cursor.end, cursor.start)
+        };
+        start..cmp::min(end + 1, self.char_len())
     }
 
     pub fn span(&self, cursor: Range<usize>) -> Range<usize> {
