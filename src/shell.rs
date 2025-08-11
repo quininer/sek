@@ -83,7 +83,7 @@ impl Shell {
                         let _ = terminal::enable_raw_mode();
                     });
 
-                    let display = error_renderer.render(err.to_message(line));
+                    let display = error_renderer.render(&[err.to_message(line)]);
                     renderer.new_line(&display)?;
                 },
                 Err(_) => continue

@@ -1,6 +1,6 @@
 use std::fmt;
 use logos::Span;
-use annotate_snippets::{ Level, Snippet, Message };
+use annotate_snippets::{ Level, Snippet, Group, AnnotationKind };
 use super::token::Token;
 
 
@@ -35,14 +35,14 @@ impl ParseFailed {
         self
     }
 
-    pub fn to_message<'a>(&self, input: &'a str) -> Message<'a> {
+    pub fn to_message<'a>(&self, input: &'a str) -> Group<'a> {
         let span = self.span.clone().unwrap_or_else(|| 0..input.len());
         
-        Level::Error
-            .title("Syntax error")
-            .snippet(Snippet::source(input)
+        Level::ERROR
+            .primary_title("Syntax error")
+            .element(Snippet::source(input)
                 .fold(true)
-                .annotation(Level::Error
+                .annotation(AnnotationKind::Primary
                     .span(span)
                     .label(self.kind.as_str())
                 )
