@@ -72,7 +72,11 @@ impl Shell {
             };
 
             let line = self.editor.insert.as_str();
-            let result = self.parser.parse(line);
+            let result = if is_execute {
+                self.parser.parse(line)
+            } else {
+                self.parser.parse_incomplete(line)
+            };
             self.ast = result.as_ref().ok().copied();
 
             match result {

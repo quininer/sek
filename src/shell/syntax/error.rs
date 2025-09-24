@@ -26,6 +26,7 @@ pub enum ErrorKind {
     UnknownEscape,
     UnknownRedirect,
     InvalidToken,
+    ExpectedClose,
     Unreachable
 }
 
@@ -62,6 +63,7 @@ impl ErrorKind {
             "unknown character escape",
             "unknown redirect target",
             "invalid token",
+            "expected close token",
         ];
 
         STRINGS[self as usize]

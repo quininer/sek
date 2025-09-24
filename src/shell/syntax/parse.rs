@@ -18,8 +18,12 @@ impl Parser {
     pub fn parse(&mut self, input: &str) -> Result<Command, ParseFailed> {
         self.parse_raw(input, false).map(Command)
     }
+
+    pub fn parse_incomplete(&mut self, input: &str) -> Result<Command, ParseFailed> {
+        self.parse_raw(input, true).map(Command)
+    }    
     
-    pub(super) fn parse_raw(&mut self, input: &str, incomplete: bool) -> Result<NodeId, ParseFailed> {
+    fn parse_raw(&mut self, input: &str, incomplete: bool) -> Result<NodeId, ParseFailed> {
         self.tokens.clear();
         self.nodes.clear();
 
@@ -355,7 +359,7 @@ impl State<'_> {
         }
 
         if !self.incomplete && end_token.is_none() {
-            // TODO return error
+            return Err(failed(&self.tokens[start_token]).with_kind(ErrorKind::ExpectedClose));
         }        
 
         Ok(self.nodes.alloc(Node::SingleStr(syntax::SingleStr {
@@ -454,7 +458,7 @@ impl State<'_> {
         }
 
         if !self.incomplete && end_token.is_none() {
-            // TODO return error
+            return Err(failed(&self.tokens[start_token]).with_kind(ErrorKind::ExpectedClose));
         }
 
         Ok(self.nodes.alloc(Node::DoubleStr(syntax::DoubleStr {
@@ -498,7 +502,7 @@ impl State<'_> {
         }
 
         if !state.incomplete && end_token.is_none() {
-            // TODO return error
+            return Err(failed(&state.tokens[start_token]).with_kind(ErrorKind::ExpectedClose));
         }
 
         Ok(state.nodes.alloc(Node::SubShell(syntax::SubShell {
