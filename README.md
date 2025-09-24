@@ -84,10 +84,12 @@ It writes the output of ls to a file.
 The `sek` does not try to create a great ecosystem.
 On the contrary, it is designed to satisfy my personal use.
 
-+ [ ] Cross platform
-+ [ ] Basic shell command
++ [x] Cross platform
++ [x] Basic shell command
 + [ ] Basic helix mode
++ [ ] Local History
 + [ ] Path selector
 + [ ] Completion UI
-+ [ ] History and Completion (daemon)
-+ [ ] Prompt (daemon)
++ [ ] History-based Completion (daemon)
++ [ ] Rule-based Completion (daemon)
++ [ ] Prompt

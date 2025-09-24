@@ -1,4 +1,4 @@
-use std::{ cmp, fmt, hint };
+use std::{ cmp, fmt };
 use std::ops::Range;
 use icu_segmenter::{ WordSegmenter, WordSegmenterBorrowed };
 use crate::util::MapWindows2;
