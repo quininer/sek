@@ -252,20 +252,35 @@ impl syntax::Chain {
 
         match kind {
             ChainKind::Pipe(stdio_kind) => {
-                prev_cmd.stdout(Stdio::piped());
-
-                let mut prev_child = prev_cmd.spawn(shell)?;
+                let mut prev_child;
 
                 match stdio_kind {
-                    StdioKind::Out => if let Some(stdout) = prev_child.stdout().take() {
-                        shell_cmd.stdin(stdout.try_into()?);
-                    },
-                    StdioKind::Err => if let Some(stderr) = prev_child.stderr().take() {
-                        shell_cmd.stdin(stderr.try_into()?);
-                    },
-                    StdioKind::All => todo!()
-                }
+                    StdioKind::Out => {
+                        prev_cmd.stdout(Stdio::piped());
+                        prev_child = prev_cmd.spawn(shell)?;
 
+                        if let Some(stdout) = prev_child.stdout().take() {
+                            shell_cmd.stdin(stdout.try_into()?);
+                        }                        
+                    },
+                    StdioKind::Err => {
+                        prev_cmd.stderr(Stdio::piped());
+                        prev_child = prev_cmd.spawn(shell)?;
+                        
+                        if let Some(stderr) = prev_child.stderr().take() {
+                            shell_cmd.stdin(stderr.try_into()?);
+                        }
+                    },
+                    StdioKind::All => {
+                        let (reader, writer) = io::pipe()?;
+                        prev_cmd.stdout(writer.try_clone()?.into());
+                        prev_cmd.stderr(writer.into());
+                        shell_cmd.stdin(reader.into());
+
+                        prev_child = prev_cmd.spawn(shell)?;
+                    },
+                }
+                
                 let status = if let Some(chain) = chain.as_ref() {
                     Box::pin(chain.eval(shell, input, shell_cmd, push)).await?
                 } else {
