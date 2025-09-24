@@ -208,9 +208,17 @@ impl Literal {
 
 impl Variable {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
-        // TODO check env
+        let color = if input.buf[self.span(input.parser)]
+            .strip_prefix('$')
+            .and_then(|name| input.shell.env.get(name.as_ref()))
+            .is_some()
+        {
+            input.shell.config.theme.variable
+        } else {
+            input.shell.config.theme.error
+        };
 
-        state.push_to(input.shell.config.theme.variable, input, self.span(input.parser), term)        
+        state.push_to(color, input, self.span(input.parser), term)        
     }   
 }
 

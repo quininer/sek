@@ -2,13 +2,13 @@ use std::{ io, env, mem };
 use std::borrow::Cow;
 use std::ffi::{ OsStr, OsString };
 use std::path::{ Path, PathBuf };
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use anyhow::Context;
 use directories::UserDirs;
 
 
 pub struct Environment {
-    pub map: BTreeMap<OsString, OsString>,
+    pub map: HashMap<OsString, OsString>,
     userdir: UserDirs,
     prev_pwd: Option<PathBuf>,
     pwd: PathBuf,
