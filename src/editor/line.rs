@@ -1,49 +1,62 @@
 use std::{ cmp, fmt };
 use std::ops::Range;
+use std::collections::VecDeque;
 use icu_segmenter::{ WordSegmenter, WordSegmenterBorrowed };
 use crate::util::MapWindows2;
 
 
 pub struct EditableLine {
-    buf: String,
+    line: Line,
+    list: VecDeque<Line>,
     // empty when buf is ascii
     indices: Vec<usize>,
-    segmenter: WordSegmenterBorrowed<'static>
+    current: usize,
+    segmenter: WordSegmenterBorrowed<'static>,
 }
+
+#[derive(Default, Clone)]
+pub struct Line {
+    buf: String,
+    cursor: Range<usize>,
+}
+
+const MAX_HISTORY: usize = 1024;
 
 impl Default for EditableLine {
     fn default() -> Self {
         EditableLine {
-            buf: String::new(),
+            line: Line::default(),
+            list: VecDeque::new(),
             indices: Vec::new(),
-            segmenter: WordSegmenter::new_auto(Default::default())
+            current: 0,
+            segmenter: WordSegmenter::new_auto(Default::default()),
         }
     }
 }
 
 impl EditableLine {
     pub fn as_str(&self) -> &str {
-        self.buf.as_str()
+        self.line().buf.as_str()
     }
     
     pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
+        self.as_str().is_empty()
     }
 
     pub fn bytes_len(&self) -> usize {
-        self.buf.len()
+        self.as_str().len()
     }
 
     pub fn char_len(&self) -> usize {
         if self.indices.is_empty() {
-            self.buf.len()
+            self.bytes_len()
         } else {
             self.indices.len()
         }
     }
 
     pub fn first(&self) -> Option<char> {
-        self.buf.chars().next()
+        self.as_str().chars().next()
     }
 
     pub fn inclusive(&self, cursor: Range<usize>) -> Range<usize> {
@@ -65,12 +78,24 @@ impl EditableLine {
         }
     }
 
+    fn current(&self) -> usize {
+        self.list.len() - self.current
+    }
+
+    fn line(&self) -> &Line {
+        self.list.get(self.current()).unwrap_or(&self.line)
+    }
+
+    fn line_mut(&mut self) -> &mut Line {
+        self.list.get_mut(self.current()).unwrap_or(&mut self.line)
+    }
+
     fn index(&self, cur: usize) -> usize {
         match self.indices.is_empty() {
             true => cur,
             false => self.indices.get(cur)
                 .copied()
-                .unwrap_or(self.buf.len())
+                .unwrap_or(self.bytes_len())
         }
     }
 
@@ -78,32 +103,38 @@ impl EditableLine {
         let is_ascii = self.indices.is_empty() && is_ascii();
         
         if !is_ascii {
+            let buf = &self.list.get(self.current()).unwrap_or(&self.line).buf;
             if self.indices.is_empty() {
-                self.indices.extend(self.buf.char_indices().map(|(offset, _)| offset));
+                self.indices.extend(buf.char_indices().map(|(offset, _)| offset));
             } else {
                 self.indices.truncate(cur);
-                self.indices.extend(self.buf[idx..].char_indices().map(|(offset, _)| idx + offset));
+                self.indices.extend(buf[idx..].char_indices().map(|(offset, _)| idx + offset));
             }
         }
     }
 
-    pub fn push(&mut self, cur: &mut usize, c: char) {
-        let idx = self.index(*cur);
-        self.buf.insert(idx, c);
-        self.update(*cur, idx, || c.is_ascii());
-        *cur += 1;
+    pub fn push(&mut self, _cur: &mut usize, c: char) {
+        let cur = self.line().cursor.end;
+        let idx = self.index(cur);
+        self.line_mut().buf.insert(idx, c);
+        self.update(cur, idx, || c.is_ascii());
+        self.line_mut().cursor.end += 1;
     }
 
-    pub fn replace(&mut self, cur: usize, s: char) {
+    pub fn replace(&mut self, _cur: usize, s: char) {
+        let cur = self.line().cursor.end;
         let idx = self.index(cur);
-        let next_len = self.buf[idx..]
+        let next_len = self.line()
+            .buf[idx..]
             .chars()
             .next()
             .map(char::len_utf8)
             .unwrap_or_default();
         let mut sbuf = [0; 4];
         let sbuf = s.encode_utf8(&mut sbuf);
-        self.buf.replace_range(idx..(idx + next_len), sbuf);
+        self.line_mut()
+            .buf
+            .replace_range(idx..(idx + next_len), sbuf);
 
         if next_len != sbuf.len() {
             self.update(cur, idx, || s.is_ascii());
@@ -118,66 +149,80 @@ impl EditableLine {
         };
 
         let bytes_range = self.index(*start)..self.index(*end);
-        self.buf.replace_range(bytes_range.clone(), s);
+        self.line_mut()
+            .buf
+            .replace_range(bytes_range.clone(), s);
 
         self.update(*start, bytes_range.start, || s.is_ascii());
         *end = *start + s.chars().count();
     }
 
-    pub fn push_str(&mut self, cur: &mut usize, s: &str) {
-        let idx = self.index(*cur);
-        self.buf.insert_str(idx, s);
-        self.update(*cur, idx, || s.is_ascii());
-        *cur += s.chars().count();
+    pub fn push_str(&mut self, _cur: &mut usize, s: &str) {
+        let cur = self.line().cursor.end;
+        let idx = self.index(cur);
+        self.line_mut()
+            .buf
+            .insert_str(idx, s);
+        self.update(cur, idx, || s.is_ascii());
+        self.line_mut().cursor.end += s.chars().count();
     }
 
-    pub fn backspace(&mut self, cur: &mut usize) {
-        if *cur != 0 {
-            let idx = self.index(*cur);
-            if let Some(prev_char) = self.buf[..idx].chars().last() {
+    pub fn backspace(&mut self, _cur: &mut usize) {
+        let cur = self.line().cursor.end;
+        if cur != 0 {
+            let idx = self.index(cur);
+            if let Some(prev_char) = self.as_str()[..idx].chars().last() {
                 let idx = idx - prev_char.len_utf8();
-                self.buf.remove(idx);
-                *cur -= 1;
-                self.update(*cur, idx, || true);
+                self.line_mut()
+                    .buf
+                    .remove(idx);
+                self.line_mut().cursor.end -= 1;
+                self.update(cur - 1, idx, || true);
             }
         }
     }
 
-    pub fn delete(&mut self, cur: usize) {
+    pub fn delete(&mut self, _cur: usize) {
+        let cur = self.line().cursor.end;
         let idx = self.index(cur);
-        if self.buf.len() > idx {
-            self.buf.remove(idx);
+        if self.bytes_len() > idx {
+            self.line_mut().buf.remove(idx);
             self.update(cur, idx, || true);
         }
     }
 
-    pub fn delete_to_end(&mut self, cur: usize) {
+    pub fn delete_to_end(&mut self, _cur: usize) {
+        let cur = self.line().cursor.end;
         let idx = self.index(cur);
-        if self.buf.len() > idx {
-            self.buf.truncate(idx);
+        if self.bytes_len() > idx {
+            self.line_mut().buf.truncate(idx);
             self.update(cur, idx, || true);
         }
     }
 
-    pub fn move_head(&mut self, cur: &mut usize) {
-        *cur = 0;
+    pub fn move_head(&mut self, _cur: &mut usize) {
+        self.line_mut().cursor.end = 0;
     }
 
-    pub fn move_end(&mut self, cur: &mut usize) {
-        *cur = self.char_len();
+    pub fn move_end(&mut self, _cur: &mut usize) {
+        self.line_mut().cursor.end = self.char_len();
     }
 
-    pub fn move_left(&mut self, cur: &mut usize) {
+    pub fn move_left(&mut self, _cur: &mut usize) {
+        let cur = &mut self.line_mut().cursor.end;
         *cur = cur.saturating_sub(1);
     }
 
-    pub fn move_right(&mut self, cur: &mut usize) {
-        *cur = cmp::min(*cur + 1, self.char_len());
+    pub fn move_right(&mut self, _cur: &mut usize) {
+        let len = self.char_len();
+        let cur = &mut self.line_mut().cursor.end;
+        *cur = cmp::min(*cur + 1, len);
     }
 
-    pub fn move_left_word(&self, cur: usize) -> Range<usize> {
+    pub fn move_left_word(&self, _cur: usize) -> Range<usize> {
+        let cur = self.line().cursor.end;
         let idx = self.index(cur);
-        let buf = &self.buf[..idx];
+        let buf = &self.as_str()[..idx];
 
         let iter = self.segmenter.segment_str(buf);
         let iter = MapWindows2::new(iter, |&[start, end]| start..end);
@@ -191,9 +236,10 @@ impl EditableLine {
         }
     }
 
-    pub fn move_right_word(&self, cur: usize) -> Range<usize> {
+    pub fn move_right_word(&self, _cur: usize) -> Range<usize> {
+        let cur = self.line().cursor.end;
         let idx = self.index(cur);
-        let buf = &self.buf[idx..];
+        let buf = &self.as_str()[idx..];
 
         let iter = self.segmenter.segment_str(buf);
         let mut iter = MapWindows2::new(iter, |&[start, end]| start..end);
@@ -209,18 +255,65 @@ impl EditableLine {
 
     pub fn clear(&mut self) {
         self.indices.clear();
-        self.buf.clear();
+        self.line_mut().cursor = 0..0;
+        self.line_mut().buf.clear();
+    }
+
+    pub fn up(&mut self) {
+        self.current = std::cmp::min(self.current + 1, self.list.len());
+        let is_ascii = self.as_str().is_ascii();
+        self.update(0, 0, || is_ascii);
+    }
+
+    pub fn down(&mut self) {
+        self.current = self.current.saturating_sub(1);
+        let is_ascii = self.as_str().is_ascii();
+        self.update(0, 0, || is_ascii);
+    }
+
+    pub fn submit(&mut self) {
+        if let Some(line) = self.list.get(self.current()) {
+            self.line.buf.clear();
+            self.line.buf.push_str(&line.buf);
+            self.line.cursor = line.cursor.clone();
+            let is_ascii = self.line.buf.is_ascii();
+            self.update(0, 0, || is_ascii);
+        }
+                
+        if self.list.back().map(|line| line.buf.as_str()) == Some(&self.line.buf) {
+            // TODO cursor
+
+            self.current = 0;
+            return
+        }
+        
+        let line = if self.list.len() >= MAX_HISTORY {
+            self.list.pop_front()
+        } else {
+            None
+        };
+        let line = if let Some(mut line) = line {
+            line.buf.clear();
+            line.buf.push_str(&self.line.buf);
+            self.line.cursor = line.cursor.clone();
+            line
+        } else {
+            self.line.clone()
+        };
+
+        self.list.push_back(line);
+        self.current = 0;
     }
 
     pub fn split(&self, mid: usize) -> (&str, &str) {
         let mid = self.index(mid);
-        self.buf.split_at(mid)
+        self.as_str().split_at(mid)
     }    
 }
 
 impl fmt::Display for EditableLine {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(self.buf.as_str(), f)
+        fmt::Display::fmt(self.as_str(), f)
     }
 }
 

@@ -85,7 +85,12 @@ impl Editor {
                     KeyCode::Right => self.insert.move_right(&mut self.insert_cursor.end),
                     KeyCode::Home => self.insert.move_head(&mut self.insert_cursor.end),
                     KeyCode::End => self.insert.move_end(&mut self.insert_cursor.end),
-                    KeyCode::Enter => return Ok(Action::Execute),
+                    KeyCode::Up => self.insert.up(),
+                    KeyCode::Down => self.insert.down(),
+                    KeyCode::Enter => {
+                        self.insert.submit();
+                        return Ok(Action::Execute)
+                    },
                     _ => ()
                 }
 
@@ -149,12 +154,27 @@ impl Editor {
                     match self.mode {
                         Mode::Normal => {
                             self.insert_cursor.start = span.end;
-                            self.insert_cursor.end= span.start;
+                            self.insert_cursor.end = span.start;
                         },
                         Mode::Visual => self.insert_cursor.end = span.start,
                         _ => unreachable!()
                     }
                 },
+
+                // history
+                (_, None, None, KeyCode::Up | KeyCode::Char('k')) => {
+                    self.insert.up();
+                },
+                (_, None, None, KeyCode::Down | KeyCode::Char('j')) => {
+                    self.insert.down();
+                },
+
+                // execute
+                (_, None, None, KeyCode::Enter) => {
+                    self.insert.submit();
+                    self.mode = Mode::Insert;
+                    return Ok(Action::Execute)
+                }
 
                 // input
                 (Mode::Normal, _, _, KeyCode::Char('\r')) => (),

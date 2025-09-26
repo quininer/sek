@@ -117,10 +117,10 @@ impl Shell {
                             term.flush()?;
                         }
                     }
-                }
 
-                self.editor.insert.clear();
-                self.editor.insert_cursor = 0..0;
+                    self.editor.insert.clear();
+                    self.editor.insert_cursor = 0..0;
+                }
             }
         }
 
