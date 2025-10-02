@@ -4,7 +4,6 @@ pub mod ui;
 use std::mem;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
-use crate::ui::render::{ Renderer, TermTarget };
 use crate::ui::layout;
 
 pub struct Editor {
@@ -212,13 +211,6 @@ impl Editor {
         }
 
         Ok(Action::Continue)
-    }
-
-    pub fn render<T: TermTarget>(
-        &self,
-        renderer: &mut Renderer<Self, T, anyhow::Error>,
-    ) -> anyhow::Result<()> {
-        renderer.render(self)
     }
 }
 

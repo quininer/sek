@@ -49,6 +49,23 @@ pub struct SpaceInfo {
     pub cursor: Option<usize>
 }
 
+impl Style {
+    pub fn axis(mut self, axis: Axis) -> Self {
+        self.axis = axis;
+        self
+    }
+
+    pub fn justify(mut self, justify: Justify) -> Self {
+        self.justify = justify;
+        self
+    }
+
+    pub fn overflow(mut self, overflow: bool) -> Self {
+        self.overflow = overflow;
+        self
+    }
+}
+
 pub trait Space {
     fn info(&self, leaf: Id<Node>) -> Option<SpaceInfo>;
 }

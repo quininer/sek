@@ -49,11 +49,9 @@ impl Shell {
         let stdout = Stdout::from(io::stdout());
         let size = terminal::size()?;
 
-        let mut renderer = Renderer::new(size, || stdout.lock());
+        let mut renderer = <Renderer<Shell, _, anyhow::Error>>::new(size, || stdout.lock());
         let error_renderer = annotate_snippets::Renderer::styled()
             .term_width(size.1.into());
-
-        init_to(&self.editor, &mut renderer);
 
         let _guard = ScopeGuard(terminal::enable_raw_mode(), |_| {
             let _ = terminal::disable_raw_mode();
@@ -62,7 +60,7 @@ impl Shell {
         loop {
             self.morgue.wait().await?;
 
-            renderer.render(&self)?;
+            renderer.render(&self.editor.ui.table, &self)?;
             
             let event = crossterm::event::read()?;
             let is_execute = match self.editor.step(event)? {
@@ -125,16 +123,6 @@ impl Shell {
 
         Ok(())
     }
-}
-
-fn init_to<W>(editor: &Editor, renderer: &mut Renderer<Shell, W, anyhow::Error>) {
-    use crate::editor::ui;
-
-    renderer.insert::<ui::Prompt>(editor.ui.prompt);
-    renderer.insert::<ui::InsertLine>(editor.ui.insert_line);
-    renderer.insert::<ui::Mode>(editor.ui.mode);
-    renderer.insert::<ui::CommandLine>(editor.ui.command_line);
-    renderer.insert::<ui::Tips>(editor.ui.tips);
 }
 
 impl AsRef<layout::Tree> for Shell {

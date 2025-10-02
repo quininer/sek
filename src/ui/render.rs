@@ -12,7 +12,7 @@ pub struct Renderer<S: 'static, T, E: 'static> {
     current: layout::Point,
     max_y: u16,
     queue: Vec<(Id<layout::Node>, Layout)>,
-    map: ArenaMap<layout::Node, &'static RenderVtable<S, E>>,
+    _phantom: std::marker::PhantomData<(S, E)>
 }
 
 pub trait TermTarget {
@@ -21,7 +21,7 @@ pub trait TermTarget {
     fn access(&self) -> Self::Writer;
 }
 
-pub trait Render {
+pub trait Element {
     type State: 'static;
     type Error: 'static;
 
@@ -54,17 +54,9 @@ pub struct RenderVtable<State, Error> {
 
 impl<S, E> RenderVtable<S, E> {
     pub const fn new<R>() -> RenderVtable<S, E>
-    where R: Render<State = S, Error = E>
+    where R: Element<State = S, Error = E>
     {
         RenderVtable { info: R::info, render: R::render }
-    }
-}
-
-impl<S, T, E> Renderer<S, T, E> {
-    pub fn insert<R>(&mut self, leaf_id: Id<layout::Node>)
-        where R: Render<State = S, Error = E>
-    {
-        self.map.insert(leaf_id, R::VTABLE);
     }
 }
 
@@ -78,7 +70,7 @@ where
             current: layout::Point { x: 0, y: 0 },
             max_y: 0,
             queue: Vec::new(),
-            map: ArenaMap::default()
+            _phantom: std::marker::PhantomData
         }
     }
 
@@ -99,7 +91,7 @@ where
         term.flush()
     }    
 
-    pub fn render(&mut self, shell: &S)
+    pub fn render(&mut self, table: &ArenaMap<layout::Node, &'static RenderVtable<S, E>>, shell: &S)
         -> Result<(), E>
     where
         S: AsRef<layout::Tree>,
@@ -130,7 +122,7 @@ where
         }
         
         let space = RenderSpace {
-            shell, map: &self.map
+            shell, map: table
         };
 
         let mut cursor = None;
@@ -143,7 +135,7 @@ where
 
         for (id, layout) in &self.queue {
             let id = *id;
-            let Some(vtable) = self.map.get(id)
+            let Some(vtable) = table.get(id)
                 else { continue };
 
             move_to(&mut term, &mut self.current, self.max_y, layout.range.start)?;
