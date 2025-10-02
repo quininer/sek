@@ -37,7 +37,7 @@ impl ParseFailed {
     }
 
     pub fn to_message<'a>(&self, input: &'a str) -> Group<'a> {
-        let span = self.span.clone().unwrap_or_else(|| 0..input.len());
+        let span = self.span.clone().unwrap_or(0..input.len());
         
         Level::ERROR
             .primary_title("Syntax error")

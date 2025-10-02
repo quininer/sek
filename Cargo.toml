@@ -28,9 +28,10 @@ unicode-width = "0.2"
 annotate-snippets = "0.12"
 
 # lang
-logos = "0.15"
+logos = "0.16"
 
 # editor
+glob = "0.3"
 icu_segmenter = "2"
 icu_collator = "2"
 

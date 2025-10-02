@@ -1,12 +1,14 @@
-use crossterm::{ queue, style, terminal };
+use std::convert::TryInto;
+
+use bstr::ByteSlice;
+use crossterm::{ queue, style, cursor, terminal };
 use unicode_width::{ UnicodeWidthChar, UnicodeWidthStr };
 use crate::{ editor, ui };
 use crate::ui::layout::{ self, Layout };
-use crate::ui::render::{ Element, Fill };
 use crate::util::RefWriter;
 use crate::util::arena::Id;
 use crate::shell::Shell;
-use crate::ui::render::RenderVtable;
+use crate::ui::render::{ ElementImpl, Fill, LimitAndFill };
 
 pub struct Editor {
     pub layout: layout::Tree,
@@ -21,171 +23,141 @@ impl Editor {
         let root = layout.root();
 
         let insert = ui::Box(
-            layout::Style::default()
-                .axis(layout::Axis::Horizontal)
-                .justify(layout::Justify::Start),
+            layout::Style::default(),
             (
+                ui::Elem(layout::Style::default(), PROMPT),
                 ui::Elem(
                     layout::Style::default()
-                        .justify(layout::Justify::Start),
-                    Prompt,
-                ),
-                ui::Elem(
-                    layout::Style::default()
-                        .axis(layout::Axis::Horizontal)
                         .justify(layout::Justify::Stretch)
                         .overflow(true),
-                    InsertLine,
+                    INSERT_LINE,
+                )
+            )
+        );
+
+        let selector = ui::Box(
+            layout::Style::default()
+                .axis(layout::Axis::Vertical)
+                .justify(layout::Justify::Stretch),
+            (
+                ui::Box(
+                    layout::Style::default(),
+                    ui::Elem(
+                        layout::Style::default()
+                            .justify(layout::Justify::Stretch)
+                            .overflow(true),
+                        PATH_LINE
+                    ),
+                ),
+                ui::Box(
+                    layout::Style::default()
+                        .axis(layout::Axis::Horizontal)
+                        .justify(layout::Justify::Stretch),
+                    (
+                        ui::Elem(
+                            layout::Style::default()
+                                .axis(layout::Axis::Vertical)
+                                .justify(layout::Justify::Stretch),
+                            PATH_SELECTOR.0,
+                        ),
+                        ui::Elem(
+                            layout::Style::default()
+                                .axis(layout::Axis::Vertical)
+                                .justify(layout::Justify::Stretch),
+                            PATH_SELECTOR.1,
+                        ),
+                        ui::Elem(
+                            layout::Style::default()
+                                .axis(layout::Axis::Vertical)
+                                .justify(layout::Justify::Stretch),
+                            PATH_SELECTOR.2
+                        ),
+                    )
                 )
             )
         );
 
         let command = ui::Box(
-            layout::Style::default()
-                .axis(layout::Axis::Horizontal)
-                .justify(layout::Justify::Start),
+            layout::Style::default().justify(layout::Justify::End),
             (
+                ui::Elem(layout::Style::default(), MODE),
                 ui::Elem(
-                    layout::Style::default()
-                        .axis(layout::Axis::Horizontal)
-                        .justify(layout::Justify::Start),
-                    Mode,
+                    layout::Style::default().justify(layout::Justify::Stretch),
+                    COMMAND_LINE
                 ),
                 ui::Elem(
-                    layout::Style::default()
-                        .axis(layout::Axis::Horizontal)
-                        .justify(layout::Justify::Stretch),
-                    CommandLine,
-                ),
-                ui::Elem(
-                    layout::Style::default()
-                        .justify(layout::Justify::End),
-                    Tips,
+                    layout::Style::default().justify(layout::Justify::End),
+                    TIPS
                 )
             )
         );
 
         let mut table = ui::Table::default();
-        insert.walk(&mut layout, &mut table, root);
-        command.walk(&mut layout, &mut table, root);
+
+        (insert, selector, command)
+            .walk(&mut layout, &mut table, root);
 
         Ok(Editor { layout, table })
     }
 }
 
-pub struct Prompt;
-
-const PROMPT: &str = "> ";
-
-impl Element for Prompt {
-    type State = Shell;
-    type Error = anyhow::Error;
-
-    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
-        = &RenderVtable::new::<Self>();
-
-    fn info(_state: &Self::State, _leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
-        Some(layout::SpaceInfo {
-            length: PROMPT.width(),
-            cursor: None
-        })
-    }
-
-    fn render(
-        _state: &Self::State,
-        _leaf_id: Id<layout::Node>,
-        layout: &Layout,
-        current: &mut layout::Point,
-        mut term: RefWriter<'_>
-    )
-        -> Result<(), Self::Error>
-    {
+const PROMPT_STRING: &str = "> ";
+const PROMPT: ElementImpl = ElementImpl {
+    info: |_, _| Some(layout::SpaceInfo {
+        length: PROMPT_STRING.width(),
+        cursor: None
+    }),
+    render: |_, _, layout, current, mut term| {
         assert_eq!(layout.padding, 0);
 
-        queue!(term, style::Print(PROMPT.get(..usize::from(layout.size.0)).unwrap_or_default()))?;
+        let prompt = PROMPT_STRING.get(..usize::from(layout.size.0)).unwrap_or_default();
+        queue!(term, style::Print(prompt))?;
 
-        assert_eq!(usize::from(current.x) + PROMPT.width(), usize::from(layout.range.end.x));
+        assert_eq!(usize::from(current.x) + PROMPT_STRING.width(), usize::from(layout.range.end.x));
         current.x += layout.size.0;
         Ok(())
     }
-}
+};
 
-pub struct InsertLine;
-
-impl Element for InsertLine {
-    type State = Shell;
-    type Error = anyhow::Error;
-
-    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
-        = &RenderVtable::new::<Self>();    
-
-    fn info(state: &Self::State, _leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
-        let (s0, s1) = state.editor.insert.split(state.editor.insert.cursor().end);
+const INSERT_LINE: ElementImpl = ElementImpl {
+    info: |shell, _| {
+        let (s0, s1) = shell.editor.insert.split(shell.editor.insert.cursor().end);
         let s0_len = s0.width();
         let s1_len = s1.width();
 
-        let cursor_len = state.editor.command.is_empty()
+        let cursor_len = shell.editor.command.is_empty()
             .then_some(s0_len);
 
         Some(layout::SpaceInfo {
             length: s0_len + s1_len,
             cursor: cursor_len
         })
-    }
-
-    fn render(
-        state: &Self::State,
-        _leaf_id: Id<layout::Node>,
-        layout: &Layout,
-        current: &mut layout::Point,
-        mut term: RefWriter<'_>
-    )
-        -> Result<(), Self::Error>
-    {
+    },
+    render: |shell, _, layout, current, mut term| {
         use crate::shell::syntax::highlight::colour;
         
-        if let Some(cmd) = state.ast {
-            colour(state, cmd, state.editor.insert.as_str(), term)?;
+        if let Some(cmd) = shell.ast {
+            colour(shell, cmd, shell.editor.insert.as_str(), term)?;
         } else {
             queue!(
                 term,
-                style::Print(state.editor.insert.as_str()),
+                style::Print(shell.editor.insert.as_str()),
             )?;
         }
 
         *current = layout.range.end;
-        
         Ok(())
     }
-}
+};
 
-pub struct Mode;
-
-impl Element for Mode {
-    type State = Shell;
-    type Error = anyhow::Error;
-
-    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
-        = &RenderVtable::new::<Self>();    
-
-    fn info(state: &Self::State, _leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
-        state.editor.mode.str()
-            .map(|s| layout::SpaceInfo {
-                length: s.width() + 1,
-                cursor: None
-            })
-    }
-
-    fn render(
-        state: &Self::State,
-        _leaf_id: Id<layout::Node>,
-        layout: &Layout,
-        current: &mut layout::Point,
-        mut term: RefWriter<'_>
-    )
-        -> Result<(), Self::Error>
-    {
-        if let Some(s) = state.editor.mode.str() {
+const MODE: ElementImpl = ElementImpl {
+    info: |shell, _| shell.editor.mode.str()
+        .map(|s| layout::SpaceInfo {
+            length: s.width() + 1,
+            cursor: None
+        }),
+    render: |shell, _, layout, current, mut term| {
+        if let Some(s) = shell.editor.mode.str() {
             queue!(term,
                 style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
                 style::Print(" "),
@@ -197,47 +169,36 @@ impl Element for Mode {
         current.x += layout.size.0;
         Ok(())
     }
-}
+};
 
-pub struct CommandLine;
-
-impl Element for CommandLine {
-    type State = Shell;
-    type Error = anyhow::Error;
-
-    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
-        = &RenderVtable::new::<Self>();
-
-    fn info(state: &Self::State, _leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
-        matches!(state.editor.mode, editor::Mode::Normal | editor::Mode::Visual)
+const COMMAND_LINE: ElementImpl = ElementImpl {
+    info: |shell, _| {
+        matches!(
+            shell.editor.mode,
+            editor::Mode::Normal | editor::Mode::Visual | editor::Mode::PathSelector
+        )
             .then_some(())?;
 
-        let (s0, s1) = state.editor.command.split(state.editor.command.cursor().end);
+        let (s0, s1) = shell.editor.command.split(shell.editor.command.cursor().end);
         let s0_len = s0.width();
         let s1_len = s1.width();
 
         Some(layout::SpaceInfo {
             length: s0_len + s1_len,
-            cursor: state.editor.ready.is_none()
+            cursor: shell.editor.ready.is_none()
                 .then_some(s0_len)
-                .filter(|_| !state.editor.command.is_empty())
+                .filter(|_| !shell.editor.command.is_empty())
         })
-    }
-
-    fn render(
-        state: &Self::State,
-        _leaf_id: Id<layout::Node>,
-        layout: &Layout,
-        current: &mut layout::Point,
-        mut term: RefWriter<'_>
-    )
-        -> Result<(), Self::Error>
-    {
-        if matches!(state.editor.mode, editor::Mode::Normal | editor::Mode::Visual) {
+    },
+    render: |shell, _, layout, current, mut term| {
+        if matches!(
+            shell.editor.mode,
+            editor::Mode::Normal | editor::Mode::Visual | editor::Mode::PathSelector
+        ) {
             queue!(term,
                 terminal::DisableLineWrap,
                 style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
-                style::Print(state.editor.command.as_str()),
+                style::Print(shell.editor.command.as_str()),
                 style::Print(Fill(' ', layout.padding.into())),
                 style::ResetColor,
                 terminal::EnableLineWrap
@@ -247,35 +208,16 @@ impl Element for CommandLine {
         current.x += layout.size.0;
         Ok(())
     }
-}
+};
 
-pub struct Tips;
-
-impl Element for Tips {
-    type State = Shell;
-    type Error = anyhow::Error;
-
-    const VTABLE: &'static RenderVtable<Self::State, Self::Error>
-        = &RenderVtable::new::<Self>();    
-
-    fn info(state: &Self::State, _leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
-        state.editor.ready
-            .map(|c| layout::SpaceInfo {
-                length: c.width().unwrap_or_default() + 2,
-                cursor: None
-            })
-    }
-
-    fn render(
-        state: &Self::State,
-        _leaf_id: Id<layout::Node>,
-        layout: &Layout,
-        current: &mut layout::Point,
-        mut term: RefWriter<'_>
-    )
-        -> Result<(), Self::Error>
-    {
-        if let Some(ready) = state.editor.ready {
+const TIPS: ElementImpl = ElementImpl {
+    info: |shell, _| shell.editor.ready
+        .map(|c| layout::SpaceInfo {
+            length: c.width().unwrap_or_default() + 2,
+            cursor: None
+        }),
+    render: |shell, _, layout, current, mut term| {
+        if let Some(ready) = shell.editor.ready {
             queue!(term,
                 style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
                 style::Print("<"),
@@ -288,4 +230,98 @@ impl Element for Tips {
         current.x += layout.size.0;
         Ok(())
     }
-}
+};
+
+const PATH_LINE: ElementImpl = ElementImpl {
+    info: |shell, _| {
+        matches!(shell.editor.mode, editor::Mode::PathSelector)
+            .then_some(())?;
+
+        let length = shell.editor.path_selector.path()
+            .as_os_str()
+            .as_encoded_bytes()
+            .chars()
+            .filter_map(|c| c.width())
+            .sum();
+        Some(layout::SpaceInfo {
+            length, cursor: None
+        })
+    },
+    render: |shell, _, layout, current, mut term| {
+        let path = shell.editor.path_selector.path();
+        queue!(term, style::Print(path.display()))?;
+        *current = layout.range.end;
+        Ok(())
+    }
+};
+
+const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
+    fn info<const N: usize>(shell: &Shell, _leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
+        matches!(shell.editor.mode, editor::Mode::PathSelector)
+            .then_some(())?;
+        let length = match N {
+            0 => shell.editor.path_selector.parent.len(),
+            1 => shell.editor.path_selector.current.len(),
+            2 => shell.editor.path_selector.children.len(),
+            _ => unreachable!()
+        };
+        Some(layout::SpaceInfo { length, cursor: None })        
+    }
+
+    fn render<const N: usize>(
+        shell: &Shell,
+        _leaf_id: Id<layout::Node>,
+        layout: &Layout,
+        current: &mut layout::Point,
+        mut term: RefWriter<'_>
+    )
+        -> anyhow::Result<()>
+    {
+        let list = match N {
+            0 => &shell.editor.path_selector.parent,
+            1 => &shell.editor.path_selector.current,
+            2 => &shell.editor.path_selector.children,
+            _ => unreachable!()
+        };
+
+        for (n, (hint, entry)) in list
+            .take(layout.size.1.into())
+            .enumerate()
+        {
+            let n: u16 = n.try_into().unwrap();
+            let name = entry.name();
+
+            queue!(term, cursor::MoveTo(layout.range.start.x, layout.range.start.y + n))?;
+
+            if hint {
+                queue!(term, style::SetColors(style::Colors::new(
+                    style::Color::Black,
+                    style::Color::White
+                )))?;
+            }
+            
+            queue!(term,
+                style::Print(LimitAndFill(
+                    name.as_encoded_bytes().chars(),
+                    ' ',
+                    layout.size.0.saturating_sub(1).into()
+                )),
+                style::ResetColor,
+            )?;
+        }
+
+        queue!(term, cursor::MoveTo(layout.range.end.x, layout.range.end.y))?;
+
+        *current = layout.range.end;
+        Ok(())      
+    }
+
+    const fn imp<const N: usize>() -> ElementImpl {
+        ElementImpl {
+            info: info::<N>,
+            render: render::<N>
+        }
+    }
+
+    (imp::<0>(), imp::<1>(), imp::<2>())
+};

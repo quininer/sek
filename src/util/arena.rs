@@ -63,6 +63,12 @@ impl<T> Extend<T> for Arena<T> {
     }
 }
 
+impl<T> Id<T> {
+    pub fn raw(&self) -> u32 {
+        self.0
+    }
+}
+
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         *self

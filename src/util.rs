@@ -1,5 +1,6 @@
 pub mod arena;
 pub mod stdout;
+pub mod path;
 
 use std::{ io, fmt };
 use std::pin::Pin;
@@ -64,7 +65,7 @@ pub struct CowStr<'s>(
 
 impl AsRef<str> for CowStr<'_> {
     fn as_ref(&self) -> &str {
-        &*self.0
+        &self.0
     }
 }
 

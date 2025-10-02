@@ -18,16 +18,16 @@ struct Options {
     #[argh(option, short = 'p')]
     pwd: Option<PathBuf>,
 
-    /// sub command
-    #[argh(subcommand)]
-    subcmd: Option<SubCommand>
+    // /// sub command
+    // #[argh(subcommand)]
+    // subcmd: Option<SubCommand>
 }
 
-#[derive(FromArgs)]
-#[argh(subcommand)]
-enum SubCommand {
-    // Daemon(daemon::Options)
-}
+// #[derive(FromArgs)]
+// #[argh(subcommand)]
+// enum SubCommand {
+//     // Daemon(daemon::Options)
+// }
 
 fn main() -> anyhow::Result<()> {
     let mut options: Options = argh::from_env();

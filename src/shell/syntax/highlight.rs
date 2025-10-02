@@ -199,9 +199,9 @@ impl Exe {
 
 impl Literal {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
-        let style = state.is_doublestr
-            .then_some(input.shell.config.theme.double_str)
-            .unwrap_or(input.shell.config.theme.literal);
+        let style = if state.is_doublestr
+            { input.shell.config.theme.double_str }
+            else { input.shell.config.theme.literal };
         state.push_to(style, input, self.span(input.parser), term)        
     }
 }

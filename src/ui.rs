@@ -1,10 +1,10 @@
 pub mod layout;
 pub mod render;
 
+use std::fmt;
 use crate::util::arena::{ Id, ArenaMap };
-use crate::shell::Shell;
 
-pub trait Element {
+pub trait Element: fmt::Debug {
     fn walk(
         &self,
         tree: &mut layout::Tree,
@@ -13,10 +13,13 @@ pub trait Element {
     );
 }
 
-pub type Table = ArenaMap<layout::Node, &'static render::RenderVtable<Shell, anyhow::Error>>;
+pub type Table = ArenaMap<layout::Node, render::ElementImpl>;
 
+#[derive(Debug)]
 pub struct Box<T>(pub layout::Style, pub T);
-pub struct Elem<T>(pub layout::Style, pub T);
+
+#[derive(Debug)]
+pub struct Elem(pub layout::Style, pub render::ElementImpl);
 
 impl<T: Element> Element for Box<T> {
     fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
@@ -25,13 +28,10 @@ impl<T: Element> Element for Box<T> {
     }
 }
 
-impl<T> Element for Elem<T>
-where
-    T: render::Element<State = Shell, Error = anyhow::Error>
-{
+impl Element for Elem {
     fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
         let id = tree.new_node(parent, self.0);
-        table.insert(id, T::VTABLE);
+        table.insert(id, self.1);
     }
 }
 
@@ -43,6 +43,15 @@ where
     fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
         self.0.walk(tree, table, parent);
         self.1.walk(tree, table, parent);
+    }
+}
+
+impl<A> Element for (A,)
+where
+    A: Element,
+{
+    fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
+        self.0.walk(tree, table, parent);
     }
 }
 

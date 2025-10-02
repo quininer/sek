@@ -48,7 +48,7 @@ impl syntax::Literal {
         if let Some(path) = value.strip_prefix('~') {
             if path.is_empty() {
                 let home = shell.env.home();
-                let home = <[u8]>::from_path(&home).context("invalid home path")?;
+                let home = <[u8]>::from_path(home).context("invalid home path")?;
                 push(home)
             } else if path.starts_with('/') {
                 let home = shell.env.home();
@@ -72,7 +72,7 @@ impl syntax::Variable {
             .strip_prefix('$')
             .and_then(|name| shell.env.get(name.as_ref()))
         {
-            let val = <[u8]>::from_os_str(&val).context("invalid env value")?;
+            let val = <[u8]>::from_os_str(val).context("invalid env value")?;
             push(val)?;
         }
 

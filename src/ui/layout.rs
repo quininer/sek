@@ -4,19 +4,20 @@ use std::ops::Range;
 use smallvec::SmallVec;
 use crate::util::arena::{ Arena, Id };
 
-
+#[derive(Debug)]
 pub struct Tree {
     nodes: Arena<Node>,
     freelist: Vec<Id<Node>>,
     root: Id<Node>
 }
 
+#[derive(Debug)]
 pub struct Node {
     style: Style,
     children: SmallVec<[Id<Node>; 3]>
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct Style {
     pub axis: Axis,
     pub justify: Justify,
@@ -134,7 +135,8 @@ impl Tree {
 
         let state = State {
             space,
-            parent_size: (columns, rows),
+            max_size: (columns, rows),
+            parent_axis: Axis::Vertical,
             range: Point { x: 0, y: 0 }..Point { x: columns, y: rows },
         };
 
@@ -154,17 +156,31 @@ pub struct Layout {
 #[derive(Clone)]
 struct State<'s> {
     space: &'s dyn Space,
-    parent_size: (u16, u16),
+    max_size: (u16, u16),
+    parent_axis: Axis,
     range: Range<Point>,
 }
 
+impl<'s> State<'s> {
+    fn with(mut self, axis: Axis, child_justify: Justify) -> State<'s> {
+        self.parent_axis = axis;
+
+        if matches!(axis, Axis::Vertical)
+            && matches!(child_justify, Justify::End)
+        {
+            self.range.start.y = self.range.end.y - 1;
+        }
+        
+        self
+    }
+}
 
 fn layout(
     tree: &Tree,
     state: State<'_>,
     node: Id<Node>,
     cursor: &mut Option<Point>,
-    output: &mut Vec<(Id<Node>, Layout)>
+    output: &mut Vec<(Id<Node>, Layout)>,
 )
     -> Layout
 {
@@ -177,19 +193,18 @@ fn layout(
 
 fn layout_node(
     tree: &Tree,
-    state: State<'_>,
-    node: Id<Node>,
+    mut state: State<'_>,
+    node_id: Id<Node>,
     cursor: &mut Option<Point>,
     output: &mut Vec<(Id<Node>, Layout)>
 )
     -> Layout
 {
-    let node = &tree.nodes[node];
-    let mut state = state;
+    let node = &tree.nodes[node_id];
     let mut start = 0;
     let mut end = node.children.len();
 
-    assert!(node.children.iter()
+    debug_assert!(node.children.iter()
         .map(|&id| tree.nodes[id].style.justify)
         .is_sorted()
     );
@@ -212,7 +227,14 @@ fn layout_node(
 
         assert!(!child.style.overflow);
 
-        let child_layout = layout(tree, state.clone(), child_id, cursor, output);
+        let child_layout = layout(
+            tree,
+            state.clone()
+                .with(node.style.axis, child.style.justify),
+            child_id,
+            cursor,
+            output,
+        );
         match node.style.axis {
             Axis::Horizontal => {
                 state.range.start.x += child_layout.size.0;
@@ -237,27 +259,34 @@ fn layout_node(
             break
         }
 
-        let child_layout = layout(tree, state.clone(), child_id, cursor, output);
+        let child_layout = layout(
+            tree,
+            state.clone()
+                .with(node.style.axis, child.style.justify),
+            child_id,
+            cursor,
+            output,
+        );
 
         assert!(!child.style.overflow);
 
         match node.style.axis {
             Axis::Horizontal => {
                 state.range.end.x -= child_layout.size.0;
-                node_layout.size.0 = state.parent_size.0;
+                node_layout.size.0 = state.max_size.0;
                 node_layout.size.1 = cmp::max(node_layout.size.1, child_layout.size.1);
             }
             Axis::Vertical => {
                 state.range.end.y -= child_layout.size.1;
                 node_layout.size.0 = cmp::max(node_layout.size.0, child_layout.size.0);
-                node_layout.size.1 = state.parent_size.1;
+                node_layout.size.1 = state.max_size.1;
             }
         }
     }
 
     let dynamic_nodes = &node.children[start..end];
 
-    if let Some((child_id, _child)) = dynamic_nodes.first()
+    if let Some((child_id, child)) = dynamic_nodes.first()
         .map(|&id| (id, &tree.nodes[id]))
         .filter(|_| dynamic_nodes.len() == 1)
         .filter(|(_, node)| matches!(node.style.axis, Axis::Horizontal))
@@ -266,8 +295,15 @@ fn layout_node(
     {
         assert_eq!(node.children.len(), end);
 
-        let child_layout = layout(tree, state.clone(), child_id, cursor, output);
-        node_layout.size.0 = state.parent_size.0;
+        let child_layout = layout(
+            tree,
+            state.clone()
+                .with(node.style.axis, child.style.justify),
+            child_id,
+            cursor,
+            output,
+        );
+        node_layout.size.0 = state.max_size.0;
         node_layout.size.1 = cmp::max(node_layout.size.1, child_layout.size.1);
     } else if !dynamic_nodes.is_empty() {
         let (step, half) = {
@@ -296,8 +332,8 @@ fn layout_node(
                 Axis::Vertical => prev_end.y - state.range.start.y,
             };
             let step = match rem.checked_sub(step) {
-                Some(rem) if rem > half => rem,
-                Some(_) => step,
+                Some(rem) if rem > half => step,
+                Some(_) => rem,
                 None => rem
             };
 
@@ -306,7 +342,14 @@ fn layout_node(
                 Axis::Vertical => state.range.end.y = state.range.start.y + step
             }
 
-            let child_layout = layout(tree, state.clone(), child_id, cursor, output);
+            let child_layout = layout(
+                tree,
+                state.clone()
+                    .with(node.style.axis, child.style.justify),
+                child_id,
+                cursor,
+                output,
+            );
 
             match node.style.axis {
                 Axis::Horizontal => {
@@ -344,31 +387,54 @@ fn layout_leaf(
     };
 
     if matches!(leaf.style.justify, Justify::End) {
-        leaf_layout.range.start.x = state.range.end.x;
-        leaf_layout.range.end.x = state.range.end.x;
+        match state.parent_axis {
+            Axis::Horizontal => {
+                leaf_layout.range.start.x = state.range.end.x;
+                leaf_layout.range.end.x = state.range.end.x;
+            },
+            Axis::Vertical => {
+                leaf_layout.range.start.y = state.range.end.y;
+                leaf_layout.range.end.y = state.range.end.y;
+            }
+        }
     }
 
     let (mut len, mut cursor_len) = match state.space.info(leaf_id) {
         Some(info) => (info.length, info.cursor),
         None => return leaf_layout
     };
-    let first_line = state.range.end.x - state.range.start.x;
-    let full_line = state.parent_size.0;
+    let rem = match state.parent_axis {
+        Axis::Horizontal => state.range.end.x - state.range.start.x,
+        Axis::Vertical => state.range.end.y - state.range.start.y,
+    };
 
-    if let Some(cursor_len) = cursor_len {
-        assert!(cursor_len <= len);
-    }
+    assert!(cursor_len.unwrap_or_default() <= len);
 
     match leaf.style.justify {
         Justify::Start => {
-            let len = cmp::min(len, first_line.into());
+            let len = cmp::min(len, rem.into());
             let len: u16 = len.try_into().unwrap();
-            leaf_layout.range.end.x += len;
-            leaf_layout.size.0 += len;
-            leaf_layout.size.1 = 1;
+
+            assert_eq!(leaf.style.axis, state.parent_axis);
+            assert!(!leaf.style.overflow);
+
+            match state.parent_axis {
+                Axis::Horizontal => {
+                    leaf_layout.range.end.x += len;
+                    leaf_layout.size.0 += len;
+                    leaf_layout.size.1 = 1;
+                },
+                Axis::Vertical => {
+                    leaf_layout.range.end.y += len;
+                    leaf_layout.size.0 = state.range.end.x - state.range.start.x;
+                    leaf_layout.size.1 += len;
+                }
+            }
 
             if let Some(cursor_len) = cursor_len {
-                let cursor_len = cmp::min(cursor_len, first_line.into());
+                assert!(matches!(state.parent_axis, Axis::Horizontal));
+                
+                let cursor_len = cmp::min(cursor_len, rem.into());
                 let cursor_len: u16 = cursor_len.try_into().unwrap();
                 *cursor = Some(Point {
                     x: leaf_layout.range.start.x + cursor_len,
@@ -379,16 +445,45 @@ fn layout_leaf(
             output.push((leaf_id, leaf_layout.clone()));
             return leaf_layout;
         },
-        Justify::Stretch => (),
+        Justify::Stretch
+            if matches!(state.parent_axis, Axis::Horizontal)
+                && matches!(leaf.style.axis, Axis::Horizontal) => (),
+        Justify::Stretch if !leaf.style.overflow => {
+            leaf_layout.range = state.range.clone();
+            leaf_layout.size.0 = state.range.end.x - state.range.start.x;
+            leaf_layout.size.1 = state.range.end.y - state.range.start.y;
+
+            assert!(cursor_len.is_none());
+
+            output.push((leaf_id, leaf_layout.clone()));
+            return leaf_layout;
+        }
+        Justify::Stretch => panic!("unsupported"),
         Justify::End => {
-            let len = cmp::min(len, first_line.into());
+            let len = cmp::min(len, rem.into());
             let len: u16 = len.try_into().unwrap();
-            leaf_layout.range.start.x -= len;
-            leaf_layout.size.0 += len;
-            leaf_layout.size.1 = 1;
+
+            assert_eq!(leaf.style.axis, state.parent_axis);
+
+            match state.parent_axis {
+                Axis::Horizontal => {
+                    leaf_layout.range.start.x -= len;
+                    leaf_layout.size.0 += len;
+                    leaf_layout.size.1 = 1;
+                },
+                Axis::Vertical => {
+                    leaf_layout.range.start.y -= len;
+                    leaf_layout.size.0 = state.range.end.x - state.range.start.x;
+                    leaf_layout.size.1 += len;
+                }
+            }
+
+            assert!(!leaf.style.overflow);            
 
             if let Some(cursor_len) = cursor_len {
-                let cursor_len = cmp::min(cursor_len, first_line.into());
+                assert!(matches!(state.parent_axis, Axis::Horizontal));
+
+                let cursor_len = cmp::min(cursor_len, rem.into());
                 let cursor_len: u16 = cursor_len.try_into().unwrap();
                 *cursor = Some(Point {
                     x: leaf_layout.range.start.x + cursor_len,
@@ -403,8 +498,8 @@ fn layout_leaf(
 
     let mut cursor_point = None;
 
-    for line in iter::once(first_line)
-        .chain(iter::repeat(full_line))
+    for line in iter::once(rem)
+        .chain(iter::repeat(state.max_size.0))
         .take(usize::from(state.range.end.y - state.range.start.y))
     {
         if let Some(cursor_len) = cursor_len.as_mut()

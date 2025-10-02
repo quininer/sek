@@ -1,9 +1,11 @@
 pub mod line;
 pub mod ui;
+pub mod path_selector;
 
 use std::mem;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
+use path_selector::PathSelector;
 use crate::ui::layout;
 
 pub struct Editor {
@@ -12,18 +14,21 @@ pub struct Editor {
     pub insert: EditableLine,
     pub command: EditableLine,
     pub ready: Option<char>,
+    pub path_selector: PathSelector,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Mode {
     Insert,
     Normal,
-    Visual
+    Visual,
+    PathSelector,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
     Continue,
+    Completion,
     Execute,
     Break,
 }
@@ -37,9 +42,10 @@ impl AsRef<layout::Tree> for Editor {
 impl Editor {
     pub fn new() -> anyhow::Result<Self> {
         let ui = ui::Editor::new()?;
+        let path_selector = PathSelector::new()?;
 
         Ok(Editor {
-            ui,
+            ui, path_selector,
             mode: Mode::Insert,
             insert: EditableLine::default(),
             command: EditableLine::default(),
@@ -58,7 +64,7 @@ impl Editor {
             => return Ok(Action::Break),
 
             // Insert to Normal
-            (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
+            (Mode::Insert | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::ALT && code == KeyCode::Char(' '))
@@ -81,6 +87,9 @@ impl Editor {
                     KeyCode::End => self.insert.move_end(),
                     KeyCode::Up => self.insert.up(),
                     KeyCode::Down => self.insert.down(),
+                    KeyCode::Tab => {
+                        return Ok(Action::Completion)
+                    }
                     KeyCode::Enter => {
                         self.insert.submit();
                         return Ok(Action::Execute)
@@ -100,48 +109,50 @@ impl Editor {
                 mem::swap(&mut cursor.start, &mut cursor.end);
             }
 
-            // Noraml && Visual
-            (Mode::Normal | Mode::Visual, Event::Key(KeyEvent { modifiers, code, .. }))
+            // Normal && Visual
+            (Mode::Normal | Mode::Visual | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
             => match (self.mode, self.ready.take(), self.command.first(), code) {
-                // mode switch
-                (Mode::Normal, None, None, KeyCode::Char(':' | ';'))
+                // command mode
+                (Mode::Normal | Mode::PathSelector, None, None, KeyCode::Char(':' | ';'))
                     => self.command.push(':'),
-                (Mode::Normal, None, None, KeyCode::Char('/'))
+                (Mode::Normal | Mode::PathSelector, None, None, KeyCode::Char('/'))
                     => self.command.push('/'),
-                (_, None, None, KeyCode::Char('i'))
+
+                // normal and visual
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('i'))
                     => self.mode = Mode::Insert,
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('a')) => {
+                    self.insert.move_right();
+                    self.mode = Mode::Insert;
+                },
                 (Mode::Normal, None, None, KeyCode::Char('v')) =>
                     self.mode = Mode::Visual,
                 (Mode::Visual, None, None, KeyCode::Char('v')) =>
                     self.mode = Mode::Normal,
-                (_, None, None, KeyCode::Char('a')) => {
-                    self.insert.move_right();
-                    self.mode = Mode::Insert;
-                },
 
                 // move
-                (_, None, None, KeyCode::Char('h')) => {
+                (Mode::Normal, None, None, KeyCode::Char('h')) => {
                     self.insert.move_left();
                     if matches!(self.mode, Mode::Normal) {
                         let cursor = self.insert.cursor_mut();
                         cursor.start = cursor.end;
                     }
                 },
-                (_, None, None, KeyCode::Char('l')) => {
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('l')) => {
                     self.insert.move_right();
                     if matches!(self.mode, Mode::Normal) {
                         let cursor = self.insert.cursor_mut();
                         cursor.start = cursor.end;
                     }
                 },
-                (_, None, None, KeyCode::Char('x')) => {
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('x')) => {
                     let end = self.insert.char_len();
                     let cursor = self.insert.cursor_mut();
                     cursor.start = 0;
                     cursor.end = end;
                 },
-                (_, None, None, KeyCode::Char('w')) => {
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('w')) => {
                     let span = self.insert.move_right_word();
                     let cursor = self.insert.cursor_mut();
                     match self.mode {
@@ -150,7 +161,7 @@ impl Editor {
                         _ => unreachable!()
                     }
                 },
-                (_, None, None, KeyCode::Char('b')) => {
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('b')) => {
                     let span = self.insert.move_left_word();
                     let cursor = self.insert.cursor_mut();
                     match self.mode {
@@ -164,35 +175,34 @@ impl Editor {
                 },
 
                 // history
-                (_, None, None, KeyCode::Up | KeyCode::Char('k')) => {
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Up | KeyCode::Char('k')) => {
                     self.insert.up();
                 },
-                (_, None, None, KeyCode::Down | KeyCode::Char('j')) => {
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Down | KeyCode::Char('j')) => {
                     self.insert.down();
                 },
 
                 // execute
-                (_, None, None, KeyCode::Enter) => {
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Enter) => {
                     self.insert.submit();
                     self.mode = Mode::Insert;
                     return Ok(Action::Execute)
                 }
 
-                // input
-                (Mode::Normal, _, _, KeyCode::Char('\r')) => (),
-                (Mode::Normal, None, Some(_), KeyCode::Char(c))
+                // command input
+                (Mode::Normal | Mode::PathSelector, _, _, KeyCode::Char('\r')) => (),
+                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Char(c))
                     => self.command.push(c),
-                (Mode::Normal, None, Some(_), KeyCode::Backspace)
+                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Backspace)
                     => self.command.backspace(),
-                (Mode::Normal, None, Some(_), KeyCode::Delete)
+                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Delete)
                     => self.command.delete(),
-                (Mode::Normal, None, Some(_), KeyCode::Left)
+                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Left)
                     => self.command.move_left(),
-                (Mode::Normal, None, Some(_), KeyCode::Right)
+                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Right)
                     => self.command.move_right(),
-                (Mode::Normal, None, Some(_), KeyCode::Esc) => {
-                    self.command.clear();
-                },
+                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Esc)
+                    => self.command.clear(),
 
                 // delete selection
                 (Mode::Visual, None, None, KeyCode::Char('d')) => {
@@ -222,7 +232,9 @@ impl Mode {
             // normal
             None,
             // visual
-            Some("VIS")
+            Some("VIS"),
+            // path selector
+            None
         ];
 
         STR[self as usize]

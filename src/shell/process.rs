@@ -118,7 +118,8 @@ impl Morgue {
     {
         child.wait().await
     }
-    
+
+    #[allow(clippy::await_holding_refcell_ref)]    
     pub async fn wait(&mut self) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 

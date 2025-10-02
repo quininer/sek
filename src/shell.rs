@@ -10,7 +10,7 @@ use directories::ProjectDirs;
 use crate::config::{ self, Config };
 use crate::ui::layout;
 use crate::ui::render::Renderer;
-use crate::editor::{ Editor, Action };
+use crate::editor::{ Editor, Action, Mode };
 use crate::util::{ ScopeGuard, FmtDebug };
 use crate::util::stdout::Stdout;
 use env::Environment;
@@ -27,7 +27,7 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(projdir: ProjectDirs, pwd: PathBuf, config_path: PathBuf)
+    pub fn new(_projdir: ProjectDirs, pwd: PathBuf, config_path: PathBuf)
         -> anyhow::Result<Self>
     {
         let mut env = Environment::new(pwd)?;
@@ -49,7 +49,7 @@ impl Shell {
         let stdout = Stdout::from(io::stdout());
         let size = terminal::size()?;
 
-        let mut renderer = <Renderer<Shell, _, anyhow::Error>>::new(size, || stdout.lock());
+        let mut renderer = <Renderer<_>>::new(size, || stdout.lock());
         let error_renderer = annotate_snippets::Renderer::styled()
             .term_width(size.1.into());
 
@@ -63,11 +63,12 @@ impl Shell {
             renderer.render(&self.editor.ui.table, &self)?;
             
             let event = crossterm::event::read()?;
-            let is_execute = match self.editor.step(event)? {
-                Action::Continue => false,
-                Action::Execute => true,
-                Action::Break => break
-            };
+            let action = self.editor.step(event)?;
+            let is_execute = matches!(action, Action::Execute);
+
+            if matches!(action, Action::Break) {
+                break
+            }
 
             let line = self.editor.insert.as_str();
             let result = if is_execute {
@@ -78,6 +79,14 @@ impl Shell {
             self.ast = result.as_ref().ok().copied();
 
             match result {
+                Ok(_cmd) if matches!(action, Action::Completion) => {
+                    // TODO check completion type
+
+                    renderer.screen_clear()?;
+                    self.editor.path_selector.set_space(size.1.into());
+                    self.editor.path_selector.cd(self.env.pwd())?;
+                    self.editor.mode = Mode::PathSelector;
+                }
                 Ok(_) => (),
                 // syntax error
                 Err(err) if is_execute => {

@@ -3,16 +3,16 @@ use std::io::{ self, Write };
 use crossterm::{ queue, cursor, style, terminal };
 use crate::util::RefWriter;
 use crate::util::arena::{ Id, ArenaMap };
+use crate::shell::Shell;
 use super::layout::{ self, Layout };
 
 
-pub struct Renderer<S: 'static, T, E: 'static> {
+pub struct Renderer<T> {
     pub size: (u16, u16),
     pub term: T,
     current: layout::Point,
     max_y: u16,
     queue: Vec<(Id<layout::Node>, Layout)>,
-    _phantom: std::marker::PhantomData<(S, E)>
 }
 
 pub trait TermTarget {
@@ -21,21 +21,10 @@ pub trait TermTarget {
     fn access(&self) -> Self::Writer;
 }
 
-pub trait Element {
-    type State: 'static;
-    type Error: 'static;
-
-    const VTABLE: &'static RenderVtable<Self::State, Self::Error>;
-
-    fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo>;
-    fn render(
-        state: &Self::State,
-        leaf_id: Id<layout::Node>,
-        layout: &Layout,
-        current: &mut layout::Point,
-        term: RefWriter<'_>
-    )
-        -> Result<(), Self::Error>;
+#[derive(Debug, Clone, Copy)]
+pub struct ElementImpl {
+    pub info: SpaceInfoMethod<Shell>,
+    pub render: RenderMethod<Shell, anyhow::Error>
 }
 
 type SpaceInfoMethod<State> = fn(&State, Id<layout::Node>) -> Option<layout::SpaceInfo>;
@@ -47,20 +36,7 @@ type RenderMethod<State, Error> = fn(
     RefWriter<'_>
 ) -> Result<(), Error>;
 
-pub struct RenderVtable<State, Error> {
-    info: SpaceInfoMethod<State>,
-    render: RenderMethod<State, Error>
-}
-
-impl<S, E> RenderVtable<S, E> {
-    pub const fn new<R>() -> RenderVtable<S, E>
-    where R: Element<State = S, Error = E>
-    {
-        RenderVtable { info: R::info, render: R::render }
-    }
-}
-
-impl<S, T, E> Renderer<S, T, E>
+impl<T> Renderer<T>
 where
     T: TermTarget
 {
@@ -70,7 +46,6 @@ where
             current: layout::Point { x: 0, y: 0 },
             max_y: 0,
             queue: Vec::new(),
-            _phantom: std::marker::PhantomData
         }
     }
 
@@ -89,13 +64,26 @@ where
         };
 
         term.flush()
-    }    
+    }
 
-    pub fn render(&mut self, table: &ArenaMap<layout::Node, &'static RenderVtable<S, E>>, shell: &S)
-        -> Result<(), E>
-    where
-        S: AsRef<layout::Tree>,
-        E: From<io::Error>
+    pub fn screen_clear(&mut self)  -> io::Result<()> {
+        let mut term = self.term.access();
+        queue!(term,
+            cursor::MoveTo(0, 0),
+            terminal::Clear(terminal::ClearType::FromCursorDown),
+        )?;
+
+        self.max_y = 0;
+        self.current = layout::Point {
+            x: 0,
+            y: 0
+        };
+
+        term.flush()
+    }
+
+    pub fn render(&mut self, table: &ArenaMap<layout::Node, ElementImpl>, shell: &Shell)
+        -> anyhow::Result<()>
     {
         fn move_to<W: io::Write>(term: &mut W, src: &mut layout::Point, max_y: u16, dst: layout::Point)
             -> io::Result<()>
@@ -122,7 +110,7 @@ where
         }
         
         let space = RenderSpace {
-            shell, map: table
+            shell, table
         };
 
         let mut cursor = None;
@@ -161,14 +149,14 @@ where
     }
 }
 
-struct RenderSpace<'a, S: 'static, E: 'static> {
-    shell: &'a S,
-    map: &'a ArenaMap<layout::Node, &'static RenderVtable<S, E>>
+struct RenderSpace<'a> {
+    shell: &'a Shell,
+    table: &'a ArenaMap<layout::Node, ElementImpl>
 }
 
-impl<S, E> layout::Space for RenderSpace<'_, S, E> {
+impl layout::Space for RenderSpace<'_> {
     fn info(&self, leaf: Id<layout::Node>) -> Option<layout::SpaceInfo> {
-        let vtable = self.map.get(leaf)?;
+        let vtable = self.table.get(leaf)?;
         (vtable.info)(self.shell, leaf)
     }
 }
@@ -183,6 +171,38 @@ impl fmt::Display for Fill {
             f.write_char(self.0)?;
         }
 
+        Ok(())
+    }
+}
+
+pub struct LimitAndFill<T>(pub T, pub char, pub usize);
+
+impl<T> fmt::Display for LimitAndFill<T>
+where
+    T: Clone + Iterator<Item = char>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use std::fmt::Write;
+        use unicode_width::UnicodeWidthChar;
+
+        let LimitAndFill(s, c, len) = self;
+        let mut len = *len;
+
+        for c in s.clone() {
+            let width = c.width().unwrap_or_default();
+
+            match len.checked_sub(width) {
+                Some(rem) => len = rem,
+                None => break
+            }
+
+            f.write_char(c)?;
+        }
+
+        for _ in 0..len {
+            f.write_char(*c)?;
+        }
+        
         Ok(())
     }
 }
