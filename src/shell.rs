@@ -119,7 +119,6 @@ impl Shell {
                     }
 
                     self.editor.insert.clear();
-                    self.editor.insert_cursor = 0..0;
                 }
             }
         }

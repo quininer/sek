@@ -59,7 +59,8 @@ impl EditableLine {
         self.as_str().chars().next()
     }
 
-    pub fn inclusive(&self, cursor: Range<usize>) -> Range<usize> {
+    pub fn cursor_inclusive(&self) -> Range<usize> {
+        let cursor = self.line().cursor.clone();
         let (start, end) = if cursor.end > cursor.start {
             (cursor.start, cursor.end)
         } else {
@@ -78,8 +79,12 @@ impl EditableLine {
         }
     }
 
-    fn current(&self) -> usize {
-        self.list.len() - self.current
+    pub fn cursor(&self) -> Range<usize> {
+        self.line().cursor.clone()
+    }
+
+    pub fn cursor_mut(&mut self) -> &mut Range<usize> {
+        &mut self.line_mut().cursor
     }
 
     fn line(&self) -> &Line {
@@ -88,6 +93,10 @@ impl EditableLine {
 
     fn line_mut(&mut self) -> &mut Line {
         self.list.get_mut(self.current()).unwrap_or(&mut self.line)
+    }
+
+    fn current(&self) -> usize {
+        self.list.len() - self.current
     }
 
     fn index(&self, cur: usize) -> usize {
@@ -113,7 +122,7 @@ impl EditableLine {
         }
     }
 
-    pub fn push(&mut self, _cur: &mut usize, c: char) {
+    pub fn push(&mut self, c: char) {
         let cur = self.line().cursor.end;
         let idx = self.index(cur);
         self.line_mut().buf.insert(idx, c);
@@ -141,23 +150,19 @@ impl EditableLine {
         }
     }
 
-    pub fn replace_str(&mut self, range: &mut Range<usize>, s: &str) {
-        let (start, end) = if range.end > range.start {
-            (&mut range.start, &mut range.end)
-        } else {
-            (&mut range.end, &mut range.start)
-        };
+    pub fn replace_str_inclusive(&mut self, s: &str) {
+        let cursor = self.cursor_inclusive();
 
-        let bytes_range = self.index(*start)..self.index(*end);
+        let bytes_range = self.index(cursor.start)..self.index(cursor.end);
         self.line_mut()
             .buf
             .replace_range(bytes_range.clone(), s);
 
-        self.update(*start, bytes_range.start, || s.is_ascii());
-        *end = *start + s.chars().count();
+        self.update(cursor.start, bytes_range.start, || s.is_ascii());
+        self.line_mut().cursor.end = cursor.start + s.chars().count();
     }
 
-    pub fn push_str(&mut self, _cur: &mut usize, s: &str) {
+    pub fn push_str(&mut self, s: &str) {
         let cur = self.line().cursor.end;
         let idx = self.index(cur);
         self.line_mut()
@@ -167,7 +172,7 @@ impl EditableLine {
         self.line_mut().cursor.end += s.chars().count();
     }
 
-    pub fn backspace(&mut self, _cur: &mut usize) {
+    pub fn backspace(&mut self) {
         let cur = self.line().cursor.end;
         if cur != 0 {
             let idx = self.index(cur);
@@ -182,7 +187,7 @@ impl EditableLine {
         }
     }
 
-    pub fn delete(&mut self, _cur: usize) {
+    pub fn delete(&mut self) {
         let cur = self.line().cursor.end;
         let idx = self.index(cur);
         if self.bytes_len() > idx {
@@ -200,26 +205,26 @@ impl EditableLine {
         }
     }
 
-    pub fn move_head(&mut self, _cur: &mut usize) {
+    pub fn move_head(&mut self) {
         self.line_mut().cursor.end = 0;
     }
 
-    pub fn move_end(&mut self, _cur: &mut usize) {
+    pub fn move_end(&mut self) {
         self.line_mut().cursor.end = self.char_len();
     }
 
-    pub fn move_left(&mut self, _cur: &mut usize) {
+    pub fn move_left(&mut self) {
         let cur = &mut self.line_mut().cursor.end;
         *cur = cur.saturating_sub(1);
     }
 
-    pub fn move_right(&mut self, _cur: &mut usize) {
+    pub fn move_right(&mut self) {
         let len = self.char_len();
         let cur = &mut self.line_mut().cursor.end;
         *cur = cmp::min(*cur + 1, len);
     }
 
-    pub fn move_left_word(&self, _cur: usize) -> Range<usize> {
+    pub fn move_left_word(&self) -> Range<usize> {
         let cur = self.line().cursor.end;
         let idx = self.index(cur);
         let buf = &self.as_str()[..idx];
@@ -236,7 +241,7 @@ impl EditableLine {
         }
     }
 
-    pub fn move_right_word(&self, _cur: usize) -> Range<usize> {
+    pub fn move_right_word(&self) -> Range<usize> {
         let cur = self.line().cursor.end;
         let idx = self.index(cur);
         let buf = &self.as_str()[idx..];
@@ -320,78 +325,78 @@ impl fmt::Display for EditableLine {
 #[test]
 fn test_buffer() {
     let mut buf = EditableLine::default();
-    let mut range = 0..0;
-    buf.push(&mut range.end, 'a');
-    buf.push(&mut range.end, 'b');
-    buf.push(&mut range.end, 'c');
+    buf.push('a');
+    buf.push('b');
+    buf.push('c');
     assert_eq!(buf.as_str(), "abc");
-    assert_eq!(range.end, 3);
+    assert_eq!(buf.cursor().end, 3);
 
-    buf.backspace(&mut range.end);
+    buf.backspace();
     assert_eq!(buf.as_str(), "ab");
-    assert_eq!(range.end, 2);
+    assert_eq!(buf.cursor().end, 2);
 
-    buf.delete(range.end);
+    buf.delete();
     assert_eq!(buf.as_str(), "ab");
-    assert_eq!(range.end, 2);
+    assert_eq!(buf.cursor().end, 2);
 
-    buf.move_left(&mut range.end);
-    buf.move_left(&mut range.end);
-    buf.delete(range.end);
+    buf.move_left();
+    buf.move_left();
+    buf.delete();
     assert_eq!(buf.as_str(), "b");
-    assert_eq!(range.end, 0);
+    assert_eq!(buf.cursor().end, 0);
 
-    buf.backspace(&mut range.end);
+    buf.backspace();
     assert_eq!(buf.as_str(), "b");
-    assert_eq!(range.end, 0);
+    assert_eq!(buf.cursor().end, 0);
 
-    buf.move_right(&mut range.end);
-    buf.backspace(&mut range.end);
+    buf.move_right();
+    buf.backspace();
     assert_eq!(buf.as_str(), "");
-    assert_eq!(range.end, 0);
+    assert_eq!(buf.cursor().end, 0);
 
-    buf.push(&mut range.end, '中');
-    buf.push(&mut range.end, '文');
-    buf.move_left(&mut range.end);
-    buf.move_left(&mut range.end);
-    buf.push(&mut range.end, 'a');
-    buf.push(&mut range.end, 'a');
-    buf.push(&mut range.end, 'a');
-    buf.move_right(&mut range.end);
-    buf.move_right(&mut range.end);
+    buf.push('中');
+    buf.push('文');
+    buf.move_left();
+    buf.move_left();
+    buf.push('a');
+    buf.push('a');
+    buf.push('a');
+    buf.move_right();
+    buf.move_right();
 
-    let (x, y) = buf.split(range.end);
+    let (x, y) = buf.split(buf.cursor().end);
     assert_eq!(x, "aaa中文");
     assert_eq!(y, "");
 
     buf.clear();
-    range = 0..0;
-    buf.push(&mut range.end, '中');
-    buf.push(&mut range.end, '文');
-    buf.move_left(&mut range.end);
+    buf.push('中');
+    buf.push('文');
+    buf.move_left();
 
-    let (x, y) = buf.split(range.end);
+    let (x, y) = buf.split(buf.cursor().end);
     assert_eq!(x, "中");
     assert_eq!(y, "文");
 
-    buf.push_str(&mut range.end, "hello world");
-    buf.move_head(&mut range.end);
-    range.start = range.end;
+    buf.push_str("hello world");
+    buf.move_head();
+    {
+        let cursor = buf.cursor_mut();
+        cursor.start = cursor.end;
+    }
 
-    range = buf.move_right_word(range.end);
-    assert_eq!(&buf.as_str()[buf.span(range.clone())], "中");
-    range = buf.move_right_word(range.end);
-    assert_eq!(&buf.as_str()[buf.span(range.clone())], "hello");
-    range = buf.move_right_word(range.end);
-    assert_eq!(&buf.as_str()[buf.span(range.clone())], " ");
-    range = buf.move_right_word(range.end);
-    assert_eq!(&buf.as_str()[buf.span(range.clone())], "world");
-    range = buf.move_right_word(range.end);
-    assert_eq!(&buf.as_str()[buf.span(range.clone())], "文");
-
-    range.start = range.end;
-    range = buf.move_left_word(range.start);
-    assert_eq!(&buf.as_str()[buf.span(range.clone())], "文");
-    range = buf.move_left_word(range.start);
-    assert_eq!(&buf.as_str()[buf.span(range.clone())], "world");
+    let range = buf.move_right_word();
+    *buf.cursor_mut() = range;
+    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], "中");
+    let range = buf.move_right_word();
+    *buf.cursor_mut() = range;
+    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], "hello");
+    let range = buf.move_right_word();
+    *buf.cursor_mut() = range;
+    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], " ");
+    let range = buf.move_right_word();
+    *buf.cursor_mut() = range;
+    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], "world");
+    let range = buf.move_right_word();
+    *buf.cursor_mut() = range;
+    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], "文");
 }

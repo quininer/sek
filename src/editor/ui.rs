@@ -122,7 +122,7 @@ impl Render for InsertLine {
     fn info(state: &Self::State, leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         assert_eq!(state.editor.ui.insert_line, leaf_id);
 
-        let (s0, s1) = state.editor.insert.split(state.editor.insert_cursor.end);
+        let (s0, s1) = state.editor.insert.split(state.editor.insert.cursor().end);
         let s0_len = s0.width();
         let s1_len = s1.width();
 
@@ -222,7 +222,7 @@ impl Render for CommandLine {
         matches!(state.editor.mode, editor::Mode::Normal | editor::Mode::Visual)
             .then_some(())?;
 
-        let (s0, s1) = state.editor.command.split(state.editor.command_cursor);
+        let (s0, s1) = state.editor.command.split(state.editor.command.cursor().end);
         let s0_len = s0.width();
         let s1_len = s1.width();
 
