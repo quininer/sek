@@ -39,7 +39,7 @@ pub enum Token {
     #[regex(r"\$[\w]+")]
     Variable,
 
-    #[regex(r#"[^#$&()|\\;"'<>\s]+"#)]
+    #[regex(r#"[^#)|\\;"'<>\s]+"#)]
     Text,
 
     #[regex(r"[\s]+")]
