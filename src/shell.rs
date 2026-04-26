@@ -63,7 +63,7 @@ impl Shell {
             renderer.render(&self.editor.ui.table, &self)?;
             
             let event = crossterm::event::read()?;
-            let action = self.editor.step(event)?;
+            let action = self.editor.step(&self.env, event)?;
             let is_execute = matches!(action, Action::Execute);
 
             if matches!(action, Action::Break) {

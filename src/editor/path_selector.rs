@@ -91,6 +91,10 @@ impl PathSelector {
         &self.path
     }
 
+    pub fn selected(&self) -> PathBuf {
+        self.current.queue[self.current.cur].path()
+    }
+
     pub fn clear(&mut self) {
         self.path.clear();
         self.filter = Filter::default();

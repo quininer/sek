@@ -3,10 +3,12 @@ pub mod ui;
 pub mod path_selector;
 
 use std::mem;
+use anyhow::Context;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
 use path_selector::PathSelector;
 use crate::ui::layout;
+use crate::shell::env::Environment;
 
 pub struct Editor {
     pub ui: ui::Editor,
@@ -53,7 +55,7 @@ impl Editor {
         })
     }
 
-    pub fn step(&mut self, event: Event)
+    pub fn step(&mut self, env: &Environment, event: Event)
         -> anyhow::Result<Action>
     {
         match (self.mode, event) {
@@ -109,7 +111,7 @@ impl Editor {
                 mem::swap(&mut cursor.start, &mut cursor.end);
             }
 
-            // Normal && Visual
+            // Normal && Visual && PathSelector
             (Mode::Normal | Mode::Visual | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
             => match (self.mode, self.ready.take(), self.command.first(), code) {
@@ -132,7 +134,7 @@ impl Editor {
                     self.mode = Mode::Normal,
 
                 // move
-                (Mode::Normal, None, None, KeyCode::Char('h')) => {
+                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('h')) => {
                     self.insert.move_left();
                     if matches!(self.mode, Mode::Normal) {
                         let cursor = self.insert.cursor_mut();
@@ -215,6 +217,35 @@ impl Editor {
                 (Mode::Normal, Some('d'), None, KeyCode::Char('d')) => {
                     self.insert.clear();
                 }
+
+                (Mode::PathSelector, None, None, KeyCode::Char('j')) =>
+                    self.path_selector.down()?,
+                (Mode::PathSelector, None, None, KeyCode::Char('k')) =>
+                    self.path_selector.up()?,
+                (Mode::PathSelector, None, None, KeyCode::Char('h')) =>
+                    self.path_selector.left()?,
+                (Mode::PathSelector, None, None, KeyCode::Char('l')) =>
+                    self.path_selector.right()?,
+                (Mode::PathSelector, None, None, KeyCode::Char('.')) =>
+                    self.path_selector.toggle_hidden_file(),
+                (Mode::PathSelector, None, None, KeyCode::Char(',')) =>
+                    self.path_selector.toggle_case_sensitive(),
+                (Mode::PathSelector, None, None, KeyCode::Enter) => {
+                    let path = self.path_selector.selected();
+                    let path = path
+                        .strip_prefix(env.pwd())
+                        .unwrap_or(&path)
+                        .to_str()
+                        .context("non-utf8 path are unsupported")?;
+                    let path = if !path.is_empty() {
+                        path
+                    } else {
+                        "."
+                    };
+                    self.insert.push_str(path);
+                    self.mode = Mode::Insert;
+                },
+                    
                 _ => ()
             },
             _ => ()

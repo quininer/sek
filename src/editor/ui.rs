@@ -277,6 +277,8 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
     )
         -> anyhow::Result<()>
     {
+        use crate::editor::path_selector::EntryType;
+    
         let list = match N {
             0 => &shell.editor.path_selector.parent,
             1 => &shell.editor.path_selector.current,
@@ -291,16 +293,27 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
             let n: u16 = n.try_into().unwrap();
             let name = entry.name();
 
-            queue!(term, cursor::MoveTo(layout.range.start.x, layout.range.start.y + n))?;
+            let color = match entry.type_() {
+                EntryType::Dir => shell.config.theme.variable.color(),
+                EntryType::File => Some(style::Color::White),
+                EntryType::Other => shell.config.theme.single_str.color()
+            };
 
-            if hint {
-                queue!(term, style::SetColors(style::Colors::new(
+            let color = if hint {
+                style::Colors::new(
                     style::Color::Black,
-                    style::Color::White
-                )))?;
-            }
-            
+                    color.unwrap_or(style::Color::White)
+                )
+            } else {
+                style::Colors::new(
+                    color.unwrap_or(style::Color::White),
+                    style::Color::Reset,
+                )
+            };
+
             queue!(term,
+                cursor::MoveTo(layout.range.start.x, layout.range.start.y + n),
+                style::SetColors(color),
                 style::Print(LimitAndFill(
                     name.as_encoded_bytes().chars(),
                     ' ',
