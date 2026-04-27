@@ -17,6 +17,7 @@ pub struct Editor {
     pub command: EditableLine,
     pub ready: Option<char>,
     pub path_selector: PathSelector,
+    clipboard: String,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -51,7 +52,8 @@ impl Editor {
             mode: Mode::Insert,
             insert: EditableLine::default(),
             command: EditableLine::default(),
-            ready: None
+            ready: None,
+            clipboard: String::new(),
         })
     }
 
@@ -61,7 +63,8 @@ impl Editor {
         match (self.mode, event) {
             // Quit
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
-                if modifiers == KM::CONTROL && code == KeyCode::Char('d')
+                if modifiers == KM::CONTROL
+                    && code == KeyCode::Char('d')
                     && self.insert.is_empty()
             => return Ok(Action::Break),
 
@@ -103,7 +106,7 @@ impl Editor {
                 cursor.start = cursor.end;
             },
 
-            // Noraml && Visual
+            // Noraml && Visual: swap cursor
             (Mode::Normal | Mode::Visual, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::ALT) && code == KeyCode::Char(';')
             => {
@@ -111,50 +114,71 @@ impl Editor {
                 mem::swap(&mut cursor.start, &mut cursor.end);
             }
 
+            // Normal && PathSelector with command
+            (Mode::Normal | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
+                if modifiers.contains(KM::SHIFT & KM::NONE) && !self.command.is_empty()
+            => match (self.mode, self.command.first(), code) {
+                // command input
+                (Mode::Normal | Mode::PathSelector, _, KeyCode::Char('\r')) => (),
+                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Char(c))
+                    => self.command.push(c),
+                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Backspace)
+                    => self.command.backspace(),
+                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Delete)
+                    => self.command.delete(),
+                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Left)
+                    => self.command.move_left(),
+                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Right)
+                    => self.command.move_right(),
+                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Esc)
+                    => self.command.clear(),
+                _ => (),      
+            },
+
             // Normal && Visual && PathSelector
             (Mode::Normal | Mode::Visual | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
-                if modifiers.contains(KM::SHIFT & KM::NONE)
-            => match (self.mode, self.ready.take(), self.command.first(), code) {
+                if modifiers.contains(KM::SHIFT & KM::NONE) && self.command.is_empty()
+            => match (self.mode, self.ready.take(), code) {
                 // command mode
-                (Mode::Normal | Mode::PathSelector, None, None, KeyCode::Char(':' | ';'))
+                (Mode::Normal | Mode::PathSelector, None, KeyCode::Char(':' | ';'))
                     => self.command.push(':'),
-                (Mode::Normal | Mode::PathSelector, None, None, KeyCode::Char('/'))
+                (Mode::Normal | Mode::PathSelector, None, KeyCode::Char('/'))
                     => self.command.push('/'),
 
                 // normal and visual
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('i'))
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('i'))
                     => self.mode = Mode::Insert,
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('a')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('a')) => {
                     self.insert.move_right();
                     self.mode = Mode::Insert;
                 },
-                (Mode::Normal, None, None, KeyCode::Char('v')) =>
+                (Mode::Normal, None, KeyCode::Char('v')) =>
                     self.mode = Mode::Visual,
-                (Mode::Visual, None, None, KeyCode::Char('v')) =>
+                (Mode::Visual, None, KeyCode::Char('v')) =>
                     self.mode = Mode::Normal,
 
                 // move
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('h')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('h')) => {
                     self.insert.move_left();
                     if matches!(self.mode, Mode::Normal) {
                         let cursor = self.insert.cursor_mut();
                         cursor.start = cursor.end;
                     }
                 },
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('l')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('l')) => {
                     self.insert.move_right();
                     if matches!(self.mode, Mode::Normal) {
                         let cursor = self.insert.cursor_mut();
                         cursor.start = cursor.end;
                     }
                 },
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('x')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('x')) => {
                     let end = self.insert.char_len();
                     let cursor = self.insert.cursor_mut();
                     cursor.start = 0;
                     cursor.end = end;
                 },
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('w')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('w')) => {
                     let span = self.insert.move_right_word();
                     let cursor = self.insert.cursor_mut();
                     match self.mode {
@@ -163,7 +187,7 @@ impl Editor {
                         _ => unreachable!()
                     }
                 },
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Char('b')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('b')) => {
                     let span = self.insert.move_left_word();
                     let cursor = self.insert.cursor_mut();
                     match self.mode {
@@ -177,60 +201,78 @@ impl Editor {
                 },
 
                 // history
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Up | KeyCode::Char('k')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Up | KeyCode::Char('k')) => {
                     self.insert.up();
                 },
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Down | KeyCode::Char('j')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Down | KeyCode::Char('j')) => {
                     self.insert.down();
                 },
 
                 // execute
-                (Mode::Normal | Mode::Visual, None, None, KeyCode::Enter) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Enter) => {
                     self.insert.submit();
                     self.mode = Mode::Insert;
                     return Ok(Action::Execute)
                 }
 
-                // command input
-                (Mode::Normal | Mode::PathSelector, _, _, KeyCode::Char('\r')) => (),
-                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Char(c))
-                    => self.command.push(c),
-                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Backspace)
-                    => self.command.backspace(),
-                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Delete)
-                    => self.command.delete(),
-                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Left)
-                    => self.command.move_left(),
-                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Right)
-                    => self.command.move_right(),
-                (Mode::Normal | Mode::PathSelector, None, Some(_), KeyCode::Esc)
-                    => self.command.clear(),
-
                 // delete selection
-                (Mode::Visual, None, None, KeyCode::Char('d')) => {
-                    self.insert.replace_str_inclusive("");
+                (Mode::Visual, None, KeyCode::Char('d')) => {
+                    self.insert.replace_str_inclusive("", Some(&mut self.clipboard));
                     self.mode = Mode::Normal;
                 },
 
                 // ready
-                (Mode::Normal, None, None, KeyCode::Char('d')) => self.ready = Some('d'),
-                (Mode::Normal, Some('d'), None, KeyCode::Char('d')) => {
+                (Mode::Normal, None, KeyCode::Char('d')) => self.ready = Some('d'),
+                (Mode::Normal, Some('d'), KeyCode::Char('d')) => {
+                    self.clipboard.clear();
+                    self.clipboard.push_str(self.insert.as_str());
                     self.insert.clear();
-                }
+                },
 
-                (Mode::PathSelector, None, None, KeyCode::Char('j')) =>
+                // clipboard
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('y')) => {
+                    self.clipboard.clear();
+                    self.clipboard.push_str(self.insert.selected());
+                },
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('p')) => {
+                    self.insert.replace_str_inclusive(&self.clipboard, None);
+                },
+
+                // visual cancel
+                (Mode::Visual, None, KeyCode::Char(',')) => self.ready = Some(','),
+                (Mode::Visual, Some(','), KeyCode::Char(',')) => {
+                    self.mode = Mode::Normal;
+                },
+
+                // path selector
+                (Mode::PathSelector, None,KeyCode::Char('j')) =>
                     self.path_selector.down()?,
-                (Mode::PathSelector, None, None, KeyCode::Char('k')) =>
+                (Mode::PathSelector, None, KeyCode::Char('k')) =>
                     self.path_selector.up()?,
-                (Mode::PathSelector, None, None, KeyCode::Char('h')) =>
+                (Mode::PathSelector, None, KeyCode::Char('h')) =>
                     self.path_selector.left()?,
-                (Mode::PathSelector, None, None, KeyCode::Char('l')) =>
+                (Mode::PathSelector, None, KeyCode::Char('l')) =>
                     self.path_selector.right()?,
-                (Mode::PathSelector, None, None, KeyCode::Char('.')) =>
+                (Mode::PathSelector, None, KeyCode::Char('.')) =>
                     self.path_selector.toggle_hidden_file(),
-                (Mode::PathSelector, None, None, KeyCode::Char(',')) =>
+                (Mode::PathSelector, None, KeyCode::Char(',')) =>
                     self.path_selector.toggle_case_sensitive(),
-                (Mode::PathSelector, None, None, KeyCode::Enter) => {
+                (Mode::PathSelector, None, KeyCode::Char('y')) => {
+                    let path = self.path_selector.selected();
+                    let path = path
+                        .strip_prefix(env.pwd())
+                        .unwrap_or(&path)
+                        .to_str()
+                        .context("non-utf8 path are unsupported")?;
+                    let path = if !path.is_empty() {
+                        path
+                    } else {
+                        "."
+                    };
+                    self.clipboard.clear();
+                    self.clipboard.push_str(path);
+                },
+                (Mode::PathSelector, None, KeyCode::Enter) => {
                     let path = self.path_selector.selected();
                     let path = path
                         .strip_prefix(env.pwd())
@@ -245,7 +287,6 @@ impl Editor {
                     self.insert.push_str(path);
                     self.mode = Mode::Insert;
                 },
-                    
                 _ => ()
             },
             _ => ()

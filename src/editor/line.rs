@@ -87,6 +87,12 @@ impl EditableLine {
         &mut self.line_mut().cursor
     }
 
+    pub fn selected(&self) -> &str {
+        let cursor = self.cursor();
+        let span = self.span(cursor);
+        &self.as_str()[span]
+    }
+
     fn line(&self) -> &Line {
         self.list.get(self.current()).unwrap_or(&self.line)
     }
@@ -150,13 +156,18 @@ impl EditableLine {
         }
     }
 
-    pub fn replace_str_inclusive(&mut self, s: &str) {
+    pub fn replace_str_inclusive(&mut self, s: &str, clipboard: Option<&mut String>) {
         let cursor = self.cursor_inclusive();
 
         let bytes_range = self.index(cursor.start)..self.index(cursor.end);
-        self.line_mut()
-            .buf
-            .replace_range(bytes_range.clone(), s);
+        let line = self.line_mut();
+
+        if let Some(buf) = clipboard {
+            buf.clear();
+            buf.push_str(&line.buf[bytes_range.clone()]);
+        }
+        
+        line.buf.replace_range(bytes_range.clone(), s);
 
         self.update(cursor.start, bytes_range.start, || s.is_ascii());
         self.line_mut().cursor.end = cursor.start + s.chars().count();
