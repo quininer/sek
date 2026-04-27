@@ -494,11 +494,11 @@ impl State<'_> {
         let cmd = state.command()?;
         let mut end_token = None;
 
-        if let Some(token) = state.iter.peek() {
-            if matches!(&state.tokens[token], (Token::ShellClose, _)) {
-                state.iter.bump();
-                end_token = Some(token);
-            }
+        if let Some(token) = state.iter.peek()
+            && matches!(&state.tokens[token], (Token::ShellClose, _))
+        {
+            state.iter.bump();
+            end_token = Some(token);
         }
 
         if !state.incomplete && end_token.is_none() {

@@ -1,6 +1,6 @@
 use std::io;
 use std::rc::Rc;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::process::{ ExitStatus, Stdio };
 use tokio::process::{ self, Command };
 use anyhow::Context;
@@ -22,7 +22,15 @@ pub struct Child {
 pub struct Morgue {
     #[cfg(unix)]
     pgid: libc::pid_t,
+    #[cfg(unix)]
+    jobs_pgid: Cell<Option<libc::pid_t>>,
     queue: Rc<RefCell<Vec<process::Child>>>
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Cause {
+    CtrcC,
+    Error,
 }
 
 impl ShellCommand {
@@ -57,17 +65,11 @@ impl ShellCommand {
     }
 
     pub fn spawn(&mut self, shell: &Shell) -> anyhow::Result<Child> {
-        #[cfg(unix)] {
-            use std::os::unix::process::CommandExt;
-
-            self.cmd.as_std_mut().process_group(shell.morgue.pgid);
-        }
-
-        match self.cmd
+        self.cmd
             .current_dir(shell.env.pwd())
-            .envs(&shell.env.map)
-            .spawn()
-        {
+            .envs(&shell.env.map);
+        
+        match shell.morgue.spawn(&mut self.cmd) {
             Ok(child) => Ok(Child {
                 child: Some(child),
                 morgue: shell.morgue.clone()
@@ -88,7 +90,7 @@ impl Child {
     
     pub async fn wait(&mut self) -> io::Result<ExitStatus> {
         let mut child = self.child.take().unwrap();
-        self.morgue.wait_one(&mut child).await
+        child.wait().await
     }
 }
 
@@ -107,24 +109,88 @@ impl Default for Morgue {
             pgid: unsafe {
                 libc::getpid()
             },
+            #[cfg(unix)]
+            jobs_pgid: Cell::new(None),
             queue: Default::default()
         }
     }
 }
 
 impl Morgue {
-    async fn wait_one(&self, child: &mut process::Child)
-        -> io::Result<ExitStatus>
-    {
-        child.wait().await
+    pub fn spawn(&self, cmd: &mut Command) -> io::Result<process::Child> {
+        #[cfg(unix)] {
+            use std::os::unix::process::CommandExt;
+
+            let pgid = self.jobs_pgid.get().unwrap_or_default();
+            cmd.as_std_mut().process_group(pgid);
+        }
+
+        let child = cmd.spawn()?;
+
+        #[cfg(unix)] {
+            use std::os::fd::AsRawFd;
+
+            if self.jobs_pgid.get().is_none() {
+                let pid = child.id().unwrap() as libc::pid_t;
+
+                unsafe {
+                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), pid) != 0 {
+                        return Err(io::Error::last_os_error());
+                    }
+                }
+
+                self.jobs_pgid.set(Some(pid));
+            }
+        }
+
+        Ok(child)
     }
 
     #[allow(clippy::await_holding_refcell_ref)]    
-    pub async fn wait(&mut self) -> io::Result<()> {
+    pub async fn wait(&self, cause: Cause) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 
+        #[cfg(unix)] {
+            let signal = match cause {
+                Cause::CtrcC => libc::SIGINT,
+                Cause::Error => libc::SIGKILL
+            };
+            
+            if let Some(pgid) = self.jobs_pgid.get() {
+                unsafe {
+                    libc::killpg(pgid, signal);
+                }
+            } else {
+                for ghost in queue.as_mut_slice() {
+                    if signal == libc::SIGKILL {
+                        // Use pidfd kill
+                        let _ = ghost.start_kill();
+                    } else {
+                        let pid = ghost.id().unwrap() as libc::pid_t;
+
+                        // TODO replace it with pidfd
+                        unsafe {
+                            libc::kill(pid, signal);
+                        }                        
+                    }
+                }
+            }
+        }
+
         for mut ghost in queue.drain(..) {
-            self.wait_one(&mut ghost).await?;
+            ghost.wait().await?;
+        }
+
+        #[cfg(unix)] {
+            use std::os::fd::AsRawFd;
+
+            if self.jobs_pgid.take().is_some() {
+                unsafe {
+                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), self.pgid) != 0 {
+                        return Err(io::Error::last_os_error());
+                    }
+                }
+            }
         }
 
         Ok(())        

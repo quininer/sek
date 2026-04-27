@@ -14,7 +14,7 @@ use crate::editor::{ Editor, Action, Mode };
 use crate::util::{ ScopeGuard, FmtDebug };
 use crate::util::stdout::Stdout;
 use env::Environment;
-use process::Morgue;
+use process::{ Morgue, Cause };
 
 
 pub struct Shell {
@@ -49,6 +49,19 @@ impl Shell {
         let stdout = Stdout::from(io::stdout());
         let size = terminal::size()?;
 
+        #[cfg(unix)] unsafe {
+            let mut act: libc::sigaction = std::mem::zeroed();
+            act.sa_flags = 0;
+            libc::sigemptyset(&mut act.sa_mask);
+
+            // ignore
+            act.sa_sigaction = libc::SIG_IGN;
+
+            let nullptr = std::ptr::null_mut();
+            libc::sigaction(libc::SIGTSTP, &act, nullptr);
+            libc::sigaction(libc::SIGTTOU, &act, nullptr);
+        }
+
         let mut renderer = <Renderer<_>>::new(size, || stdout.lock());
         let error_renderer = annotate_snippets::Renderer::styled()
             .term_width(size.1.into());
@@ -58,7 +71,7 @@ impl Shell {
         });
 
         loop {
-            self.morgue.wait().await?;
+            self.morgue.wait(Cause::Error).await?;
 
             renderer.render(&self.editor.ui.table, &self)?;
             

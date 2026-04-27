@@ -132,11 +132,11 @@ impl PathSelector {
         if let Some(cur) = self.current.cur.checked_sub(1) {
             self.current.cur = cur;
 
-            if !self.current.window.contains(&cur) {
-                if let Some(start) = self.current.window.start.checked_sub(1) {
-                    self.current.window.start = start;
-                    self.current.window.end = self.current.window.end.saturating_sub(1);
-                }
+            if !self.current.window.contains(&cur)
+                && let Some(start) = self.current.window.start.checked_sub(1)
+            {
+                self.current.window.start = start;
+                self.current.window.end = self.current.window.end.saturating_sub(1);
             }
 
             self.update_children()?;

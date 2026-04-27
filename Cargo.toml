@@ -2,7 +2,7 @@
 name = "sek"
 version = "0.1.0"
 authors = ["quininer <quininer@live.com>"]
-edition = "2018"
+edition = "2024"
 
 [[bin]]
 name = "seksh"

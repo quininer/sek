@@ -162,13 +162,12 @@ pin_project_lite::pin_project! {
         left: L,
         #[pin]
         right: R,
-        flag: bool
     }
 }
 
 impl<L, R> Select<L, R> {
     pub fn new(left: L, right: R) -> Self {
-        Select { left, right, flag: false }
+        Select { left, right }
     }
 }
 
@@ -177,18 +176,10 @@ impl<L: Future, R: Future> Future for Select<L, R> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        *this.flag = !*this.flag;
 
-        if *this.flag {
-            match this.left.poll(cx) {
-                Poll::Ready(result) => Poll::Ready(Either::Left(result)),
-                Poll::Pending => this.right.poll(cx).map(Either::Right)
-            }
-        } else {
-            match this.right.poll(cx) {
-                Poll::Ready(result) => Poll::Ready(Either::Right(result)),
-                Poll::Pending => this.left.poll(cx).map(Either::Left)
-            }           
+        match this.left.poll(cx) {
+            Poll::Ready(result) => Poll::Ready(Either::Left(result)),
+            Poll::Pending => this.right.poll(cx).map(Either::Right)
         }
     }
 }
