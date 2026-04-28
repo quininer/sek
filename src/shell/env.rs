@@ -8,6 +8,7 @@ use directories::UserDirs;
 
 
 pub struct Environment {
+    pub max_args_len: usize,
     pub map: HashMap<OsString, OsString>,
     userdir: UserDirs,
     prev_pwd: Option<PathBuf>,
@@ -16,12 +17,28 @@ pub struct Environment {
 
 impl Environment {
     pub fn new(pwd: PathBuf) -> anyhow::Result<Self> {
+        cfg_select! {
+            target_os = "linux" => {
+                let max_args_len = match unsafe { libc::sysconf(libc::_SC_ARG_MAX) } {
+                    -1 => 1024 * 1024,
+                    n => std::cmp::max(n as usize, 4 * 1024)
+                };
+            },
+            windows => {
+                // https://docs.microsoft.com/zh-cn/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
+                let max_args_len = 32767;
+            },
+            _ => {
+                let max_args_len = 4 * 1024;
+            }
+        }
+
         Ok(Environment {
             map: env::vars_os().collect(),
             userdir: UserDirs::new()
                 .context("Unable to retrieve user path from system")?,
             prev_pwd: None,
-            pwd
+            pwd, max_args_len
         })
     }
 

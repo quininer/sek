@@ -74,6 +74,8 @@ impl syntax::Variable {
         {
             let val = <[u8]>::from_os_str(val).context("invalid env value")?;
             push(val)?;
+        } else {
+            push(b"")?;
         }
 
         Ok(())
@@ -132,13 +134,10 @@ impl syntax::SingleStr {
 
 impl syntax::DoubleStr {
     async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
-        // TODO arg max
-        
-        let arg_max = 1024 * 4;
         let mut osbuf = Vec::new();
         let mut push2 = |osstr: &[u8]| {
             // The size is limited here just to avoid stdout may occupy memory indefinitely.
-            if osbuf.len() + osstr.len() > arg_max {
+            if osbuf.len() + osstr.len() > shell.env.max_args_len {
                 return Err(anyhow::format_err!("Command argument is too long"));
             }
 
@@ -161,13 +160,10 @@ impl syntax::DoubleStr {
 
 impl syntax::Argument {
     async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
-        // TODO arg max
-
-        let arg_max = 1024 * 4;
         let mut osbuf = Vec::new();
         let mut push2 = |osstr: &[u8]| {
             // The size is limited here just to avoid stdout may occupy memory indefinitely.
-            if osbuf.len() + osstr.len() > arg_max {
+            if osbuf.len() + osstr.len() > shell.env.max_args_len {
                 return Err(anyhow::format_err!("Command argument is too long"));
             }
 
