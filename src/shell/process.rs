@@ -8,6 +8,7 @@ use bstr::ByteSlice;
 use super::Shell;
 
 
+#[derive(Debug)]
 pub struct ShellCommand {
     cmd: Command,
     redirect_stdout: bool,
@@ -29,6 +30,7 @@ pub struct Morgue {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Cause {
+    Wait,
     CtrcC,
     Error,
 }
@@ -68,13 +70,14 @@ impl ShellCommand {
         self.cmd
             .current_dir(shell.env.pwd())
             .envs(&shell.env.map);
-        
+
         match shell.morgue.spawn(&mut self.cmd) {
             Ok(child) => Ok(Child {
                 child: Some(child),
                 morgue: shell.morgue.clone()
             }),
-            Err(err) => Err(err).context("spawn failed")
+            Err(err) => Err(err)
+                .with_context(|| format!("spawn failed: {}", self.cmd.as_std().get_program().display()))
         }
     }
 }
@@ -131,15 +134,15 @@ impl Morgue {
             use std::os::fd::AsRawFd;
 
             if self.jobs_pgid.get().is_none() {
-                let pid = child.id().unwrap() as libc::pid_t;
+                let pgid = child.id().unwrap() as libc::pid_t;
 
                 unsafe {
-                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), pid) != 0 {
+                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), pgid) != 0 {
                         return Err(io::Error::last_os_error());
                     }
                 }
-
-                self.jobs_pgid.set(Some(pid));
+                
+                self.jobs_pgid.set(Some(pgid));
             }
         }
 
@@ -150,28 +153,33 @@ impl Morgue {
     pub async fn wait(&self, cause: Cause) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 
-        #[cfg(unix)] {
-            let signal = match cause {
-                Cause::CtrcC => libc::SIGINT,
-                Cause::Error => libc::SIGKILL
-            };
-            
-            if let Some(pgid) = self.jobs_pgid.get() {
-                unsafe {
-                    libc::killpg(pgid, signal);
-                }
-            } else {
-                for ghost in queue.as_mut_slice() {
-                    if signal == libc::SIGKILL {
-                        // Use pidfd kill
-                        let _ = ghost.start_kill();
-                    } else {
-                        let pid = ghost.id().unwrap() as libc::pid_t;
+        queue.retain_mut(|child| !matches!(child.try_wait(), Ok(Some(_))));
 
-                        // TODO replace it with pidfd
-                        unsafe {
-                            libc::kill(pid, signal);
-                        }                        
+        #[cfg(unix)] {
+            let maybe_signal = match cause {
+                Cause::Wait => None,
+                Cause::CtrcC => Some(libc::SIGINT),
+                Cause::Error => Some(libc::SIGKILL)
+            };
+
+            if let Some(signal) = maybe_signal {
+                if let Some(pgid) = self.jobs_pgid.get() {
+                    unsafe {
+                        libc::killpg(pgid, signal);
+                    }
+                } else {
+                    for ghost in queue.as_mut_slice() {
+                        if signal == libc::SIGKILL {
+                            // Use pidfd kill
+                            let _ = ghost.start_kill();
+                        } else {
+                            let pid = ghost.id().unwrap() as libc::pid_t;
+
+                            // TODO replace it with pidfd
+                            unsafe {
+                                libc::kill(pid, signal);
+                            }                        
+                        }
                     }
                 }
             }

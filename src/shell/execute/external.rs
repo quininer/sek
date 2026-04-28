@@ -7,7 +7,7 @@ use bstr::ByteSlice;
 use tokio::io::{ AsyncRead, AsyncReadExt };
 use crate::shell::Shell;
 use crate::shell::syntax::{ self, ArgSlice, StrSlice, StdioKind, ChainKind };
-use crate::shell::process::ShellCommand;
+use crate::shell::process::{ ShellCommand, Cause };
 
 
 pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow::Result<ExitStatus> {
@@ -280,7 +280,7 @@ impl syntax::Chain {
                         prev_child = prev_cmd.spawn(shell)?;
                     },
                 }
-                
+
                 let status = if let Some(chain) = chain.as_ref() {
                     Box::pin(chain.eval(shell, input, shell_cmd, push)).await?
                 } else {
@@ -288,26 +288,34 @@ impl syntax::Chain {
                 };
 
                 prev_child.wait().await?;
+                drop(prev_child);
+                shell.morgue.wait(Cause::Wait).await?;
 
                 Ok(status)
             },
             ChainKind::Then => {
                 spawn_and_push(prev_cmd, shell, &mut push).await?;
+                shell.morgue.wait(Cause::Wait).await?;
 
                 if let Some(chain) = chain.as_ref() {
                     Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                 } else {
-                    spawn_and_push(shell_cmd, shell, &mut push).await
+                    let status = spawn_and_push(shell_cmd, shell, &mut push).await;
+                    shell.morgue.wait(Cause::Wait).await?;
+                    status
                 }
             },
             ChainKind::AndIf => {
                 let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
+                shell.morgue.wait(Cause::Wait).await?;
 
                 if status.success() {
                     if let Some(chain) = chain.as_ref() {
                         Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                     } else {
-                        spawn_and_push(shell_cmd, shell, &mut push).await
+                        let status = spawn_and_push(shell_cmd, shell, &mut push).await;
+                        shell.morgue.wait(Cause::Wait).await?;
+                        status
                     }
                 } else {
                     Ok(status)
@@ -315,12 +323,15 @@ impl syntax::Chain {
             },
             ChainKind::OrIf => {
                 let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
+                shell.morgue.wait(Cause::Wait).await?;
 
                 if !status.success() {
                     if let Some(chain) = chain.as_ref() {
                         Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                     } else {
-                        spawn_and_push(shell_cmd, shell, &mut push).await
+                        let status = spawn_and_push(shell_cmd, shell, &mut push).await;
+                        shell.morgue.wait(Cause::Wait).await?;
+                        status
                     }
                 } else {
                     Ok(status)
@@ -333,7 +344,7 @@ impl syntax::Chain {
 async fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<Push<'_>>)
     -> anyhow::Result<ExitStatus>
 {
-    if let Some(push) = push.as_mut()
+    let status = if let Some(push) = push.as_mut()
         .filter(|_| cmd.is_stdout_available())
     {
         cmd.stdout(Stdio::piped());
@@ -344,13 +355,20 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<
             read_to_end(stdout, push).await?;
         }
 
-        child.wait().await.map_err(Into::into)
+        child.wait().await?
     } else {
-        cmd.spawn(shell)?
-            .wait()
-            .await
-            .map_err(Into::into)
+        cmd.spawn(shell)?.wait().await?
+    };
+
+    #[cfg(unix)] {
+        use std::os::unix::process::ExitStatusExt;
+
+        if let Some(sig @ (libc::SIGINT | libc::SIGQUIT)) = status.signal() {
+            anyhow::bail!("cancel command by signal: {}", sig);
+        }
     }
+
+    Ok(status)
 }
 
 async fn read_to_end<R: AsyncRead + Unpin>(
