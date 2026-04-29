@@ -108,19 +108,31 @@ impl PathSelector {
             self.path.push(path);
         }
 
-        if path == Path::new(".") {
-            let filename = self.current.get()
-                .map(|entry| entry.name().into_owned());
-            self.current.cd(&self.collator, &self.path, filename.as_deref(), &self.filter, self.space)?;
+        let filename = if path == Path::new(".") {
+            self.current.get().map(|entry| entry.name().into_owned())
         } else {
             self.current.clear();
-            self.current.cd(&self.collator, &self.path, None, &self.filter, self.space)?;
+            None
+        };
 
-            if let Some(parent) = self.path.parent() {
-                self.parent.cd(&self.collator, parent, self.path.file_name(), &self.filter, self.space)?;
-            } else {
-                self.parent.clear();
-            }
+        self.current.cd(
+            &self.collator,
+            &self.path,
+            filename.as_deref(),
+            &self.filter,
+            self.space
+        )?;
+
+        if let Some(parent) = self.path.parent() {
+            self.parent.cd(
+                &self.collator,
+                parent,
+                self.path.file_name(),
+                &self.filter,
+                self.space
+            )?;
+        } else {
+            self.parent.clear();
         }
 
         self.update_children()?;
@@ -202,7 +214,13 @@ impl PathSelector {
         if let Some(children) = self.current.queue.get(self.current.cur)
             .filter(|children| children.ty == EntryType::Dir)
         {
-            self.children.cd(&self.collator, &children.entry.path(), None, &self.filter, self.space)?;
+            self.children.cd(
+                &self.collator,
+                &children.entry.path(),
+                None,
+                &self.filter,
+                self.space
+            )?;
         } else {
             self.children.clear();
         }

@@ -86,9 +86,9 @@ On the contrary, it is designed to satisfy my personal use.
 
 + [x] Cross platform
 + [x] Basic shell command
-+ [ ] Basic helix mode
-+ [ ] Local History
-+ [ ] Path selector
++ [x] Basic helix mode
++ [x] Local History
++ [x] Path selector
 + [ ] Completion UI
 + [ ] History-based Completion (daemon)
 + [ ] Rule-based Completion (daemon)

@@ -9,29 +9,51 @@ pub trait Element: fmt::Debug {
         &self,
         tree: &mut layout::Tree,
         table: &mut Table,
+        map: &mut Vec<(Tag, Id<layout::Node>)>,
         parent: Id<layout::Node>
     );
 }
 
 pub type Table = ArenaMap<layout::Node, render::ElementImpl>;
+pub type Tag = u32;
 
 #[derive(Debug)]
-pub struct Box<T>(pub layout::Style, pub T);
+pub struct Box<T>(pub Option<Tag>, pub layout::Style, pub T);
 
 #[derive(Debug)]
-pub struct Elem(pub layout::Style, pub render::ElementImpl);
+pub struct Elem(pub Option<Tag>, pub layout::Style, pub render::ElementImpl);
 
 impl<T: Element> Element for Box<T> {
-    fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
-        let id = tree.new_node(parent, self.0);
-        self.1.walk(tree, table, id);
+    fn walk(
+        &self,
+        tree: &mut layout::Tree,
+        table: &mut Table,
+        map: &mut Vec<(Tag, Id<layout::Node>)>,
+        parent: Id<layout::Node>
+    ) {
+        let id = tree.new_node(parent, self.1);
+        self.2.walk(tree, table, map, id);
+
+        if let Some(tag) = self.0 {
+            map.push((tag, id));
+        }        
     }
 }
 
 impl Element for Elem {
-    fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
-        let id = tree.new_node(parent, self.0);
-        table.insert(id, self.1);
+    fn walk(
+        &self,
+        tree: &mut layout::Tree,
+        table: &mut Table,
+        map: &mut Vec<(Tag, Id<layout::Node>)>,
+        parent: Id<layout::Node>
+    ) {
+        let id = tree.new_node(parent, self.1);
+        table.insert(id, self.2);
+
+        if let Some(tag) = self.0 {
+            map.push((tag, id));
+        }
     }
 }
 
@@ -40,9 +62,15 @@ where
     A: Element,
     B: Element,
 {
-    fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
-        self.0.walk(tree, table, parent);
-        self.1.walk(tree, table, parent);
+    fn walk(
+        &self,
+        tree: &mut layout::Tree,
+        table: &mut Table,
+        map: &mut Vec<(Tag, Id<layout::Node>)>,
+        parent: Id<layout::Node>)
+    {
+        self.0.walk(tree, table, map, parent);
+        self.1.walk(tree, table, map, parent);
     }
 }
 
@@ -50,8 +78,14 @@ impl<A> Element for (A,)
 where
     A: Element,
 {
-    fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
-        self.0.walk(tree, table, parent);
+    fn walk(
+        &self,
+        tree: &mut layout::Tree,
+        table: &mut Table,
+        map: &mut Vec<(Tag, Id<layout::Node>)>,
+        parent: Id<layout::Node>)
+    {
+        self.0.walk(tree, table, map, parent);
     }
 }
 
@@ -61,9 +95,15 @@ where
     B: Element,
     C: Element,
 {
-    fn walk(&self, tree: &mut layout::Tree, table: &mut Table, parent: Id<layout::Node>) {
-        self.0.walk(tree, table, parent);
-        self.1.walk(tree, table, parent);
-        self.2.walk(tree, table, parent);
+    fn walk(
+        &self,
+        tree: &mut layout::Tree,
+        table: &mut Table,
+        map: &mut Vec<(Tag, Id<layout::Node>)>,
+        parent: Id<layout::Node>)
+    {
+        self.0.walk(tree, table, map, parent);
+        self.1.walk(tree, table, map, parent);
+        self.2.walk(tree, table, map, parent);
     }
 }

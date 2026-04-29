@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use bstr::ByteSlice;
 use crossterm::{ queue, style, cursor, terminal };
 use unicode_width::{ UnicodeWidthChar, UnicodeWidthStr };
@@ -13,20 +11,27 @@ use crate::ui::render::{ ElementImpl, Fill, LimitAndFill };
 pub struct Editor {
     pub layout: layout::Tree,
     pub table: ui::Table,
+
+    pub path_selector: Id<layout::Node>,
+    pub command: Id<layout::Node>,
 }
 
 impl Editor {
     pub fn new() -> anyhow::Result<Editor> {
         use ui::Element;
+
+        const TAG_PATH_SELECTOR: u32 = 1;
+        const TAG_COMMAND: u32 = 2;
         
         let mut layout = layout::Tree::default();
         let root = layout.root();
 
         let insert = ui::Box(
-            layout::Style::default(),
+            None, layout::Style::default(),
             (
-                ui::Elem(layout::Style::default(), PROMPT),
+                ui::Elem(None, layout::Style::default(), PROMPT),
                 ui::Elem(
+                    None,
                     layout::Style::default()
                         .justify(layout::Justify::Stretch)
                         .overflow(true),
@@ -36,13 +41,15 @@ impl Editor {
         );
 
         let selector = ui::Box(
+            Some(TAG_PATH_SELECTOR),
             layout::Style::default()
                 .axis(layout::Axis::Vertical)
                 .justify(layout::Justify::Stretch),
             (
                 ui::Box(
-                    layout::Style::default(),
+                    None, layout::Style::default(),
                     ui::Elem(
+                        None,
                         layout::Style::default()
                             .justify(layout::Justify::Stretch)
                             .overflow(true),
@@ -50,23 +57,27 @@ impl Editor {
                     ),
                 ),
                 ui::Box(
+                    None,
                     layout::Style::default()
                         .axis(layout::Axis::Horizontal)
                         .justify(layout::Justify::Stretch),
                     (
                         ui::Elem(
+                            None,
                             layout::Style::default()
                                 .axis(layout::Axis::Vertical)
                                 .justify(layout::Justify::Stretch),
                             PATH_SELECTOR.0,
                         ),
                         ui::Elem(
+                            None,
                             layout::Style::default()
                                 .axis(layout::Axis::Vertical)
                                 .justify(layout::Justify::Stretch),
                             PATH_SELECTOR.1,
                         ),
                         ui::Elem(
+                            None,
                             layout::Style::default()
                                 .axis(layout::Axis::Vertical)
                                 .justify(layout::Justify::Stretch),
@@ -78,14 +89,17 @@ impl Editor {
         );
 
         let command = ui::Box(
-            layout::Style::default().justify(layout::Justify::End),
+            Some(TAG_COMMAND),
+            layout::Style::default().justify(layout::Justify::Stretch),
             (
-                ui::Elem(layout::Style::default(), MODE),
+                ui::Elem(None,layout::Style::default(), MODE),
                 ui::Elem(
+                    None,
                     layout::Style::default().justify(layout::Justify::Stretch),
                     COMMAND_LINE
                 ),
                 ui::Elem(
+                    None,
                     layout::Style::default().justify(layout::Justify::End),
                     TIPS
                 )
@@ -93,11 +107,26 @@ impl Editor {
         );
 
         let mut table = ui::Table::default();
+        let mut map = Vec::new();
 
         (insert, selector, command)
-            .walk(&mut layout, &mut table, root);
+            .walk(&mut layout, &mut table, &mut map, root);
 
-        Ok(Editor { layout, table })
+        let mut editor = Editor {
+            layout, table,
+            path_selector: Id::default(),
+            command: Id::default(),
+        };
+
+        for (tag, id) in map {
+            match tag {
+                TAG_PATH_SELECTOR => editor.path_selector = id,
+                TAG_COMMAND => editor.command = id,
+                _ => unreachable!()
+            }
+        }
+
+        Ok(editor)
     }
 }
 

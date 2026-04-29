@@ -66,7 +66,7 @@ where
         term.flush()
     }
 
-    pub fn screen_clear(&mut self)  -> io::Result<()> {
+    pub fn screen_reset(&mut self)  -> io::Result<()> {
         let mut term = self.term.access();
         queue!(term,
             cursor::MoveTo(0, 0),

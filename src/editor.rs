@@ -3,6 +3,7 @@ pub mod ui;
 pub mod path_selector;
 
 use std::mem;
+use std::path::Path;
 use anyhow::Context;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
@@ -74,6 +75,10 @@ impl Editor {
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::ALT && code == KeyCode::Char(' '))
             => {
+                if matches!(self.mode, Mode::PathSelector) {
+                    self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
+                }
+                
                 self.mode = Mode::Normal;
             },
 
@@ -257,6 +262,8 @@ impl Editor {
                     self.path_selector.toggle_hidden_file(),
                 (Mode::PathSelector, None, KeyCode::Char(',')) =>
                     self.path_selector.toggle_case_sensitive(),
+                (Mode::PathSelector, None, KeyCode::Char('r')) =>
+                    self.path_selector.cd(Path::new("."))?,
                 (Mode::PathSelector, None, KeyCode::Char('y')) => {
                     let path = self.path_selector.selected();
                     let path = path
@@ -286,6 +293,7 @@ impl Editor {
                     };
                     self.insert.push_str(path);
                     self.mode = Mode::Insert;
+                    self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
                 },
                 _ => ()
             },

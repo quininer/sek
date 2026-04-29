@@ -95,10 +95,11 @@ impl Shell {
                 Ok(_cmd) if matches!(action, Action::Completion) => {
                     // TODO check completion type
 
-                    renderer.screen_clear()?;
+                    renderer.screen_reset()?;
                     self.editor.path_selector.set_space(size.1.into());
                     self.editor.path_selector.cd(self.env.pwd())?;
                     self.editor.mode = Mode::PathSelector;
+                    self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End;
                 }
                 Ok(_) => (),
                 // syntax error

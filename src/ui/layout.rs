@@ -1,5 +1,5 @@
 use std::{ cmp, iter };
-use std::convert::TryInto;
+use std::ops::{ Index, IndexMut };
 use std::ops::Range;
 use smallvec::SmallVec;
 use crate::util::arena::{ Arena, Id };
@@ -86,6 +86,20 @@ impl Default for Tree {
             nodes, root,
             freelist: Default::default()
         }
+    }
+}
+
+impl Index<Id<Node>> for Tree {
+    type Output = Style;
+    
+    fn index(&self, index: Id<Node>) -> &Self::Output {
+        &self.nodes[index].style
+    }
+}
+
+impl IndexMut<Id<Node>> for Tree {
+    fn index_mut(&mut self, index: Id<Node>) -> &mut Self::Output {
+        &mut self.nodes[index].style
     }
 }
 

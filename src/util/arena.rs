@@ -35,6 +35,12 @@ impl<T> Arena<T> {
     }
 }
 
+impl<T> Default for Id<T> {
+    fn default() -> Self {
+        Id(u32::MAX, PhantomData)
+    }
+}
+
 impl<T> Default for Arena<T> {
     fn default() -> Self {
         Arena::new()
