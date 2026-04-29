@@ -79,11 +79,12 @@ impl Shell {
             if let crossterm::event::Event::Resize(x, y) = &event {
                 renderer.size = (*x, *y);
             }
-            
-            let action = self.editor.step(&self.env, event)?;
-            let is_execute = matches!(action, Action::Execute);
 
-            if matches!(action, Action::Break) {
+            // TODO render error
+            let mut action = self.editor.step(&self.env, event);
+            let is_execute = matches!(action, Ok(Action::Execute));
+
+            if matches!(action, Ok(Action::Break)) {
                 break
             }
 
@@ -95,18 +96,29 @@ impl Shell {
             };
             self.ast = result.as_ref().ok().copied();
 
-            match result {
-                Ok(_cmd) if matches!(action, Action::Completion) => {
-                    // TODO check completion type
+            if let Ok(_cmd) = result
+                && matches!(action, Ok(Action::Completion))
+            {
+                // TODO check completion type
 
-                    renderer.screen_reset()?;
-                    self.editor.command.clear();
-                    self.editor.path_selector.set_glob(None);
-                    self.editor.path_selector.set_space(renderer.size.1.into());
-                    self.editor.path_selector.cd(self.env.pwd())?;
-                    self.editor.mode = Mode::PathSelector;
-                    self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End;
+                renderer.screen_reset()?;
+                self.editor.command.clear();
+                self.editor.path_selector.set_glob(None);
+                self.editor.path_selector.set_space(renderer.size.1.into());
+                match self.editor.path_selector.cd(self.env.pwd()) {
+                    Ok(()) => {
+                        self.editor.mode = Mode::PathSelector;
+                        self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End;
+                    },
+                    Err(err) => {
+                        action = Err(err);
+
+                        // TODO path-selector error
+                    }
                 }
+            }
+
+            match result {
                 Ok(_) => (),
                 // syntax error
                 Err(err) if is_execute => {

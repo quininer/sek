@@ -285,35 +285,37 @@ impl Editor {
                     self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
                 },
                 (Mode::PathSelector, None, KeyCode::Char('y')) => {
-                    let path = self.path_selector.selected();
-                    let path = path
-                        .strip_prefix(env.pwd())
-                        .unwrap_or(&path)
-                        .to_str()
-                        .context("non-utf8 path are unsupported")?;
-                    let path = if !path.is_empty() {
-                        path
-                    } else {
-                        "."
-                    };
-                    self.clipboard.clear();
-                    self.clipboard.push_str(path);
+                    if let Some(path) = self.path_selector.selected() {
+                        let path = path
+                            .strip_prefix(env.pwd())
+                            .unwrap_or(&path)
+                            .to_str()
+                            .context("non-utf8 path are unsupported")?;
+                        let path = if !path.is_empty() {
+                            path
+                        } else {
+                            "."
+                        };
+                        self.clipboard.clear();
+                        self.clipboard.push_str(path);
+                    }
                 },
                 (Mode::PathSelector, None, KeyCode::Enter) => {
-                    let path = self.path_selector.selected();
-                    let path = path
-                        .strip_prefix(env.pwd())
-                        .unwrap_or(&path)
-                        .to_str()
-                        .context("non-utf8 path are unsupported")?;
-                    let path = if !path.is_empty() {
-                        path
-                    } else {
-                        "."
-                    };
-                    self.insert.push_str(path);
-                    self.mode = Mode::Insert;
-                    self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
+                    if let Some(path) = self.path_selector.selected() {
+                        let path = path
+                            .strip_prefix(env.pwd())
+                            .unwrap_or(&path)
+                            .to_str()
+                            .context("non-utf8 path are unsupported")?;
+                        let path = if !path.is_empty() {
+                            path
+                        } else {
+                            "."
+                        };
+                        self.insert.push_str(path);
+                        self.mode = Mode::Insert;
+                        self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
+                    }
                 },
                 _ => ()
             },

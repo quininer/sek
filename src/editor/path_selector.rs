@@ -91,8 +91,8 @@ impl PathSelector {
         &self.path
     }
 
-    pub fn selected(&self) -> PathBuf {
-        self.current.queue[self.current.cur].path()
+    pub fn selected(&self) -> Option<PathBuf> {
+        self.current.queue.get(self.current.cur).map(|entry| entry.path())
     }
 
     pub fn clear(&mut self) {
