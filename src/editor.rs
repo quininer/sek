@@ -122,22 +122,34 @@ impl Editor {
             // Normal && PathSelector with command
             (Mode::Normal | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE) && !self.command.is_empty()
-            => match (self.mode, self.command.first(), code) {
-                // command input
-                (Mode::Normal | Mode::PathSelector, _, KeyCode::Char('\r')) => (),
-                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Char(c))
-                    => self.command.push(c),
-                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Backspace)
-                    => self.command.backspace(),
-                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Delete)
-                    => self.command.delete(),
-                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Left)
-                    => self.command.move_left(),
-                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Right)
-                    => self.command.move_right(),
-                (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Esc)
-                    => self.command.clear(),
-                _ => (),      
+            => {
+                match (self.mode, self.command.first(), code) {
+                    // command input
+                    (Mode::Normal | Mode::PathSelector, _, KeyCode::Char('\r')) => (),
+                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Char(c))
+                        => self.command.push(c),
+                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Backspace)
+                        => self.command.backspace(),
+                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Delete)
+                        => self.command.delete(),
+                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Left)
+                        => self.command.move_left(),
+                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Right)
+                        => self.command.move_right(),
+                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Esc)
+                        => self.command.clear(),
+                    _ => (),      
+                }
+
+                if matches!(self.mode, Mode::PathSelector) {
+                    if let Some(cmd) = self.command.as_str().strip_prefix('/') {
+                        self.path_selector.set_glob(Some(glob::Pattern::new(cmd)?));
+                    } else {
+                        self.path_selector.set_glob(None);
+                    }
+                    
+                    self.path_selector.cd(Path::new("."))?;
+                }
             },
 
             // Normal && Visual && PathSelector
@@ -258,12 +270,20 @@ impl Editor {
                     self.path_selector.left()?,
                 (Mode::PathSelector, None, KeyCode::Char('l')) =>
                     self.path_selector.right()?,
-                (Mode::PathSelector, None, KeyCode::Char('.')) =>
-                    self.path_selector.toggle_hidden_file(),
-                (Mode::PathSelector, None, KeyCode::Char(',')) =>
-                    self.path_selector.toggle_case_sensitive(),
+                (Mode::PathSelector, None, KeyCode::Char('.')) => {
+                    self.path_selector.toggle_hidden_file();
+                    self.path_selector.cd(Path::new("."))?;
+                },
+                (Mode::PathSelector, None, KeyCode::Char(',')) => {
+                    self.path_selector.toggle_case_sensitive();
+                    self.path_selector.cd(Path::new("."))?;
+                },
                 (Mode::PathSelector, None, KeyCode::Char('r')) =>
                     self.path_selector.cd(Path::new("."))?,
+                (Mode::PathSelector, None, KeyCode::Char('q')) => {
+                    self.mode = Mode::Insert;
+                    self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
+                },
                 (Mode::PathSelector, None, KeyCode::Char('y')) => {
                     let path = self.path_selector.selected();
                     let path = path

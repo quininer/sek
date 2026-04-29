@@ -100,6 +100,8 @@ impl Shell {
                     // TODO check completion type
 
                     renderer.screen_reset()?;
+                    self.editor.command.clear();
+                    self.editor.path_selector.set_glob(None);
                     self.editor.path_selector.set_space(renderer.size.1.into());
                     self.editor.path_selector.cd(self.env.pwd())?;
                     self.editor.mode = Mode::PathSelector;
