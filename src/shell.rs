@@ -47,7 +47,7 @@ impl Shell {
     
     pub async fn start(mut self) -> anyhow::Result<()> {
         let stdout = Stdout::from(io::stdout());
-        let size = terminal::size()?;
+        let mut size = terminal::size()?;
 
         #[cfg(unix)] unsafe {
             let mut act: libc::sigaction = std::mem::zeroed();
@@ -63,8 +63,7 @@ impl Shell {
         }
 
         let mut renderer = <Renderer<_>>::new(size, || stdout.lock());
-        let error_renderer = annotate_snippets::Renderer::styled()
-            .term_width(size.1.into());
+        let mut error_renderer = None;
 
         let _guard = ScopeGuard(terminal::enable_raw_mode(), |_| {
             let _ = terminal::disable_raw_mode();
@@ -76,6 +75,11 @@ impl Shell {
             renderer.render(&self.editor.ui.table, &self)?;
             
             let event = crossterm::event::read()?;
+
+            if let crossterm::event::Event::Resize(x, y) = &event {
+                renderer.size = (*x, *y);
+            }
+            
             let action = self.editor.step(&self.env, event)?;
             let is_execute = matches!(action, Action::Execute);
 
@@ -96,7 +100,7 @@ impl Shell {
                     // TODO check completion type
 
                     renderer.screen_reset()?;
-                    self.editor.path_selector.set_space(size.1.into());
+                    self.editor.path_selector.set_space(renderer.size.1.into());
                     self.editor.path_selector.cd(self.env.pwd())?;
                     self.editor.mode = Mode::PathSelector;
                     self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End;
@@ -107,6 +111,16 @@ impl Shell {
                     let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
                         let _ = terminal::enable_raw_mode();
                     });
+
+                    if size != renderer.size {
+                        error_renderer = None;
+                        size = renderer.size;
+                    }
+
+                    let error_renderer = error_renderer
+                        .get_or_insert_with(|| annotate_snippets::Renderer::styled()
+                            .term_width(renderer.size.1.into())
+                        );
 
                     let display = error_renderer.render(&[err.to_message(line)]);
                     renderer.new_line(&display)?;

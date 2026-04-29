@@ -214,6 +214,7 @@ where
 {
     type Writer = W;
 
+    #[inline(always)]
     fn access(&self) -> Self::Writer {
         (self)()
     }
