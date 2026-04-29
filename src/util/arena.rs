@@ -164,6 +164,22 @@ impl<T, V> ArenaMap<T, V> {
     }
 }
 
+impl<K, V> Index<Id<K>> for ArenaMap<K, V> {
+    type Output = V;
+    
+    fn index(&self, index: Id<K>) -> &Self::Output {
+        let idx: usize = index.0.try_into().unwrap();
+        self.map[idx].as_ref().unwrap()
+    }
+}
+
+impl<K, V> IndexMut<Id<K>> for ArenaMap<K, V> {
+    fn index_mut(&mut self, index: Id<K>) -> &mut Self::Output {
+        let idx: usize = index.0.try_into().unwrap();
+        self.map[idx].as_mut().unwrap()
+    }
+}
+
 impl<T, V> Default for ArenaMap<T, V> {
     fn default() -> Self {
         ArenaMap { map: Vec::new(), _phantom: PhantomData }

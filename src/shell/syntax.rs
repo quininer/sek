@@ -179,8 +179,7 @@ impl Literal {
     }
 
     pub fn span(self, parser: &Parser) -> Span {
-        let lit = matches2!(&parser.nodes[self.0], raw::Node::Literal).unwrap();
-        lit.0.clone()
+        parser.spans[self.node_id()].clone()
     }
 }
 
