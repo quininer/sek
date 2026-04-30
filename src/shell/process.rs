@@ -77,7 +77,7 @@ impl ShellCommand {
                 morgue: shell.morgue.clone()
             }),
             Err(err) => Err(err)
-                .with_context(|| format!("spawn failed: {}", self.cmd.as_std().get_program().display()))
+                .with_context(|| format!("spawn failed: {:?}", self.cmd.as_std().get_program()))
         }
     }
 }

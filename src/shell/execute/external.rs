@@ -5,20 +5,22 @@ use std::process::{ Stdio, ExitStatus };
 use anyhow::Context;
 use bstr::ByteSlice;
 use tokio::io::{ AsyncRead, AsyncReadExt };
+use smallvec::SmallVec;
 use crate::shell::Shell;
 use crate::shell::syntax::{ self, ArgSlice, StrSlice, StdioKind, ChainKind };
 use crate::shell::process::{ ShellCommand, Cause };
 
 
 pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow::Result<ExitStatus> {
-    let mut shell_cmd = None;
-    let mut cmd_new = |osstr: &[u8]| {
-        shell_cmd = Some(ShellCommand::new(osstr)?);
-        Ok(())
-    };
-    cmd.exe(&shell.parser).eval(shell, input, &mut cmd_new)?;
-    
-    let mut shell_cmd = shell_cmd.context("the expanded command was empty")?;
+    let mut osbuf = <SmallVec<[u8; 32]>>::new();
+    let mut push = |osstr: &[u8]| Ok(osbuf.extend_from_slice(osstr));
+    cmd.exe(&shell.parser).eval(shell, input, &mut push).await?;
+
+    if osbuf.is_empty() {
+        anyhow::bail!("the expanded command was empty");
+    }
+
+    let mut shell_cmd = ShellCommand::new(&*osbuf)?;
     let mut push = |osstr: &[u8]| shell_cmd.push(osstr);
 
     for arg in cmd.args(&shell.parser) {
@@ -91,16 +93,17 @@ impl syntax::Escape {
 
 impl syntax::SubShell {
     async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
-        let mut shell_cmd = None;
-        let mut cmd_new = |osstr: &[u8]| {
-            shell_cmd = Some(ShellCommand::new(osstr)?);
-            Ok(())
-        };
-
         let cmd = self.command(&shell.parser);
-        cmd.exe(&shell.parser).eval(shell, input, &mut cmd_new)?;
 
-        let mut shell_cmd = shell_cmd.context("the expanded command was empty")?;
+        let mut osbuf = <SmallVec<[u8; 32]>>::new();
+        let mut push_cmd = |osstr: &[u8]| Ok(osbuf.extend_from_slice(osstr));
+        cmd.exe(&shell.parser).eval(shell, input, &mut push_cmd).await?;
+
+        if osbuf.is_empty() {
+            anyhow::bail!("the expanded command was empty");
+        }        
+
+        let mut shell_cmd = ShellCommand::new(&*osbuf)?;
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in cmd.args(&shell.parser) {
@@ -114,7 +117,9 @@ impl syntax::SubShell {
         if let Some(chain) = cmd.chain(&shell.parser) {
             Box::pin(chain.eval(shell, input, shell_cmd, Some(push))).await?;
         } else {
-            spawn_and_push(shell_cmd, shell, &mut Some(push)).await?;
+            let status = spawn_and_push(shell_cmd, shell, &mut Some(push)).await;
+            shell.morgue.wait(Cause::Wait).await?;
+            status?;
         }
 
         Ok(())
@@ -134,7 +139,7 @@ impl syntax::SingleStr {
 
 impl syntax::DoubleStr {
     async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
-        let mut osbuf = Vec::new();
+        let mut osbuf = <SmallVec<[u8; 32]>>::new();
         let mut push2 = |osstr: &[u8]| {
             // The size is limited here just to avoid stdout may occupy memory indefinitely.
             if osbuf.len() + osstr.len() > shell.env.max_args_len {
@@ -150,7 +155,7 @@ impl syntax::DoubleStr {
                 StrSlice::Literal(val) => val.eval(shell, input, &mut push2)?,
                 StrSlice::Variable(val) => val.eval(shell, input, &mut push2)?,
                 StrSlice::Escape(val) => val.eval(shell, input, &mut push2)?,
-                StrSlice::SubShell(cmd) => cmd.eval(shell, input, &mut push2).await?,
+                StrSlice::SubShell(cmd) => Box::pin(cmd.eval(shell, input, &mut push2)).await?,
             }
         }
 
@@ -160,7 +165,7 @@ impl syntax::DoubleStr {
 
 impl syntax::Argument {
     async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
-        let mut osbuf = Vec::new();
+        let mut osbuf = <SmallVec<[u8; 32]>>::new();
         let mut push2 = |osstr: &[u8]| {
             // The size is limited here just to avoid stdout may occupy memory indefinitely.
             if osbuf.len() + osstr.len() > shell.env.max_args_len {
@@ -178,7 +183,7 @@ impl syntax::Argument {
                 ArgSlice::Escape(v) => v.eval(shell, input, &mut push2)?,
                 ArgSlice::SingleStr(v) => v.eval(shell, input, &mut push2)?,
                 ArgSlice::DoubleStr(v) => v.eval(shell, input, &mut push2).await?,
-                ArgSlice::SubShell(v) => v.eval(shell, input, &mut push2).await?,
+                ArgSlice::SubShell(v) => Box::pin(v.eval(shell, input, &mut push2)).await?,
             }
         }
 
@@ -225,15 +230,16 @@ impl syntax::Chain {
         let kind = self.kind(&shell.parser);
         let subshell = self.command(&shell.parser);
 
-        let mut shell_cmd = None;
-        let mut cmd_new = |osstr: &[u8]| {
-            shell_cmd = Some(ShellCommand::new(osstr)?);
-            Ok(())
-        };
+        let mut osbuf = <SmallVec<[u8; 32]>>::new();
+        let mut push_cmd = |osstr: &[u8]| Ok(osbuf.extend_from_slice(osstr));
         subshell.exe(&shell.parser)
-            .eval(shell, input, &mut cmd_new)?;
+            .eval(shell, input, &mut push_cmd).await?;
 
-        let mut shell_cmd = shell_cmd.context("The expanded command was empty")?;
+        if osbuf.is_empty() {
+            anyhow::bail!("the expanded command was empty");
+        }        
+
+        let mut shell_cmd = ShellCommand::new(&*osbuf)?;
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in subshell.args(&shell.parser) {

@@ -32,12 +32,6 @@ Since we gave up script support, we can make the shell syntax simpler and strict
 Please note that the following decisions are entirely based on my experience.
 It does not apply to everyone.
 
-### The first argument must be a literal
-
-In some scripts, the usage of `$CC ab.c` is very common,
-but it is meaningless in interactive mode.
-and if you forget to set environment variable, it will cause an error.
-
 ### No `if` and `for` support
 
 I almost never use them in interactive mode.
@@ -78,6 +72,12 @@ and most users don't know its existence.
 
 for example, `> fd ls` is a legal bash command.
 It writes the output of ls to a file.
+
+### No job control
+
+I usually enter the job control feature because I accidentally pressed `C-z`.
+It's a historical legacy feature with.
+In modern if I need to run another job, I'll open a new terminal emulator.
 
 ## Feature?
 

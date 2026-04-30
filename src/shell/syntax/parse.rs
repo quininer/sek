@@ -221,7 +221,7 @@ impl State<'_> {
 
         // first token
         let mut substate = {
-            let token = self.iter.next()
+            let token = self.iter.peek()
                 .ok_or_else(|| ParseFailed {
                     token: None,
                     kind: ErrorKind::EmptyCommand,
@@ -229,17 +229,22 @@ impl State<'_> {
                         .map(|id| self.tokens[id].1.clone())
                 })?;
             let item = &self.tokens[token];
-            let (token, span) = item;
+            let (token, _span) = item;
 
             // check first token
             match token {
-                Token::Text => (),
+                Token::Text
+                | Token::SingleQuote
+                | Token::DoubleQuote
+                | Token::ShellOpen
+                | Token::Backslash
+                | Token::Variable => (),
                 Token::ShellClose if self.is_subshell =>
                     return Err(failed(item).with_kind(ErrorKind::EmptyCommand)),
-                _ => return Err(failed(item).with_kind(ErrorKind::FirstArgMustLiteral)),
+                _ => return Err(failed(item).with_kind(ErrorKind::UnexpectedToken)),
             }
 
-            let exe = self.nodes.alloc(Node::Literal(syntax::Literal(span.clone())));
+            let exe = self.arg()?;
             let args = self.nodes.alloc(Node::Link(syntax::Link {
                 current: self.null,
                 next: None

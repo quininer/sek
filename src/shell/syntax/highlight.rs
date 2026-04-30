@@ -167,13 +167,13 @@ impl State {
     }
 }
 
-struct Exe(Span);
+struct Exe(Argument);
 struct Comment(Span);
 
 impl Command {
     fn colour(self, state: &mut State, input: Input<'_>, mut term: RefWriter<'_>) -> anyhow::Result<()> {
-        let lit = self.exe(&input.shell.parser);
-        Exe(lit.span(&input.shell.parser)).colour(state, input, term.reborrow())?;
+        let exe = self.exe(&input.shell.parser);
+        Exe(exe).colour(state, input, term.reborrow())?;
 
         for arg in self.args(&input.shell.parser) {
             arg.colour(state, input, term.reborrow())?;
@@ -193,7 +193,9 @@ impl Command {
 
 impl Exe {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
-        state.push_to(input.shell.config.theme.exe, input, self.0, term)
+        // TODO check lit and exist
+
+        self.0.colour(state, input, term)
     }   
 }
 

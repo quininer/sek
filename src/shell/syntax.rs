@@ -89,10 +89,10 @@ impl Command {
         self.0
     }
     
-    pub fn exe(self, parser: &Parser) -> Literal {
+    pub fn exe(self, parser: &Parser) -> Argument {
         let cmd = matches2!(&parser.nodes[self.0], raw::Node::Command).unwrap();
-        matches2!(&parser.nodes[cmd.exe], raw::Node::Literal).unwrap();
-        Literal(cmd.exe)
+        matches2!(&parser.nodes[cmd.exe], raw::Node::Link).unwrap();
+        Argument(cmd.exe)
     }
 
     pub fn args(self, parser: &Parser)

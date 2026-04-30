@@ -17,16 +17,15 @@ pub struct LexingError;
 #[derive(Debug, PartialEq, Copy, Clone)]
 #[non_exhaustive]
 pub enum ErrorKind {
-    FirstArgMustLiteral = 0,
-    EmptyCommand,
+    EmptyCommand = 0,
     UnexpectedToken,
     UnexpectedClose,
-    UnexpectedArgument,
-    IncompleteEscape,
     UnknownEscape,
     UnknownRedirect,
+    IncompleteEscape,
     InvalidToken,
     ExpectedClose,
+    ExpectedVariableName,
     Unreachable
 }
 
@@ -54,16 +53,15 @@ impl ParseFailed {
 impl ErrorKind {
     pub fn as_str(self) -> &'static str {
         const STRINGS: &[&str] = &[
-            "the first argument must be a literal",
             "command was empty",
             "unexpected token",
             "unexpected close token",
-            "unexpected argument",
-            "incomplete escape",
             "unknown character escape",
             "unknown redirect target",
+            "incomplete escape",
             "invalid token",
             "expected close token",
+            "expected variable name",
         ];
 
         STRINGS[self as usize]
