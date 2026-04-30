@@ -295,6 +295,16 @@ impl State<'_> {
             },
             Token::Variable => |state, substate, token| {
                 state.iter.bump();
+
+                let (token2, span) = &state.tokens[token];
+                if span.len() == 1 {
+                    return Err(ParseFailed {
+                        token: Some(*token2),
+                        span: Some(span.clone()),
+                        kind: ErrorKind::ExpectedVariableName
+                    });
+                }
+                
                 let node = state.nodes.alloc(Node::Variable(syntax::Variable(token)));
                 let next = state.chain_to(substate.link, node, token)?;
                 Ok(ControlFlow::Continue(SubState { link: next }))
@@ -424,6 +434,16 @@ impl State<'_> {
             },
             Token::Variable => |state, substate, token| {
                 state.iter.bump();
+
+                let (token2, span) = &state.tokens[token];
+                if span.len() == 1 {
+                    return Err(ParseFailed {
+                        token: Some(*token2),
+                        span: Some(span.clone()),
+                        kind: ErrorKind::ExpectedVariableName
+                    });
+                }
+                                
                 let node = state.nodes.alloc(Node::Variable(syntax::Variable(token)));
                 let next = state.chain_to(substate.link, node, token)?;
                 Ok(ControlFlow::Continue(SubState { link: next }))               

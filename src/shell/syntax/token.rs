@@ -36,10 +36,10 @@ pub enum Token {
     #[regex(r"[12*]?>>?")]
     Redirect,
 
-    #[regex(r"\$[\w]+")]
+    #[regex(r#"\$+[\w]*"#)]
     Variable,
 
-    #[regex(r#"[^#)|\\;"'<>\s]+"#)]
+    #[regex(r#"[^$#)|\\;"'<>\s]+"#)]
     Text,
 
     #[regex(r"[\s]+")]
@@ -240,5 +240,25 @@ mod test {
         ];
 
         assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_singlestr_dollar() {
+        let input = r#"exe '$'"#;
+
+        let result = Token::lexer(input)
+            .spanned()
+            .map(|(token, span)| (token, &input[span]))
+            .collect::<std::vec::Vec<_>>();
+
+        let expected = vec![
+            (Ok(Token::Text), "exe"),
+            (Ok(Token::Empty), " "),
+            (Ok(Token::SingleQuote), "'"),
+            (Ok(Token::Variable), "$"),
+            (Ok(Token::SingleQuote), "'"),
+        ];
+
+        assert_eq!(expected, result);        
     }
 }
