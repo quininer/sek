@@ -15,6 +15,7 @@ pub enum Node {
     Literal(Literal),
     Variable(Variable),
     Escape(Escape),
+    Argument(Argument),
     SingleStr(SingleStr),
     DoubleStr(DoubleStr),
     SubShell(SubShell),
@@ -45,7 +46,7 @@ pub struct Argument {
     pub span: Span,
 
     /// arg slice list
-    pub link: NodeId,
+    pub list: NodeId,
 }
 
 /// text token

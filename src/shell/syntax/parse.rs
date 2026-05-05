@@ -278,7 +278,7 @@ impl State<'_> {
         }
 
         type LookupAction = fn(&mut State<'_>, SubState, TokenId)
-            -> Result<ControlFlow<(), SubState>, ParseFailed>;
+            -> Result<ControlFlow<TokenId, SubState>, ParseFailed>;
 
         lookup!{
             static LUT = [LookupAction; Token::size()];
@@ -315,7 +315,7 @@ impl State<'_> {
                 Ok(ControlFlow::Continue(SubState { link: next }))
             },
             Token::ShellClose => |state, _, token| if state.is_subshell {
-                Ok(ControlFlow::Break(()))
+                Ok(ControlFlow::Break(token))
             } else {
                 Err(failed(&state.tokens[token]).with_kind(ErrorKind::UnexpectedClose))
             },
@@ -337,7 +337,7 @@ impl State<'_> {
                 | Token::Then
                 | Token::AndIf
                 | Token::OrIf
-            => |_, _, _| Ok(ControlFlow::Break(())),
+            => |_, _, token| Ok(ControlFlow::Break(token)),
             #_ => |state, _, token| Err(failed(&state.tokens[token]).with_kind(ErrorKind::UnexpectedToken)),
         }
 
@@ -346,18 +346,35 @@ impl State<'_> {
             next: None
         }));
         let mut substate = SubState { link };
+        let point_start = self.iter.peek()
+            .map(|token| self.tokens[token].1.start)
+            .or_else(|| self.iter.prev()
+                .map(|token| self.tokens[token].1.end)
+            )
+            .unwrap_or_default();
+        let mut token_end = None;
 
         while let Some(token_id) = self.iter.peek() {
             let (token, _span) = &self.tokens[token_id];
             let &token = token;
-            
+
             match LUT[token as usize](self, substate, token_id)? {
                 ControlFlow::Continue(next) => substate = next,
-                ControlFlow::Break(()) => break
+                ControlFlow::Break(token) => {
+                    token_end = Some(token);
+                    break
+                }
             }
         }
 
-        Ok(link)
+        let point_end = token_end
+            .map(|token| self.tokens[token].1.start)
+            .unwrap_or(point_start);
+
+        Ok(self.nodes.alloc(Node::Argument(syntax::Argument {
+            span: point_start..point_end,
+            list: link
+        })))        
     }
 
     fn single_str(&mut self) -> Result<NodeId, ParseFailed> {

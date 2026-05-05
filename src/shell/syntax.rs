@@ -91,7 +91,7 @@ impl Command {
     
     pub fn exe(self, parser: &Parser) -> Argument {
         let cmd = matches2!(&parser.nodes[self.0], raw::Node::Command).unwrap();
-        matches2!(&parser.nodes[cmd.exe], raw::Node::Link).unwrap();
+        matches2!(&parser.nodes[cmd.exe], raw::Node::Argument).unwrap();
         Argument(cmd.exe)
     }
 
@@ -122,11 +122,17 @@ impl Argument {
     pub fn node_id(self) -> raw::NodeId {
         self.0
     }
+
+    pub fn span(self, parser: &Parser) -> Span {
+        let lit = matches2!(&parser.nodes[self.0], raw::Node::Argument).unwrap();
+        lit.span.clone()
+    }
     
     pub fn slice(self, parser: &Parser)
         -> impl Iterator<Item = ArgSlice> + use<'_>
     {
-        Link::new(parser, self.0)
+        let a = matches2!(&parser.nodes[self.0], raw::Node::Argument).unwrap();
+        Link::new(parser, a.list)
             .map(move |id| match &parser.nodes[id] {
                 raw::Node::Literal(_) => ArgSlice::Literal(Literal(id)),
                 raw::Node::Variable(_) => ArgSlice::Variable(Variable(id)),
