@@ -1,8 +1,9 @@
 use std::fmt;
-use std::hash::{ Hash, Hasher };
-use std::ops::{ Index, IndexMut };
+use std::num::NonZero;
 use std::convert::TryInto;
 use std::marker::PhantomData;
+use std::hash::{ Hash, Hasher };
+use std::ops::{ Index, IndexMut };
 
 
 #[derive(Debug)]
@@ -13,7 +14,19 @@ pub struct ArenaMap<T, V> {
     _phantom: PhantomData<Id<T>>
 }
 
-pub struct Id<T>(u32, PhantomData<fn() -> T>);
+pub struct Id<T>(NonZero<u32>, PhantomData<fn() -> T>);
+
+impl<T> Id<T> {
+    fn new(n: usize) -> Id<T> {
+        let id: u32 = n.try_into().unwrap();
+        let id = NonZero::new(id + 1).unwrap();
+        Id(id, PhantomData)
+    }
+
+    fn get(&self) -> usize {
+        (self.0.get() - 1).try_into().unwrap()
+    }
+}
 
 impl<T> Arena<T> {
     pub const fn new() -> Arena<T> {
@@ -23,7 +36,7 @@ impl<T> Arena<T> {
     pub fn alloc(&mut self, val: T) -> Id<T> {
         let id = self.0.len();
         self.0.push(val);
-        Id(id.try_into().unwrap(), PhantomData)
+        Id::new(id)
     }
 
     pub fn iter(&self) -> Iter<'_, T> {
@@ -37,7 +50,7 @@ impl<T> Arena<T> {
 
 impl<T> Default for Id<T> {
     fn default() -> Self {
-        Id(u32::MAX, PhantomData)
+        Id(<NonZero<u32>>::MAX, PhantomData)
     }
 }
 
@@ -51,15 +64,13 @@ impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
     
     fn index(&self, index: Id<T>) -> &Self::Output {
-        let idx: usize = index.0.try_into().unwrap();
-        &self.0[idx]
+        &self.0[index.get()]
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
     fn index_mut(&mut self, index: Id<T>) -> &mut Self::Output {
-        let idx: usize = index.0.try_into().unwrap();
-        &mut self.0[idx]
+        &mut self.0[index.get()]
     }
 }
 
@@ -71,7 +82,7 @@ impl<T> Extend<T> for Arena<T> {
 
 impl<T> Id<T> {
     pub fn raw(&self) -> u32 {
-        self.0
+        self.0.get()
     }
 }
 
@@ -113,7 +124,7 @@ impl<T> Iterator for Iter<'_, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.arena.0.get(self.index)?;
-        let id = Id(self.index.try_into().unwrap(), PhantomData);
+        let id = Id::new(self.index);
         self.index += 1;
         Some(id)
     }
@@ -127,19 +138,19 @@ impl<T> Iter<'_, T> {
     pub fn peek(&self) -> Option<Id<T>> {
         let next = self.index;
         self.arena.0.get(next)?;
-        Some(Id(next.try_into().unwrap(), PhantomData))
+        Some(Id::new(next))
     }
 
     pub fn prev(&self) -> Option<Id<T>> {
-        let prev = self.index.saturating_sub(1);
+        let prev = self.index.checked_sub(1)?;
         self.arena.0.get(prev)?;
-        Some(Id(prev.try_into().unwrap(), PhantomData))
+        Some(Id::new(prev))
     }
 }
 
 impl<T, V> ArenaMap<T, V> {
     pub fn insert(&mut self, key: Id<T>, value: V) -> Option<V> {
-        let id: usize = key.0.try_into().unwrap();
+        let id: usize = key.get();
         let min_len = id + 1;
 
         if self.map.len() < min_len {
@@ -150,13 +161,11 @@ impl<T, V> ArenaMap<T, V> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&V> {
-        let id: usize = id.0.try_into().unwrap();
-        self.map.get(id)?.as_ref()
+        self.map.get(id.get())?.as_ref()
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<V> {
-        let id: usize = id.0.try_into().unwrap();
-        self.map.get_mut(id)?.take()
+        self.map.get_mut(id.get())?.take()
     }
 
     pub fn clear(&mut self) {
