@@ -1,8 +1,8 @@
 pub mod env;
 pub mod syntax;
-pub mod process;
 pub mod execute;
 
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::io::{self, Write};
 use crossterm::{ queue, style, terminal };
@@ -14,12 +14,12 @@ use crate::editor::{ Editor, Action, Mode };
 use crate::util::{ ScopeGuard, FmtDebug };
 use crate::util::stdout::Stdout;
 use env::Environment;
-use process::{ Morgue, Cause };
+use execute::external::{ Morgue, Cause };
 
 
 pub struct Shell {
     pub config: Config,
-    pub env: Environment,
+    pub env: RefCell<Environment>,
     pub morgue: Morgue,
     pub editor: Editor,
     pub parser: syntax::Parser,
@@ -32,6 +32,7 @@ impl Shell {
     {
         let mut env = Environment::new(pwd)?;
         let mut config = config::load(&mut env, config_path)?;
+        let env = RefCell::new(env);
         
         let editor = Editor::new()?;
         let parser = syntax::Parser::default();
@@ -81,7 +82,7 @@ impl Shell {
             }
 
             // TODO render error
-            let mut action = self.editor.step(&self.env, event);
+            let mut action = self.editor.step(&self.env.borrow(), event);
             let is_execute = matches!(action, Ok(Action::Execute));
 
             if matches!(action, Ok(Action::Break)) {
@@ -105,7 +106,7 @@ impl Shell {
                 self.editor.command.clear();
                 self.editor.path_selector.set_glob(None);
                 self.editor.path_selector.set_space(renderer.size.1.into());
-                match self.editor.path_selector.cd(self.env.pwd()) {
+                match self.editor.path_selector.cd(self.env.borrow().pwd()) {
                     Ok(()) => {
                         self.editor.mode = Mode::PathSelector;
                         self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End;
@@ -152,9 +153,7 @@ impl Shell {
                     
                     match execute::execute(&self, self.editor.insert.as_str(), cmd).await {
                         // TODO set prompt
-                        Ok(Some(_status)) => (),
-                        // ctrl-c
-                        Ok(None) => (),
+                        Ok(_status) => (),
                         Err(err) => {
                             let mut term = (renderer.term)();
                             queue!(

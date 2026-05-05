@@ -210,9 +210,10 @@ impl Literal {
 
 impl Variable {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
+        let env = input.shell.env.borrow();
         let color = if input.buf[self.span(input.parser)]
             .strip_prefix('$')
-            .and_then(|name| input.shell.env.get(name.as_ref()))
+            .and_then(|name| env.get(name.as_ref()))
             .is_some()
         {
             input.shell.config.theme.variable
