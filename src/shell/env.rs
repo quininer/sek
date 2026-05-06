@@ -63,8 +63,8 @@ impl Environment {
     }
 
     pub fn go_home(&mut self) -> io::Result<()> {
-        self.prev_pwd =
-            Some(mem::replace(&mut self.pwd, self.userdir.home_dir().into()));
+        let home = self.userdir.home_dir().canonicalize()?;
+        self.prev_pwd = Some(mem::replace(&mut self.pwd, home));
         self.set_pwd();
 
         Ok(())
@@ -72,6 +72,7 @@ impl Environment {
 
     pub fn go_back(&mut self) -> io::Result<()> {
         if let Some(pwd) = self.prev_pwd.take() {
+            let pwd = pwd.canonicalize()?;
             self.prev_pwd = Some(mem::replace(&mut self.pwd, pwd));
             self.set_pwd();
         }

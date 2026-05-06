@@ -22,8 +22,14 @@ pub fn builtin_command(cmd: &[u8]) -> Option<BuiltinCommand> {
 async fn cd(shell: &Shell, args: &[BString]) -> anyhow::Result<bool> {
     anyhow::ensure!(args.len() == 1, "cd args length != 1");
     
-    let path = args[0].to_path().context("not utf8 path")?;
-    shell.env.borrow_mut().cd(path)?;
+    let path = &args[0];
+
+    if path == "-" {
+        shell.env.borrow_mut().go_back()?;
+    } else {
+        let path = path.to_path().context("not utf8 path")?;
+        shell.env.borrow_mut().cd(path)?;
+    }
 
     Ok(true)    
 }

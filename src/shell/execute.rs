@@ -44,7 +44,10 @@ impl Command {
 
     pub fn push(&mut self, arg: &[u8]) -> anyhow::Result<()> {
         match self {
-            Command::Builtin(_, args) => Ok(args.push(arg.into())),
+            Command::Builtin(_, args) => {
+                args.push(arg.into());
+                Ok(())
+            },
             Command::External(cmd) => cmd.push(arg)
         }
     }
@@ -105,8 +108,22 @@ impl Child<'_> {
     }
 
     pub async fn wait(&mut self) -> anyhow::Result<Status> {
+        use tokio::signal::ctrl_c;
+        use crate::util::{ Select, Either };
+
         match self {
-            Child::BuiltIn { future, .. } => Ok(Status::BuiltIn(future.await?)),
+            Child::BuiltIn { future, .. } => {
+                match Select::new(
+                    future.as_mut(),
+                    ctrl_c()
+                ).await {
+                    Either::Left(result) => Ok(Status::BuiltIn(result?)),
+                    Either::Right(result) => {
+                        result?;
+                        anyhow::bail!("built-in command cancel by ctrl-c")
+                    }
+                }
+            },
             Child::External(child) => Ok(Status::Process(child.wait().await?))
         }
     }
