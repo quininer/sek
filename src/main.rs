@@ -4,7 +4,6 @@ use argh::FromArgs;
 use anyhow::Context;
 use tokio::runtime;
 use directories::ProjectDirs;
-// use sek::daemon;
 
 
 /// The Sek Shell
@@ -17,17 +16,7 @@ struct Options {
     /// use specified pwd
     #[argh(option, short = 'p')]
     pwd: Option<PathBuf>,
-
-    // /// sub command
-    // #[argh(subcommand)]
-    // subcmd: Option<SubCommand>
 }
-
-// #[derive(FromArgs)]
-// #[argh(subcommand)]
-// enum SubCommand {
-//     // Daemon(daemon::Options)
-// }
 
 fn main() -> anyhow::Result<()> {
     let mut options: Options = argh::from_env();
@@ -47,14 +36,7 @@ fn main() -> anyhow::Result<()> {
         projdir.config_dir().join("config")
     };
 
-    let rt = runtime::Builder::new_current_thread()
-        .enable_io()
-        .build()?;
-
-    // if let Some(SubCommand::Daemon(daemon)) = options.subcmd {
-    //     rt.block_on(daemon.exec(projdir, confpath))
-    // } else {
-        let shell = sek::shell::Shell::new(projdir, pwd, confpath)?;
-        rt.block_on(shell.start())       
-    // }
+    let rt = runtime::Builder::new_current_thread().build()?;
+    let shell = sek::shell::Shell::new(projdir, pwd, confpath)?;
+    rt.block_on(shell.start())       
 }

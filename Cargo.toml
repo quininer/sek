@@ -38,7 +38,7 @@ icu_collator = "2"
 # command
 tokio = { version = "1", features = [
   "rt", "io-util", "sync",
-  "signal", "process", "net"
+  "signal", "process"
 ] }
 
 # daemon

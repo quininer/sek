@@ -90,6 +90,6 @@ On the contrary, it is designed to satisfy my personal use.
 + [x] Local History
 + [x] Path selector
 + [ ] Completion UI
-+ [ ] History-based Completion (daemon)
-+ [ ] Rule-based Completion (daemon)
++ [ ] History-based Completion
++ [ ] Rule-based Completion
 + [ ] Prompt
