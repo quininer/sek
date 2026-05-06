@@ -234,7 +234,7 @@ impl Default for Filter {
         Filter {
             glob: None,
             hidden_file: true,
-            case_sensitive: true
+            case_sensitive: false
         }
     }
 }

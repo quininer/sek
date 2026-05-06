@@ -75,10 +75,6 @@ impl Editor {
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::ALT && code == KeyCode::Char(' '))
             => {
-                if matches!(self.mode, Mode::PathSelector) {
-                    self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
-                }
-                
                 self.mode = Mode::Normal;
             },
 
@@ -138,17 +134,20 @@ impl Editor {
                         => self.command.move_right(),
                     (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Esc)
                         => self.command.clear(),
-                    _ => (),      
-                }
+                    (Mode::PathSelector, Some('/'), KeyCode::Enter)
+                        => {
+                            if let Some(cmd) = self.command.as_str().strip_prefix('/')
+                                .filter(|cmd| !cmd.is_empty())
+                            {
+                                self.path_selector.set_glob(Some(glob::Pattern::new(cmd)?));
+                            } else {
+                                self.path_selector.set_glob(None);
+                            }
 
-                if matches!(self.mode, Mode::PathSelector) {
-                    if let Some(cmd) = self.command.as_str().strip_prefix('/') {
-                        self.path_selector.set_glob(Some(glob::Pattern::new(cmd)?));
-                    } else {
-                        self.path_selector.set_glob(None);
-                    }
-                    
-                    self.path_selector.cd(Path::new("."))?;
+                            self.command.clear();
+                            self.path_selector.cd(Path::new("."))?;                            
+                        }
+                    _ => (),      
                 }
             },
 
@@ -282,7 +281,6 @@ impl Editor {
                     self.path_selector.cd(Path::new("."))?,
                 (Mode::PathSelector, None, KeyCode::Char('q')) => {
                     self.mode = Mode::Insert;
-                    self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
                 },
                 (Mode::PathSelector, None, KeyCode::Char('y')) => {
                     if let Some(path) = self.path_selector.selected() {
@@ -314,7 +312,6 @@ impl Editor {
                         };
                         self.insert.push_str(path);
                         self.mode = Mode::Insert;
-                        self.ui.layout[self.ui.command].justify = layout::Justify::Stretch;
                     }
                 },
                 _ => ()

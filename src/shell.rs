@@ -109,7 +109,6 @@ impl Shell {
                 match self.editor.path_selector.cd(self.env.borrow().pwd()) {
                     Ok(()) => {
                         self.editor.mode = Mode::PathSelector;
-                        self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End;
                     },
                     Err(err) => {
                         action = Err(err);
@@ -117,6 +116,17 @@ impl Shell {
                         // TODO path-selector error
                     }
                 }
+            }
+
+            match self.editor.mode {
+                Mode::PathSelector
+                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::End
+                    => self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End,
+                Mode::PathSelector => (),
+                _
+                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::Stretch
+                    => self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::Stretch,
+                _ => (),
             }
 
             match result {
