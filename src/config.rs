@@ -1,6 +1,5 @@
 use std::path::{ Path, PathBuf };
 use std::ffi::OsStr;
-use std::collections::HashMap;
 use std::process::{ Command, Stdio };
 use serde::Deserialize;
 use crossterm::style::{ Color, Attributes, Attribute };
@@ -10,7 +9,6 @@ use crate::shell::env::Environment;
 
 #[derive(Default)]
 pub struct Config {
-    pub alias: HashMap<String, String>,
     pub theme: Theme   
 }
 
@@ -28,7 +26,6 @@ pub struct ConfigFormat<'a> {
     #[serde(rename = "push-path")]
     pub push_path: Vec<CowStr<'a>>,
     #[serde(default)]
-    pub alias: HashMap<String, String>,
     pub theme: Option<Theme>
 }
 
@@ -139,7 +136,7 @@ pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
     }
 
     for key in config.unset_env {
-        env.remove(OsStr::new(key.as_ref()));
+        env.unset(OsStr::new(key.as_ref()));
     }
 
     for path in config.push_path {
@@ -147,7 +144,6 @@ pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
     }
 
     Ok(Config {
-        alias: config.alias,
         theme: config.theme.unwrap_or_else(default_theme)
     })
 }

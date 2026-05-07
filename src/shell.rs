@@ -31,14 +31,12 @@ impl Shell {
         -> anyhow::Result<Self>
     {
         let mut env = Environment::new(pwd)?;
-        let mut config = config::load(&mut env, config_path)?;
+        let config = config::load(&mut env, config_path)?;
         let env = RefCell::new(env);
         
         let editor = Editor::new()?;
         let parser = syntax::Parser::default();
 
-        config.alias.shrink_to_fit();
-        
         Ok(Shell {
             ast: None,
             morgue: Morgue::default(),

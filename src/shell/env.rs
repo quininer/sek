@@ -101,7 +101,7 @@ impl Environment {
         Ok(())
     }
 
-    pub fn remove(&mut self, name: &OsStr) -> Option<OsString> {
+    pub fn unset(&mut self, name: &OsStr) -> Option<OsString> {
         self.map.remove(name)
     }
 

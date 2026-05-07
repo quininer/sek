@@ -88,8 +88,7 @@ impl EditableLine {
     }
 
     pub fn selected(&self) -> &str {
-        let cursor = self.cursor();
-        let span = self.span(cursor);
+        let span = self.span(self.cursor());
         &self.as_str()[span]
     }
 
@@ -136,7 +135,7 @@ impl EditableLine {
         self.line_mut().cursor.end += 1;
     }
 
-    pub fn replace(&mut self, _cur: usize, s: char) {
+    pub fn replace(&mut self, s: char) {
         let cur = self.line().cursor.end;
         let idx = self.index(cur);
         let next_len = self.line()
