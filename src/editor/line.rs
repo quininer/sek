@@ -170,6 +170,7 @@ impl EditableLine {
         line.buf.replace_range(bytes_range.clone(), s);
 
         self.update(cursor.start, bytes_range.start, || s.is_ascii());
+        self.line_mut().cursor.start = cursor.start;
         self.line_mut().cursor.end = cursor.start + s.chars().count();
     }
 
@@ -180,7 +181,8 @@ impl EditableLine {
             .buf
             .insert_str(idx, s);
         self.update(cur, idx, || s.is_ascii());
-        self.line_mut().cursor.end += s.chars().count();
+        self.line_mut().cursor.start = cur;
+        self.line_mut().cursor.end = cur + s.chars().count();
     }
 
     pub fn backspace(&mut self) {

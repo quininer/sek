@@ -176,16 +176,16 @@ impl Editor {
                 // move
                 (Mode::Normal | Mode::Visual, None, KeyCode::Char('h')) => {
                     self.insert.move_left();
+
                     if matches!(self.mode, Mode::Normal) {
-                        let cursor = self.insert.cursor_mut();
-                        cursor.start = cursor.end;
+                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
                     }
                 },
                 (Mode::Normal | Mode::Visual, None, KeyCode::Char('l')) => {
                     self.insert.move_right();
+
                     if matches!(self.mode, Mode::Normal) {
-                        let cursor = self.insert.cursor_mut();
-                        cursor.start = cursor.end;
+                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
                     }
                 },
                 (Mode::Normal | Mode::Visual, None, KeyCode::Char('x')) => {
@@ -245,19 +245,50 @@ impl Editor {
                     self.insert.clear();
                 },
 
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('g')) => self.ready = Some('g'),
+                (Mode::Normal | Mode::Visual, Some('g'), KeyCode::Char('h')) => {
+                    self.insert.move_head();
+
+                    if matches!(self.mode, Mode::Normal) {
+                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    }
+                },
+                (Mode::Normal | Mode::Visual, Some('g'), KeyCode::Char('l')) => {
+                    self.insert.move_end();
+
+                    if matches!(self.mode, Mode::Normal) {
+                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    }
+                },
+
                 // clipboard
                 (Mode::Normal | Mode::Visual, None, KeyCode::Char('y')) => {
                     self.clipboard.clear();
                     self.clipboard.push_str(self.insert.selected());
                 },
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('p')) => {
+                (Mode::Normal, None, KeyCode::Char('p')) => {
+                    let char_len = self.insert.char_len();
+                    let cursor = self.insert.cursor_mut();
+                    cursor.end = char_len.min(cursor.end.saturating_add(1));
+
+                    self.insert.push_str(&self.clipboard);
+
+                    let cursor = self.insert.cursor_mut();
+                    cursor.end = cursor.start.max(cursor.end.saturating_sub(1));
+                }
+                (Mode::Visual, None, KeyCode::Char('p')) => {
+                    let cursor = self.insert.cursor();
+                    let start = cursor.start.min(cursor.end);
                     self.insert.replace_str_inclusive(&self.clipboard, None);
+                    *self.insert.cursor_mut() =
+                        start..(start + self.clipboard.chars().count().saturating_sub(1));
                 },
 
                 // visual cancel
-                (Mode::Visual, None, KeyCode::Char(',')) => self.ready = Some(','),
-                (Mode::Visual, Some(','), KeyCode::Char(',')) => {
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char(',')) => self.ready = Some(','),
+                (Mode::Normal | Mode::Visual, Some(','), KeyCode::Char(',')) => {
                     self.mode = Mode::Normal;
+                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
                 },
 
                 // path selector
