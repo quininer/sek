@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::io::{self, Write};
 use crossterm::{ queue, style, terminal };
 use directories::ProjectDirs;
+use crate::cache::{ self, Cache };
 use crate::config::{ self, Config };
 use crate::ui::layout;
 use crate::ui::render::Renderer;
@@ -20,6 +21,7 @@ use execute::external::{ Morgue, Cause };
 pub struct Shell {
     pub config: Config,
     pub env: RefCell<Environment>,
+    pub cache: RefCell<Cache>,
     pub morgue: Morgue,
     pub editor: Editor,
     pub parser: syntax::Parser,
@@ -27,12 +29,14 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(_projdir: ProjectDirs, pwd: PathBuf, config_path: PathBuf)
+    pub fn new(projdir: ProjectDirs, pwd: PathBuf, config_path: PathBuf)
         -> anyhow::Result<Self>
     {
         let mut env = Environment::new(pwd)?;
         let config = config::load(&mut env, config_path)?;
+        let cache = cache::load(&env, projdir.cache_dir())?;
         let env = RefCell::new(env);
+        let cache = RefCell::new(cache);
         
         let editor = Editor::new()?;
         let parser = syntax::Parser::default();
@@ -40,7 +44,7 @@ impl Shell {
         Ok(Shell {
             ast: None,
             morgue: Morgue::default(),
-            env, editor, parser, config
+            env, editor, parser, config, cache,
         })        
     }
     

@@ -113,10 +113,7 @@ impl Child<'_> {
 
         match self {
             Child::BuiltIn { future, .. } => {
-                match Select::new(
-                    future.as_mut(),
-                    ctrl_c()
-                ).await {
+                match Select::new(future.as_mut(), ctrl_c()).await {
                     Either::Left(result) => Ok(Status::BuiltIn(result?)),
                     Either::Right(result) => {
                         result?;

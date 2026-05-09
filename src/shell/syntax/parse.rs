@@ -474,9 +474,9 @@ impl State<'_> {
         }
 
         let start_token = self.iter.next().unwrap();
-        assert!(
+        debug_assert!(
             matches!(&self.tokens[start_token], (Token::DoubleQuote, _)),
-            "{:?}", &self.tokens[start_token]
+            "{:?}", self.tokens[start_token]
         );
 
         let link = self.nodes.alloc(Node::Link(syntax::Link {

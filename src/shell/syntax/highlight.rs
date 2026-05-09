@@ -193,9 +193,24 @@ impl Command {
 
 impl Exe {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
-        // TODO check lit and exist
+        let mut args = self.0.slice(input.parser);
+        if let Some(ArgSlice::Literal(arg)) = args.next()
+            && args.next().is_none()
+        {
+            let span = arg.span(input.parser);
+            let exe = &input.buf[span.clone()];
 
-        self.0.colour(state, input, term)
+            let cache = input.shell.cache.borrow();
+            let style = if cache.exe_set.exist(exe) {
+                input.shell.config.theme.exe
+            } else {
+                input.shell.config.theme.error
+            };
+            state.push_to(style, input, span, term)
+        } else {
+            // TODO check file exist and error for subshell
+            self.0.colour(state, input, term)
+        }
     }   
 }
 
@@ -204,7 +219,7 @@ impl Literal {
         let style = if state.is_doublestr
             { input.shell.config.theme.double_str }
             else { input.shell.config.theme.literal };
-        state.push_to(style, input, self.span(input.parser), term)        
+        state.push_to(style, input, self.span(input.parser), term)
     }
 }
 

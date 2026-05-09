@@ -29,6 +29,7 @@ pub struct ConfigFormat<'a> {
     pub theme: Option<Theme>
 }
 
+// TODO change color style (like alacritty ?)
 #[derive(Deserialize, Default)]
 pub struct Theme {
     // background color

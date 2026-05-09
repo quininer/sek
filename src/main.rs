@@ -36,7 +36,9 @@ fn main() -> anyhow::Result<()> {
         projdir.config_dir().join("config")
     };
 
-    let rt = runtime::Builder::new_current_thread().build()?;
+    let rt = runtime::Builder::new_current_thread()
+        .enable_io()
+        .build()?;
     let shell = sek::shell::Shell::new(projdir, pwd, confpath)?;
     rt.block_on(shell.start())       
 }
