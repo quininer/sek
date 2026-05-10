@@ -1,6 +1,7 @@
 pub mod env;
 pub mod syntax;
 pub mod execute;
+pub mod complete;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -16,6 +17,7 @@ use crate::util::{ ScopeGuard, FmtDebug };
 use crate::util::stdout::Stdout;
 use env::Environment;
 use execute::external::{ Morgue, Cause };
+use complete::complete;
 
 
 pub struct Shell {
@@ -99,25 +101,11 @@ impl Shell {
             };
             self.ast = result.as_ref().ok().copied();
 
-            if let Ok(_cmd) = result
+            if let Ok(cmd) = result
                 && matches!(action, Ok(Action::Completion))
             {
-                // TODO check completion type
-
-                renderer.screen_reset()?;
-                self.editor.command.clear();
-                self.editor.path_selector.set_glob(None);
-                self.editor.path_selector.set_space(renderer.size.1.into());
-                match self.editor.path_selector.cd(self.env.borrow().pwd()) {
-                    Ok(()) => {
-                        self.editor.mode = Mode::PathSelector;
-                    },
-                    Err(err) => {
-                        action = Err(err);
-
-                        // TODO path-selector error
-                    }
-                }
+                let ty = complete(&self, cmd).await;
+                ty.resolve(&mut self, &mut renderer, &mut action).await?;
             }
 
             match self.editor.mode {
@@ -149,6 +137,7 @@ impl Shell {
                             .term_width(renderer.size.1.into())
                         );
 
+                    let line = self.editor.insert.as_str();
                     let display = error_renderer.render(&[err.to_message(line)]);
                     renderer.new_line(&display)?;
                 },

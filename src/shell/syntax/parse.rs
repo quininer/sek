@@ -15,6 +15,10 @@ pub struct Parser {
 }
 
 impl Parser {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = NodeId> {
+        self.nodes.iter()
+    }
+    
     pub fn parse(&mut self, input: &str) -> Result<Command, ParseFailed> {
         self.parse_raw(input, false).map(Command)
     }
@@ -369,7 +373,7 @@ impl State<'_> {
 
         let point_end = token_end
             .map(|token| self.tokens[token].1.start)
-            .unwrap_or(point_start);
+            .unwrap_or(self.source.len());
 
         Ok(self.nodes.alloc(Node::Argument(syntax::Argument {
             span: point_start..point_end,

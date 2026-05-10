@@ -341,7 +341,11 @@ impl Editor {
                         } else {
                             "."
                         };
-                        self.insert.push_str(path);
+                        if self.insert.cursor().is_empty() {
+                            self.insert.push_str(path);
+                        } else {
+                            self.insert.replace_str_inclusive(path, None);
+                        }
                         self.mode = Mode::Insert;
                     }
                 },

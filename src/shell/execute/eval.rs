@@ -174,7 +174,7 @@ impl syntax::DoubleStr {
 }
 
 impl syntax::Argument {
-    async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
+    pub async fn eval(self, shell: &Shell, input: &str, push: Push<'_>) -> anyhow::Result<()> {
         let mut osbuf = <SmallVec<[u8; 32]>>::new();
         let mut push2 = |osstr: &[u8]| {
             // The size is limited here just to avoid stdout may occupy memory indefinitely.

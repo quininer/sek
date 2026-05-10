@@ -119,13 +119,18 @@ impl Command {
 }
 
 impl Argument {
+    pub fn new(parser: &Parser, node_id: raw::NodeId) -> Option<Self> {
+        matches!(&parser.nodes[node_id], raw::Node::Argument(_))
+            .then_some(Argument(node_id))
+    }
+    
     pub fn node_id(self) -> raw::NodeId {
         self.0
     }
 
     pub fn span(self, parser: &Parser) -> Span {
-        let lit = matches2!(&parser.nodes[self.0], raw::Node::Argument).unwrap();
-        lit.span.clone()
+        let args = matches2!(&parser.nodes[self.0], raw::Node::Argument).unwrap();
+        args.span.clone()
     }
     
     pub fn slice(self, parser: &Parser)

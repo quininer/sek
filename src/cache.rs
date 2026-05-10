@@ -24,7 +24,7 @@ pub fn load(env: &Environment, cache_dir: &Path) -> anyhow::Result<Cache> {
 }
 
 impl ExeSet {
-    pub fn load(env: &Environment, path: &Path) -> anyhow::Result<ExeSet> {
+    fn load(env: &Environment, path: &Path) -> anyhow::Result<ExeSet> {
         let mut maybe_data = fs::read(path)
             .map(Some)
             .or_else(|err| if err.kind() == io::ErrorKind::NotFound {
@@ -37,9 +37,8 @@ impl ExeSet {
             match fst::Set::new(data) {
                 Ok(set) => return Ok(ExeSet { set }),
                 Err(_err) => {
-                    fs::remove_file(path)?;
-
                     // log err ?
+                    fs::remove_file(path)?;
                 }
             }
         }
@@ -99,11 +98,24 @@ impl ExeSet {
         Ok(exe_set)
     }
 
-    pub fn search(&self, prefix: &str) -> impl fst::Streamer<'_, Item = &[u8]> {
-        use fst::{ Automaton, IntoStreamer };
+    pub fn search<'a>(&'a self, prefix: &'a str)
+        -> impl Iterator<Item = Box<[u8]>> + 'a
+    {
+        use fst::{ Automaton, IntoStreamer, Streamer };
+        use fst::automaton::{ StartsWith, Str };
 
-        let matcher = fst::automaton::Str::new(prefix).starts_with();
-        self.set.search(matcher).into_stream()
+        struct SearchResult<'a>(fst::set::Stream<'a, StartsWith<Str<'a>>>);
+
+        impl<'a> Iterator for SearchResult<'a> {
+            type Item = Box<[u8]>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.0.next().map(Box::from)
+            }
+        }
+
+        let matcher = Str::new(prefix).starts_with();
+        SearchResult(self.set.search(matcher).into_stream())
     }
 
     pub fn exist(&self, name: &str) -> bool {

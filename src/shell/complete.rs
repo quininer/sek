@@ -1,0 +1,130 @@
+use bstr::ByteSlice;
+use smallvec::SmallVec;
+use logos::Span;
+use crate::shell::syntax::{ Command, Argument, ArgSlice, StrSlice };
+use crate::shell::Shell;
+use crate::ui::render::{ Renderer, TermTarget };
+use crate::editor::{ Action, Mode };
+
+#[derive(Debug)]
+pub enum CompletionType {
+    None,
+    Exe(Span),
+    Path(Span, SmallVec<[u8; 32]>),
+    Flag(Span, SmallVec<[u8; 32]>),
+    Value,
+}
+
+pub async fn complete(shell: &Shell, cmd: Command)
+    -> CompletionType
+{
+    let point = shell.editor.insert.cursor().end;
+
+    // check exe
+    let exe = cmd.exe(&shell.parser);
+    if let span = exe.span(&shell.parser)
+        && (span.contains(&point) || span.end == point)
+    {
+        let mut iter = exe.slice(&shell.parser);
+
+        if let Some(ArgSlice::Literal(lit)) = iter.next()
+            && iter.next().is_none()
+            && lit.span(&shell.parser).contains(&point)
+        {
+            return CompletionType::Exe(lit.span(&shell.parser));
+        }
+    }
+
+    // check path
+    if let Some(args) = shell.parser.iter()
+        .filter_map(|node_id| Argument::new(&shell.parser, node_id))
+        .find(|args| {
+            let span = args.span(&shell.parser);
+            span.contains(&point) || span.end == point
+        })
+    {
+        let has_subshell = args.slice(&shell.parser)
+            .any(|arg| match arg {
+                ArgSlice::SubShell(_) => true,
+                ArgSlice::DoubleStr(s) => s.slice(&shell.parser)
+                    .any(|s| matches!(s, StrSlice::SubShell(_))),
+                _ => false
+            });
+        if !has_subshell {
+            let s = shell.editor.insert.as_str();
+            let mut buf = <SmallVec<[u8; 32]>>::new();
+            let mut push = |osstr: &[u8]| {
+                buf.extend_from_slice(osstr);
+                Ok(())
+            };
+
+            if args.eval(shell, s, &mut push).await.is_ok() {
+                // path check
+                if buf.starts_with_str("/")
+                    || buf.starts_with_str("./")
+                    || buf.ends_with_str("/")
+                    || buf.as_slice() == b"."
+                {
+                    return CompletionType::Path(args.span(&shell.parser), buf);
+                }
+            }
+        }
+    }
+
+    CompletionType::None
+}
+
+impl CompletionType {
+    pub async fn resolve<T: TermTarget>(
+        self,
+        shell: &mut Shell,
+        renderer: &mut Renderer<T>,
+        action: &mut anyhow::Result<Action>,
+    ) -> anyhow::Result<()> {
+        match self {
+            CompletionType::None => (),
+            CompletionType::Exe(_prefix) => (),
+            CompletionType::Path(span, prefix) => {
+                renderer.screen_reset()?;
+                shell.editor.command.clear();
+
+                let env = shell.env.borrow();
+                let path = prefix.to_path()?;
+                let path = if path.is_relative() {
+                    env.pwd().join(path)
+                } else {
+                    path.into()
+                };
+                
+                let (dir, prefix) = if prefix.ends_with_str(b"/") || path.is_dir() {
+                    (&*path, None)
+                } else {
+                    let dir = path.parent().unwrap_or(env.pwd());
+                    let prefix = path.file_name()
+                        .and_then(|name| name.to_str())
+                        .filter(|name| !name.is_empty())
+                        .and_then(|name| glob::Pattern::new(format!("{}*", name).as_str()).ok());
+                    (dir, prefix)
+                };
+
+                shell.editor.path_selector.set_glob(prefix);
+                shell.editor.path_selector.set_space(renderer.size.1.into());
+                match shell.editor.path_selector.cd(dir) {
+                    Ok(()) => {
+                        *shell.editor.insert.cursor_mut() = span;
+                        shell.editor.mode = Mode::PathSelector;
+                    },
+                    Err(err) => {
+                        *action = Err(err);
+
+                        // TODO path-selector error
+                    }
+                }
+            },
+            CompletionType::Flag(..) => (),
+            CompletionType::Value => (),
+        }
+
+        Ok(())
+    }
+}

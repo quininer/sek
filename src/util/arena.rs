@@ -130,6 +130,12 @@ impl<T> Iterator for Iter<'_, T> {
     }
 }
 
+impl<T> ExactSizeIterator for Iter<'_, T> {
+    fn len(&self) -> usize {
+        self.arena.0.len()
+    }
+}
+
 impl<T> Iter<'_, T> {
     pub fn bump(&mut self) {
         self.next();
