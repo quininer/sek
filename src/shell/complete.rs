@@ -1,5 +1,4 @@
-use bstr::ByteSlice;
-use smallvec::SmallVec;
+use bstr::{ ByteSlice, BString };
 use logos::Span;
 use crate::shell::syntax::{ Command, Argument, ArgSlice, StrSlice };
 use crate::shell::Shell;
@@ -10,8 +9,8 @@ use crate::editor::{ Action, Mode };
 pub enum CompletionType {
     None,
     Exe(Span),
-    Path(Span, SmallVec<[u8; 32]>),
-    Flag(Span, SmallVec<[u8; 32]>),
+    Path(Span, BString),
+    Flag(Span, BString),
     Value,
 }
 
@@ -52,7 +51,7 @@ pub async fn complete(shell: &Shell, cmd: Command)
             });
         if !has_subshell {
             let s = shell.editor.insert.as_str();
-            let mut buf = <SmallVec<[u8; 32]>>::new();
+            let mut buf = Vec::new();
             let mut push = |osstr: &[u8]| {
                 buf.extend_from_slice(osstr);
                 Ok(())
@@ -65,7 +64,7 @@ pub async fn complete(shell: &Shell, cmd: Command)
                     || buf.ends_with_str("/")
                     || buf.as_slice() == b"."
                 {
-                    return CompletionType::Path(args.span(&shell.parser), buf);
+                    return CompletionType::Path(args.span(&shell.parser), buf.into());
                 }
             }
         }

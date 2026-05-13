@@ -53,9 +53,18 @@ impl ExeSet {
                 .flatten()
                 .flat_map(|entry| entry.ok())
             {
-                if let Ok(metadata) = entry.metadata()
-                    && metadata.is_file()
+                let Ok(mut metadata) = entry.metadata()
+                    else {
+                        continue
+                    };
+                if metadata.is_symlink()
+                    && let path = entry.path()
+                    && let Ok(symlink_metadata) = fs::metadata(&path)
                 {
+                    metadata = symlink_metadata;
+                }
+                
+                if metadata.is_file() {
                     #[cfg(unix)] {
                         use std::os::unix::fs::PermissionsExt;
 
