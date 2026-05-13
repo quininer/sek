@@ -40,7 +40,7 @@ impl Editor {
             )
         );
 
-        let selector = ui::Box(
+        let path_selector = ui::Box(
             Some(TAG_PATH_SELECTOR),
             layout::Style::default()
                 .axis(layout::Axis::Vertical)
@@ -109,7 +109,7 @@ impl Editor {
         let mut table = ui::Table::default();
         let mut map = Vec::new();
 
-        (insert, selector, command)
+        (insert, path_selector, command)
             .walk(&mut layout, &mut table, &mut map, root);
 
         let mut editor = Editor {

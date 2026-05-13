@@ -22,6 +22,7 @@ pub struct Style {
     pub axis: Axis,
     pub justify: Justify,
     pub overflow: bool,
+    pub hidden: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +80,7 @@ impl Default for Tree {
                 axis: Axis::Vertical,
                 justify: Justify::Start,
                 overflow: false,
+                hidden: false,
             },
             children: Default::default()
         });
@@ -219,7 +221,9 @@ fn layout_node(
     let mut end = node.children.len();
 
     debug_assert!(node.children.iter()
-        .map(|&id| tree.nodes[id].style.justify)
+        .copied()
+        .filter(|&id| !tree.nodes[id].style.hidden)
+        .map(|id| tree.nodes[id].style.justify)
         .is_sorted()
     );
 
@@ -232,6 +236,11 @@ fn layout_node(
     while start < end {
         let child_id = node.children[start];
         let child = &tree.nodes[child_id];
+
+        if child.style.hidden {
+            start += 1;
+            continue
+        }        
 
         if matches!(child.style.justify, Justify::Start) {
             start += 1;
@@ -267,11 +276,18 @@ fn layout_node(
         let child_id = node.children[end - 1];
         let child = &tree.nodes[child_id];
 
+        if child.style.hidden {
+            end -= 1;
+            continue
+        }        
+
         if matches!(child.style.justify, Justify::End) {
             end -= 1;
         } else {
             break
         }
+
+        assert!(!child.style.overflow);
 
         let child_layout = layout(
             tree,
@@ -281,9 +297,6 @@ fn layout_node(
             cursor,
             output,
         );
-
-        assert!(!child.style.overflow);
-
         match node.style.axis {
             Axis::Horizontal => {
                 state.range.end.x -= child_layout.size.0;
@@ -305,7 +318,7 @@ fn layout_node(
         .filter(|_| dynamic_nodes.len() == 1)
         .filter(|(_, node)| matches!(node.style.axis, Axis::Horizontal))
         .filter(|(_, node)| matches!(node.style.justify, Justify::Stretch))
-        .filter(|(_, node)| node.style.overflow)
+        .filter(|(_, node)| node.style.overflow && !node.style.hidden)
     {
         assert_eq!(node.children.len(), end);
 
@@ -335,6 +348,10 @@ fn layout_node(
 
         for &child_id in dynamic_nodes {
             let child = &tree.nodes[child_id];
+
+            if child.style.hidden {
+                continue
+            }
 
             assert_eq!(child.style.justify, Justify::Stretch);
             if child.style.overflow {
@@ -393,6 +410,8 @@ fn layout_leaf(
     -> Layout
 {
     let leaf = &tree.nodes[leaf_id];
+
+    debug_assert!(!leaf.style.hidden);
 
     let mut leaf_layout = Layout {
         range: state.range.start..state.range.start,

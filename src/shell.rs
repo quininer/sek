@@ -109,14 +109,24 @@ impl Shell {
             }
 
             match self.editor.mode {
-                Mode::PathSelector
-                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::End
-                    => self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End,
-                Mode::PathSelector => (),
-                _
-                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::Stretch
-                    => self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::Stretch,
-                _ => (),
+                Mode::PathSelector => {
+                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::End {
+                        self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End;
+                    }
+
+                    if self.editor.ui.layout[self.editor.ui.path_selector].hidden {
+                        self.editor.ui.layout[self.editor.ui.path_selector].hidden = false;
+                    }
+                }
+                _ => {
+                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::Start {
+                        self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::Start;
+                    }
+
+                    if !self.editor.ui.layout[self.editor.ui.path_selector].hidden {
+                        self.editor.ui.layout[self.editor.ui.path_selector].hidden = true;
+                    }                    
+                }
             }
 
             match result {
