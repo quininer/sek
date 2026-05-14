@@ -136,16 +136,13 @@ impl Editor {
                         => self.command.clear(),
                     (Mode::PathSelector, Some('/'), KeyCode::Enter)
                         => {
-                            if let Some(cmd) = self.command.as_str().strip_prefix('/')
-                                .filter(|cmd| !cmd.is_empty())
-                            {
-                                self.path_selector.set_glob(Some(glob::Pattern::new(cmd)?));
-                            } else {
-                                self.path_selector.set_glob(None);
+                            if let Some(cmd) = self.command.as_str().strip_prefix('/') {
+                                self.path_selector.search = cmd.into();
                             }
 
                             self.command.clear();
-                            self.path_selector.cd(Path::new("."))?;                            
+                            self.path_selector.cd(Path::new("."))?;
+                            self.path_selector.search_down()?;
                         }
                     _ => (),      
                 }
@@ -245,6 +242,7 @@ impl Editor {
                     self.insert.clear();
                 },
 
+                // gh
                 (Mode::Normal | Mode::Visual, None, KeyCode::Char('g')) => self.ready = Some('g'),
                 (Mode::Normal | Mode::Visual, Some('g'), KeyCode::Char('h')) => {
                     self.insert.move_head();
@@ -253,6 +251,7 @@ impl Editor {
                         self.insert.cursor_mut().start = self.insert.cursor_mut().end;
                     }
                 },
+                // gl
                 (Mode::Normal | Mode::Visual, Some('g'), KeyCode::Char('l')) => {
                     self.insert.move_end();
 
@@ -313,6 +312,19 @@ impl Editor {
                 (Mode::PathSelector, None, KeyCode::Char('q')) => {
                     self.mode = Mode::Insert;
                 },
+                (Mode::PathSelector, None, KeyCode::Char('n')) =>
+                    self.path_selector.search_down()?,
+                (Mode::PathSelector, None, KeyCode::Char('N')) =>
+                    self.path_selector.search_up()?,
+
+                // gg
+                (Mode::PathSelector, None, KeyCode::Char('g')) => self.ready = Some('g'),
+                (Mode::PathSelector, Some('g'), KeyCode::Char('g')) =>
+                    self.path_selector.move_top()?,
+                // ge
+                (Mode::PathSelector, Some('g'), KeyCode::Char('e')) =>
+                    self.path_selector.move_bottom()?,
+                                
                 (Mode::PathSelector, None, KeyCode::Char('y')) => {
                     if let Some(path) = self.path_selector.selected() {
                         let path = path

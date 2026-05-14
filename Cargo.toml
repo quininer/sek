@@ -12,8 +12,9 @@ path = "src/main.rs"
 # utils
 anyhow = "1"
 smallvec = "1"
-bstr = "1"
+bstr = { version = "1", default-features = false, features = [ "std" ] }
 pin-project-lite = "0.2"
+memchr = { version = "2", default-features = false }
 
 # options
 argh = "0.1"

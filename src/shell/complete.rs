@@ -85,7 +85,6 @@ impl CompletionType {
             CompletionType::Exe(_prefix) => (),
             CompletionType::Path(span, prefix) => {
                 renderer.screen_reset()?;
-                shell.editor.command.clear();
 
                 let env = shell.env.borrow();
                 let path = prefix.to_path()?;
@@ -96,22 +95,23 @@ impl CompletionType {
                 };
                 
                 let (dir, prefix) = if prefix.ends_with_str(b"/") || path.is_dir() {
-                    (&*path, None)
+                    (&*path, "")
                 } else {
                     let dir = path.parent().unwrap_or(env.pwd());
                     let prefix = path.file_name()
                         .and_then(|name| name.to_str())
-                        .filter(|name| !name.is_empty())
-                        .and_then(|name| glob::Pattern::new(format!("{}*", name).as_str()).ok());
+                        .unwrap_or_default();
                     (dir, prefix)
                 };
 
-                shell.editor.path_selector.set_glob(prefix);
+                shell.editor.command.clear();
+                shell.editor.path_selector.search = prefix.into();
                 shell.editor.path_selector.set_space(renderer.size.1.into());
                 match shell.editor.path_selector.cd(dir) {
                     Ok(()) => {
                         *shell.editor.insert.cursor_mut() = span;
                         shell.editor.mode = Mode::PathSelector;
+                        let _ = shell.editor.path_selector.search_down();
                     },
                     Err(err) => {
                         *action = Err(err);

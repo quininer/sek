@@ -5,9 +5,9 @@ use std::borrow::Cow;
 use std::path::{ PathBuf, Path };
 use std::cmp::{ self, Ordering };
 use std::fs::{ self, ReadDir, DirEntry };
-use bstr::{ ByteVec, ByteSlice };
+use bstr::ByteSlice;
 use icu_collator::Collator;
-use crate::util::path::file_name_cmp;
+use crate::util::path::{ file_name_cmp, contains };
 
 
 const MAX_ENTRY_CAP: usize = 1024;
@@ -210,6 +210,42 @@ impl PathSelector {
         Ok(())
     }
 
+    pub fn search_up(&mut self) -> anyhow::Result<()> {
+        if !self.search.is_empty()
+            && self.current.search_up(&self.search, self.filter.case_sensitive)
+        {
+            self.update_children()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn search_down(&mut self) -> anyhow::Result<()> {
+        if !self.search.is_empty()
+            && self.current.search_down(&self.search, self.filter.case_sensitive)
+        {
+            self.update_children()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn move_top(&mut self) -> anyhow::Result<()> {
+        if self.current.move_top() {
+            self.update_children()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn move_bottom(&mut self) -> anyhow::Result<()> {
+        if self.current.move_bottom() {
+            self.update_children()?;
+        }
+
+        Ok(())
+    }    
+
     pub fn update_children(&mut self) -> anyhow::Result<()> {
         if let Some(children) = self.current.queue.get(self.current.cur)
             .filter(|children| children.ty == EntryType::Dir)
@@ -371,17 +407,13 @@ impl List {
             .take(space)
     }
 
-    pub fn search_up(&mut self, needle: &str) -> bool {
+    fn search_up(&mut self, needle: &str, case_sensitive: bool) -> bool {
         let prev_cur = self.cur;
         if let Some((cur, _)) = self.queue.iter()
             .enumerate()
             .take(self.cur)
             .rev()
-            .find(|(_, e)| e.name()
-                .as_encoded_bytes()
-                .find(needle.as_bytes())
-                .is_some()
-            )
+            .find(|(_, e)| contains(&e.name(), needle, case_sensitive))
         {
             self.cur = cur;
 
@@ -392,17 +424,13 @@ impl List {
         prev_cur != self.cur
     }
 
-    pub fn search_down(&mut self, needle: &str) -> bool {
+    fn search_down(&mut self, needle: &str, case_sensitive: bool) -> bool {
         let prev_cur = self.cur;
         if let Some((cur, _)) = self.queue.iter()
             .enumerate()
             .skip(self.cur)
             .skip(1)
-            .find(|(_, e)| {
-                let name = e.name();
-                let name = Vec::from_os_str_lossy(&name);
-                name.find(needle.as_bytes()).is_some()
-            })
+            .find(|(_, e)| contains(&e.name(), needle, case_sensitive))
         {
             self.cur = cur;
 
@@ -413,12 +441,17 @@ impl List {
         prev_cur != self.cur
     }
 
-    pub fn move_to_top(&mut self) {
+    fn move_top(&mut self) -> bool {
+        let changed = self.cur != 0;
         self.cur = 0;
+        changed
     }
 
-    pub fn move_to_bottom(&mut self) {
-        self.cur = self.queue.len().saturating_sub(1);
+    fn move_bottom(&mut self) -> bool {
+        let new_cur = self.queue.len().saturating_sub(1);
+        let changed = self.cur != new_cur;
+        self.cur = new_cur;
+        changed
     }
 }
 
