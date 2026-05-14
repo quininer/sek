@@ -330,6 +330,8 @@ impl Editor {
                     }
                 },
                 (Mode::PathSelector, None, KeyCode::Enter) => {
+                    use crate::util::path::EscapePath;
+                    
                     if let Some(path) = self.path_selector.selected() {
                         let path = path
                             .strip_prefix(env.pwd())
@@ -337,14 +339,14 @@ impl Editor {
                             .to_str()
                             .context("non-utf8 path are unsupported")?;
                         let path = if !path.is_empty() {
-                            path
+                            EscapePath(path).to_string()
                         } else {
-                            "."
+                            ".".into()
                         };
                         if self.insert.cursor().is_empty() {
-                            self.insert.push_str(path);
+                            self.insert.push_str(&path);
                         } else {
-                            self.insert.replace_str_inclusive(path, None);
+                            self.insert.replace_str_inclusive(&path, None);
                         }
                         self.mode = Mode::Insert;
                     }
