@@ -12,6 +12,7 @@ pub struct Editor {
     pub layout: layout::Tree,
     pub table: ui::Table,
 
+    pub complete_selector: Id<layout::Node>,
     pub path_selector: Id<layout::Node>,
     pub command: Id<layout::Node>,
 }
@@ -20,8 +21,9 @@ impl Editor {
     pub fn new() -> anyhow::Result<Editor> {
         use ui::Element;
 
-        const TAG_PATH_SELECTOR: u32 = 1;
-        const TAG_COMMAND: u32 = 2;
+        const TAG_COMMAND: u32 = 1;
+        const TAG_PATH_SELECTOR: u32 = 2;
+        const TAG_COMPLETE_SELECTOR: u32 = 3;
         
         let mut layout = layout::Tree::default();
         let root = layout.root();
@@ -37,6 +39,20 @@ impl Editor {
                         .overflow(true),
                     INSERT_LINE,
                 )
+            )
+        );
+
+        let complete_values = ui::Box(
+            Some(TAG_COMPLETE_SELECTOR),
+            layout::Style::default()
+                .axis(layout::Axis::Vertical)
+                .justify(layout::Justify::Start),
+            ui::Elem(
+                None,
+                layout::Style::default()
+                    .axis(layout::Axis::Vertical)
+                    .justify(layout::Justify::Start),
+                COMPLETE_SELECTOR
             )
         );
 
@@ -109,17 +125,19 @@ impl Editor {
         let mut table = ui::Table::default();
         let mut map = Vec::new();
 
-        (insert, path_selector, command)
+        (insert, complete_values, path_selector, command)
             .walk(&mut layout, &mut table, &mut map, root);
 
         let mut editor = Editor {
             layout, table,
+            complete_selector: Id::default(),
             path_selector: Id::default(),
             command: Id::default(),
         };
 
         for (tag, id) in map {
             match tag {
+                TAG_COMPLETE_SELECTOR => editor.complete_selector = id,
                 TAG_PATH_SELECTOR => editor.path_selector = id,
                 TAG_COMMAND => editor.command = id,
                 _ => unreachable!()
@@ -345,7 +363,7 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
                 style::SetColors(color),
                 style::Print(LimitAndFill(
                     name.as_encoded_bytes().chars(),
-                    ' ',
+                    Some(' '),
                     layout.size.0.saturating_sub(1).into()
                 )),
                 style::ResetColor,
@@ -366,4 +384,91 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
     }
 
     (imp::<0>(), imp::<1>(), imp::<2>())
+};
+
+const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
+    info: |shell, _| {
+        matches!(shell.editor.mode, editor::Mode::CompleteSelector)
+            .then_some(())?;
+
+        Some(layout::SpaceInfo {
+            length: shell.editor.complete_selector.window.len(),
+            cursor: None
+        })
+    },
+    render: |shell, _, layout, current, mut term| {
+        let selector = &shell.editor.complete_selector;
+
+        for (row, chunk) in selector.list
+            .chunks(selector.column)
+            .enumerate()
+            .skip(selector.window.start)
+            .take(selector.window.len())
+        {
+            for (column, comp) in chunk.iter().enumerate() {
+                let idx = (row * selector.column) + column;
+                let hint = selector.cur == idx;
+                let desc = selector.desc.get(idx).map(String::as_str).unwrap_or_default();
+                let comp_width = comp.width();
+                let desc_width = desc.width();
+
+                let color = if hint {
+                    style::Colors::new(style::Color::Black, style::Color::White)
+                } else {
+                    style::Colors::new(style::Color::White, style::Color::Reset)
+                };
+
+                // 'comp (desc)'
+                #[allow(clippy::obfuscated_if_else)]
+                let prepad = (desc_width != 0).then_some(3).unwrap_or_default();
+                let comp_limit = if comp_width + prepad + 1 > selector.width {
+                    // 'com… '
+                    Some(selector.width.saturating_sub(prepad + 2))
+                } else {
+                    None
+                };
+                let rem = selector
+                    .width
+                    .saturating_sub(comp_limit.unwrap_or(comp_width) + 1);
+                let (pad, desc_limit) = rem.checked_sub(desc_width)
+                    .map(|pad| (pad, None))
+                    .unwrap_or((0, Some(rem)));
+
+                queue!(term, style::SetColors(color))?;
+
+                if let Some(limit) = comp_limit {
+                    queue!(term,
+                        style::Print(LimitAndFill(comp.chars(), None, limit)),
+                        style::Print("… "),
+                    )?;
+                } else {
+                    queue!(term, style::Print(comp), style::Print(Fill(' ', pad)))?;
+                }
+
+                if let Some(limit) = desc_limit {
+                    queue!(term,
+                        style::Print('('),
+                        style::Print(LimitAndFill(desc.chars(), None, limit)),
+                        style::Print('…'),
+                        style::Print(')'),
+                    )?;
+                } else if !desc.is_empty() {
+                    queue!(term, style::Print('('), style::Print(desc), style::Print(')'))?
+                }
+
+                queue!(term, style::ResetColor, style::Print(' '))?;
+            }
+
+            queue!(term, style::Print("\r\n"))?;
+        }
+
+        debug_assert_eq!(
+            current.y + selector.window.len() as u16,
+            layout.range.end.y
+        );
+
+        *current = layout.range.end;
+        
+        Ok(())        
+    }
 };

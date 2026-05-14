@@ -325,9 +325,7 @@ impl List {
             .filter(|entry| filter.matches(entry))
             .take(MAX_ENTRY_CAP)
         {
-            if let Ok(entry) = Entry::new(entry) {
-                self.queue.push(entry);
-            }
+            self.queue.push(Entry::new(entry));
         }
 
         self.queue.sort_by(|x, y| match Ord::cmp(&x.ty, &y.ty) {
@@ -358,7 +356,7 @@ impl List {
             .filter(|entry| filter.matches(entry))
             .take(MAX_ENTRY_CAP - self.queue.len())
         {
-            self.queue.push(Entry::new(entry)?);
+            self.queue.push(Entry::new(entry));
         }
 
         self.queue.sort_by(|x, y| match Ord::cmp(&x.ty, &y.ty) {
@@ -458,22 +456,22 @@ impl List {
 }
 
 impl Entry {
-    pub fn new(entry: DirEntry) -> anyhow::Result<Entry> {
-        let mut ty = entry.file_type()?;
+    pub fn new(entry: DirEntry) -> Entry {
+        let mut ty = entry.file_type().ok();
 
-        if ty.is_symlink() {
-            ty = fs::metadata(entry.path())?.file_type();
+        if ty.is_some_and(|ty| ty.is_symlink()) {
+            ty = fs::metadata(entry.path())
+                .map(|metadata| metadata.file_type())
+                .ok();
         }
 
-        let ty = if ty.is_dir() {
-            EntryType::Dir
-        } else if ty.is_file() {
-            EntryType::File
-        } else {
-            EntryType::Other
+        let ty = match ty {
+            Some(ty) if ty.is_dir() => EntryType::Dir,
+            Some(ty) if ty.is_file() => EntryType::File,
+            _ => EntryType::Other
         };
 
-        Ok(Entry { entry, ty })
+        Entry { entry, ty }
     }
 
     pub fn path(&self) -> PathBuf {

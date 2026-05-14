@@ -1,6 +1,7 @@
+use std::ffi::OsStr;
 use bstr::{ ByteSlice, BString };
 use logos::Span;
-use crate::shell::syntax::{ Command, Argument, ArgSlice, StrSlice };
+use crate::shell::syntax::{ Command, Argument, ArgSlice, StrSlice, Variable };
 use crate::shell::Shell;
 use crate::ui::render::{ Renderer, TermTarget };
 use crate::editor::{ Action, Mode };
@@ -9,6 +10,7 @@ use crate::editor::{ Action, Mode };
 pub enum CompletionType {
     None,
     Exe(Span),
+    Env(Span),
     Path(Span, BString),
     Flag(Span, BString),
     Value,
@@ -28,10 +30,20 @@ pub async fn complete(shell: &Shell, cmd: Command)
 
         if let Some(ArgSlice::Literal(lit)) = iter.next()
             && iter.next().is_none()
-            && lit.span(&shell.parser).contains(&point)
         {
             return CompletionType::Exe(lit.span(&shell.parser));
         }
+    }
+
+    // check env
+    if let Some(span) = shell.parser.iter()
+        .filter_map(|node_id| Variable::new(&shell.parser, node_id))
+        .find_map(|var| {
+            let span = var.span(&shell.parser);
+            (span.contains(&point) || span.end == point).then_some(span)
+        })
+    {
+        return CompletionType::Env(span);
     }
 
     // check path
@@ -82,7 +94,41 @@ impl CompletionType {
     ) -> anyhow::Result<()> {
         match self {
             CompletionType::None => (),
-            CompletionType::Exe(_prefix) => (),
+            CompletionType::Exe(span) => {
+                let prefix = &shell.editor.insert.as_str()[span.clone()];
+                let cache = shell.cache.borrow();
+                let list = cache
+                    .exe_set
+                    .search(prefix)
+                    .filter_map(|buf| String::from_utf8(buf.into()).ok());
+                shell.editor.complete_selector.list.clear();
+                shell.editor.complete_selector.desc.clear();
+                shell.editor.complete_selector.list.extend(list);
+
+                if !shell.editor.complete_selector.list.is_empty() {
+                    shell.editor.complete_selector.set_space(renderer.size);
+                    shell.editor.complete_selector.update();
+                    *shell.editor.insert.cursor_mut() = span;
+                    shell.editor.mode = Mode::CompleteSelector;
+                }
+            },
+            CompletionType::Env(span) => {
+                let span = (span.start + 1)..span.end;
+                let prefix = &shell.editor.insert.as_str()[span.clone()];
+                let env = shell.env.borrow();
+                let list = env
+                    .search(OsStr::new(prefix))
+                    .filter_map(|(k, _)| k.to_str().map(Into::into));
+                shell.editor.complete_selector.list.clear();
+                shell.editor.complete_selector.desc.clear();
+                shell.editor.complete_selector.list.extend(list);
+                if !shell.editor.complete_selector.list.is_empty() {
+                    shell.editor.complete_selector.set_space(renderer.size);
+                    shell.editor.complete_selector.update();
+                    *shell.editor.insert.cursor_mut() = span;
+                    shell.editor.mode = Mode::CompleteSelector;
+                }
+            },
             CompletionType::Path(span, prefix) => {
                 renderer.screen_reset()?;
 

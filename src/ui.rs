@@ -107,3 +107,24 @@ where
         self.2.walk(tree, table, map, parent);
     }
 }
+
+impl<A, B, C, D> Element for (A, B, C, D)
+where
+    A: Element,
+    B: Element,
+    C: Element,
+    D: Element,
+{
+    fn walk(
+        &self,
+        tree: &mut layout::Tree,
+        table: &mut Table,
+        map: &mut Vec<(Tag, Id<layout::Node>)>,
+        parent: Id<layout::Node>)
+    {
+        self.0.walk(tree, table, map, parent);
+        self.1.walk(tree, table, map, parent);
+        self.2.walk(tree, table, map, parent);
+        self.3.walk(tree, table, map, parent);
+    }
+}

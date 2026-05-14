@@ -1,6 +1,7 @@
 pub mod line;
 pub mod ui;
 pub mod path_selector;
+pub mod complete;
 
 use std::mem;
 use std::path::Path;
@@ -8,6 +9,7 @@ use anyhow::Context;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
 use path_selector::PathSelector;
+use complete::CompleteSelector;
 use crate::ui::layout;
 use crate::shell::env::Environment;
 
@@ -18,6 +20,7 @@ pub struct Editor {
     pub command: EditableLine,
     pub ready: Option<char>,
     pub path_selector: PathSelector,
+    pub complete_selector: CompleteSelector,
     clipboard: String,
 }
 
@@ -27,6 +30,7 @@ pub enum Mode {
     Normal,
     Visual,
     PathSelector,
+    CompleteSelector,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -47,9 +51,10 @@ impl Editor {
     pub fn new() -> anyhow::Result<Self> {
         let ui = ui::Editor::new()?;
         let path_selector = PathSelector::new()?;
+        let complete_selector = CompleteSelector::default();
 
         Ok(Editor {
-            ui, path_selector,
+            ui, path_selector, complete_selector,
             mode: Mode::Insert,
             insert: EditableLine::default(),
             command: EditableLine::default(),
@@ -167,8 +172,11 @@ impl Editor {
                 }
             },
 
-            // Normal && Visual && PathSelector
-            (Mode::Normal | Mode::Visual | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
+            // Normal && Visual && PathSelector && CompleteSelector
+            (
+                Mode::Normal | Mode::Visual | Mode::PathSelector | Mode::CompleteSelector,
+                Event::Key(KeyEvent { modifiers, code, .. })
+            )
                 if modifiers.contains(KM::SHIFT & KM::NONE) && self.command.is_empty()
             => match (self.mode, self.ready.take(), code) {
                 // command mode
@@ -303,8 +311,8 @@ impl Editor {
                 },
 
                 // visual cancel
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char(',')) => self.ready = Some(','),
-                (Mode::Normal | Mode::Visual, Some(','), KeyCode::Char(',')) => {
+                (_, None, KeyCode::Char(',')) => self.ready = Some(','),
+                (_, Some(','), KeyCode::Char(',')) => {
                     self.mode = Mode::Normal;
                     self.insert.cursor_mut().start = self.insert.cursor_mut().end;
                 },
@@ -322,7 +330,7 @@ impl Editor {
                     self.path_selector.toggle_hidden_file();
                     self.path_selector.cd(Path::new("."))?;
                 },
-                (Mode::PathSelector, None, KeyCode::Char(',')) => {
+                (Mode::PathSelector, None, KeyCode::Char('c')) => {
                     self.path_selector.toggle_case_sensitive();
                     self.path_selector.cd(Path::new("."))?;
                 },
@@ -382,6 +390,13 @@ impl Editor {
                         self.mode = Mode::Insert;
                     }
                 },
+
+                (Mode::CompleteSelector, None, KeyCode::Enter) => {
+                    let s = &self.complete_selector.list[self.complete_selector.cur];
+                    self.insert.replace_str_inclusive(s, None);
+                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    self.mode = Mode::Insert;
+                },
                 _ => ()
             },
             _ => ()
@@ -401,7 +416,9 @@ impl Mode {
             // visual
             Some("VIS"),
             // path selector
-            None
+            None,
+            // compele selector
+            None,
         ];
 
         STR[self as usize]

@@ -5,11 +5,7 @@ use icu_collator::Collator;
 
 
 pub fn file_name_cmp(collator: &Collator, x: &OsStr, y: &OsStr) -> cmp::Ordering {
-    if let (Some(x), Some(y)) = (x.to_str(), y.to_str()) {
-        collator.as_borrowed().compare(x, y)
-    } else {
-        Ord::cmp(x, y)
-    }
+    collator.as_borrowed().compare_utf8(x.as_encoded_bytes(), y.as_encoded_bytes())
 }
 
 pub fn contains(path: &OsStr, needle: &str, case_sensitive: bool)

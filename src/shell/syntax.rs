@@ -196,6 +196,11 @@ impl Literal {
 }
 
 impl Variable {
+    pub fn new(parser: &Parser, node_id: raw::NodeId) -> Option<Self> {
+        matches!(&parser.nodes[node_id], raw::Node::Variable(_))
+            .then_some(Variable(node_id))
+    }
+    
     pub fn node_id(self) -> raw::NodeId {
         self.0
     }

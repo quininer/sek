@@ -175,7 +175,7 @@ impl fmt::Display for Fill {
     }
 }
 
-pub struct LimitAndFill<T>(pub T, pub char, pub usize);
+pub struct LimitAndFill<T>(pub T, pub Option<char>, pub usize);
 
 impl<T> fmt::Display for LimitAndFill<T>
 where
@@ -199,8 +199,10 @@ where
             f.write_char(c)?;
         }
 
-        for _ in 0..len {
-            f.write_char(*c)?;
+        if let Some(c) = c {
+            for _ in 0..len {
+                f.write_char(*c)?;
+            }
         }
         
         Ok(())

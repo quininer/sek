@@ -2,14 +2,13 @@ use std::{ io, env, mem };
 use std::borrow::Cow;
 use std::ffi::{ OsStr, OsString };
 use std::path::{ Path, PathBuf };
-use std::collections::HashMap;
 use anyhow::Context;
 use directories::UserDirs;
 
 
 pub struct Environment {
     pub max_args_len: usize,
-    pub map: HashMap<OsString, OsString>,
+    pub map: Vec<(OsString, OsString)>,
     userdir: UserDirs,
     prev_pwd: Option<PathBuf>,
     pwd: PathBuf,
@@ -43,7 +42,18 @@ impl Environment {
     }
 
     pub fn get(&self, name: &OsStr) -> Option<&OsStr> {
-        self.map.get(name).map(std::ops::Deref::deref)
+        self.map.binary_search_by(|(k, _)| k.as_os_str().cmp(name))
+            .map(|idx| self.map[idx].1.as_os_str())
+            .ok()
+    }
+
+    pub fn search(&self, prefix: &OsStr) -> impl Iterator<Item = (&OsStr, &OsStr)> {
+        let idx = self.map.partition_point(|(k, _)| k < prefix);
+        self.map.get(idx..)
+            .into_iter()
+            .flatten()
+            .take_while(|(k, _)| k.as_encoded_bytes().starts_with(prefix.as_encoded_bytes()))
+            .map(|(k, v)| (k.as_os_str(), v.as_os_str()))
     }
 
     fn set_pwd(&mut self) {
@@ -88,10 +98,12 @@ impl Environment {
     }
 
     pub fn set(&mut self, name: &OsStr, val: OsString) -> Option<OsString> {
-        if let Some(value) = self.map.get_mut(name) {
-            Some(mem::replace(value, val))
-        } else {
-            self.map.insert(name.into(), val)
+        match self.map.binary_search_by(|(k, _)| k.as_os_str().cmp(name)) {
+            Ok(idx) => Some(mem::replace(&mut self.map[idx].1, val)),
+            Err(idx) => {
+                self.map.insert(idx, (name.into(), val));
+                None
+            }
         }
     }
 
@@ -109,7 +121,9 @@ impl Environment {
     }
 
     pub fn unset(&mut self, name: &OsStr) -> Option<OsString> {
-        self.map.remove(name)
+        self.map.binary_search_by(|(k, _)| k.as_os_str().cmp(name))
+            .map(|idx| self.map.remove(idx).1)
+            .ok()
     }
 
     pub fn home(&self) -> &Path {

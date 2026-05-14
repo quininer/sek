@@ -224,7 +224,13 @@ fn layout_node(
         .copied()
         .filter(|&id| !tree.nodes[id].style.hidden)
         .map(|id| tree.nodes[id].style.justify)
-        .is_sorted()
+        .is_sorted(),
+        "{:?}",
+        node.children.iter()
+            .copied()
+            .filter(|&id| !tree.nodes[id].style.hidden)
+            .map(|id| tree.nodes[id].style.justify)
+            .collect::<Vec<_>>()
     );
 
     let mut node_layout = Layout {

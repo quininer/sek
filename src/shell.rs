@@ -118,6 +118,15 @@ impl Shell {
                         self.editor.ui.layout[self.editor.ui.path_selector].hidden = false;
                     }
                 }
+                Mode::CompleteSelector => {
+                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::Start {
+                        self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::Start;
+                    }
+                    
+                    if self.editor.ui.layout[self.editor.ui.complete_selector].hidden {
+                        self.editor.ui.layout[self.editor.ui.complete_selector].hidden = false;
+                    }
+                }
                 _ => {
                     if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::Start {
                         self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::Start;
@@ -125,7 +134,11 @@ impl Shell {
 
                     if !self.editor.ui.layout[self.editor.ui.path_selector].hidden {
                         self.editor.ui.layout[self.editor.ui.path_selector].hidden = true;
-                    }                    
+                    }
+
+                    if !self.editor.ui.layout[self.editor.ui.complete_selector].hidden {
+                        self.editor.ui.layout[self.editor.ui.complete_selector].hidden = true;
+                    }
                 }
             }
 

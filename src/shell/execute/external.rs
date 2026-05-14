@@ -71,7 +71,7 @@ impl ShellCommand {
 
         self.cmd
             .current_dir(env.pwd())
-            .envs(&env.map);
+            .envs(env.map.iter().map(|(k, v)| (k.as_os_str(), v.as_os_str())));
 
         match shell.morgue.spawn(&mut self.cmd) {
             Ok(child) => Ok(Child {
