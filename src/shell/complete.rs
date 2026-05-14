@@ -106,6 +106,7 @@ impl CompletionType {
 
                 shell.editor.command.clear();
                 shell.editor.path_selector.search = prefix.into();
+                shell.editor.path_selector.set_glob(None);
                 shell.editor.path_selector.set_space(renderer.size.1.into());
                 match shell.editor.path_selector.cd(dir) {
                     Ok(()) => {

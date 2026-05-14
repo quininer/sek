@@ -144,6 +144,25 @@ impl Editor {
                             self.path_selector.cd(Path::new("."))?;
                             self.path_selector.search_down()?;
                         }
+                    (Mode::PathSelector, Some(':'), KeyCode::Enter)
+                        => {
+                            if let Some(cmd) = self.command.as_str().strip_prefix(":glob") {
+                                let cmd = cmd.trim_start();
+
+                                if cmd.is_empty() {
+                                    self.path_selector.set_glob(None);
+                                } else {
+                                    self.path_selector.set_glob(Some(glob::Pattern::new(cmd)?));
+                                }
+
+                                self.path_selector.cd(Path::new("."))?;
+                            }
+
+                            self.command.clear();
+                        }
+                    (_, Some(_), KeyCode::Enter) => {
+                        self.command.clear();
+                    }
                     _ => (),      
                 }
             },
