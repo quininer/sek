@@ -72,7 +72,7 @@ impl PathSelector {
     }
 
     pub fn set_space(&mut self, space: usize) {
-        self.space = space;
+        self.space = space.saturating_sub(3);
     }
 
     pub fn set_glob(&mut self, glob: Option<glob::Pattern>) {
@@ -240,7 +240,7 @@ impl PathSelector {
 
     pub fn move_bottom(&mut self) -> anyhow::Result<()> {
         if self.current.move_bottom() {
-            self.update_children()?;
+            self.update_children()?;            
         }
 
         Ok(())
@@ -409,6 +409,7 @@ impl List {
 
     fn search_up(&mut self, needle: &str, case_sensitive: bool) -> bool {
         let prev_cur = self.cur;
+
         if let Some((cur, _)) = self.queue.iter()
             .enumerate()
             .take(self.cur)
@@ -416,9 +417,7 @@ impl List {
             .find(|(_, e)| contains(&e.name(), needle, case_sensitive))
         {
             self.cur = cur;
-
-            let space = self.window.len();
-            self.update_window(space);
+            self.update_window(self.window.len());
         }
 
         prev_cur != self.cur
@@ -426,6 +425,7 @@ impl List {
 
     fn search_down(&mut self, needle: &str, case_sensitive: bool) -> bool {
         let prev_cur = self.cur;
+
         if let Some((cur, _)) = self.queue.iter()
             .enumerate()
             .skip(self.cur)
@@ -444,6 +444,7 @@ impl List {
     fn move_top(&mut self) -> bool {
         let changed = self.cur != 0;
         self.cur = 0;
+        self.update_window(self.window.len());
         changed
     }
 
@@ -451,6 +452,7 @@ impl List {
         let new_cur = self.queue.len().saturating_sub(1);
         let changed = self.cur != new_cur;
         self.cur = new_cur;
+        self.update_window(self.window.len());
         changed
     }
 }
