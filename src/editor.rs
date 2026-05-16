@@ -75,7 +75,10 @@ impl Editor {
             => return Ok(Action::Break),
 
             // Insert to Normal
-            (Mode::Insert | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
+            (
+                Mode::Insert | Mode::PathSelector | Mode::CompleteSelector,
+                Event::Key(KeyEvent { modifiers, code, .. })
+            )
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::ALT && code == KeyCode::Char(' '))
@@ -391,12 +394,44 @@ impl Editor {
                     }
                 },
 
+                (Mode::CompleteSelector, None, KeyCode::Char('h')) => {
+                    if let Some(cur) = self.complete_selector.cur.checked_sub(1) {
+                        self.complete_selector.cur = cur;
+                        self.complete_selector.update_window();
+                    }
+                },
+                (Mode::CompleteSelector, None, KeyCode::Char('j')) => {
+                    let cur = self.complete_selector.cur + self.complete_selector.column;
+                    if cur < self.complete_selector.list.len() {
+                        self.complete_selector.cur = cur;
+                        self.complete_selector.update_window();
+                    }
+                },
+                (Mode::CompleteSelector, None, KeyCode::Char('k')) => {
+                    if let Some(cur) = self.complete_selector.cur
+                        .checked_sub(self.complete_selector.column)
+                    {
+                        self.complete_selector.cur = cur;
+                        self.complete_selector.update_window();
+                    }
+                },
+                (Mode::CompleteSelector, None, KeyCode::Char('l')) => {
+                    let cur = self.complete_selector.cur + 1;
+                    if cur < self.complete_selector.list.len() {
+                        self.complete_selector.cur = cur;
+                        self.complete_selector.update_window();
+                    }
+                },
                 (Mode::CompleteSelector, None, KeyCode::Enter) => {
                     let s = &self.complete_selector.list[self.complete_selector.cur];
                     self.insert.replace_str_inclusive(s, None);
-                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
                     self.mode = Mode::Insert;
                 },
+
+                (Mode::PathSelector | Mode::CompleteSelector, None, KeyCode::Backspace) => {
+                    self.insert.backspace();
+                    self.mode = Mode::Insert;
+                },                
                 _ => ()
             },
             _ => ()
