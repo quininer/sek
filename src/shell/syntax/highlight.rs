@@ -7,6 +7,7 @@ use crate::shell::Shell;
 use crate::config::Style;
 use crate::ui::render::Fill;
 use crate::util::{ RefWriter, ScopeGuard };
+use crate::shell::execute::builtin::builtin_command;
 use super::{
     ArgSlice, Argument, Chain, Command, DoubleStr, Escape, Literal,
     Parser, Redirect, SingleStr, StrSlice, SubShell, Variable
@@ -194,6 +195,12 @@ impl Command {
 impl Exe {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
         let mut args = self.0.slice(input.parser);
+        let style = |hint| if hint {
+            input.shell.config.theme.exe
+        } else {
+            input.shell.config.theme.error
+        };
+        
         if let Some(ArgSlice::Literal(arg)) = args.next()
             && args.next().is_none()
         {
@@ -201,11 +208,9 @@ impl Exe {
             let exe = &input.buf[span.clone()];
 
             let cache = input.shell.cache.borrow();
-            let style = if cache.exe_set.exist(exe) {
-                input.shell.config.theme.exe
-            } else {
-                input.shell.config.theme.error
-            };
+            let hint = builtin_command(exe.as_bytes()).is_some()
+                || cache.exe_set.exist(exe);
+            let style = style(hint);
             state.push_to(style, input, span, term)
         } else {
             // TODO check file exist and error for subshell

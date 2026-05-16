@@ -56,6 +56,13 @@ impl Environment {
     pub fn cd(&mut self, path: &Path) -> io::Result<()> {
         let newpath = self.pwd.join(path).canonicalize()?;
 
+        if !newpath.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotADirectory,
+                "path not a directory"
+            ));
+        }
+
         self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
         self.set_pwd();
 
