@@ -106,6 +106,7 @@ impl CompletionType {
                 shell.editor.complete_selector.list.extend(list);
 
                 if !shell.editor.complete_selector.list.is_empty() {
+                    shell.editor.complete_selector.cur = 0;
                     shell.editor.complete_selector.set_space(renderer.size);
                     shell.editor.complete_selector.update();
                     *shell.editor.insert.cursor_mut() = span;
@@ -123,6 +124,7 @@ impl CompletionType {
                 shell.editor.complete_selector.desc.clear();
                 shell.editor.complete_selector.list.extend(list);
                 if !shell.editor.complete_selector.list.is_empty() {
+                    shell.editor.complete_selector.cur = 0;
                     shell.editor.complete_selector.set_space(renderer.size);
                     shell.editor.complete_selector.update();
                     *shell.editor.insert.cursor_mut() = span;

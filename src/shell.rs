@@ -81,8 +81,21 @@ impl Shell {
             
             let event = crossterm::event::read()?;
 
-            if let crossterm::event::Event::Resize(x, y) = &event {
+            if let crossterm::event::Event::Resize(x, y) = &event
+                && renderer.size != (*x, *y)
+            {
                 renderer.size = (*x, *y);
+
+                match self.editor.mode {
+                    Mode::PathSelector => {
+                        self.editor.path_selector.set_space(renderer.size.1.into());
+                    },
+                    Mode::CompleteSelector => {
+                        self.editor.complete_selector.set_space(renderer.size);
+                        self.editor.complete_selector.update();
+                    },
+                    _ => ()
+                }
             }
 
             // TODO render error

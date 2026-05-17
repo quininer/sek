@@ -18,6 +18,11 @@ impl CompleteSelector {
     }
 
     pub fn update(&mut self) {
+        if self.list.is_empty() {
+            return;
+        }
+        
+        let max_width = usize::from(self.space.0);
         self.width = self.list
             .iter()
             .enumerate()
@@ -32,8 +37,9 @@ impl CompleteSelector {
                 comp + desc + 1
             })
             .max()
-            .unwrap_or_default();
-        self.column = (usize::from(self.space.0) / self.width).max(1);
+            .unwrap_or_default()
+            .min(max_width);
+        self.column = (max_width / self.width).max(1);
 
         let row = div_roundup(self.list.len(), self.column);
         let hint = div_roundup(self.cur + 1, self.column).saturating_sub(1);

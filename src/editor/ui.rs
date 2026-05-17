@@ -222,7 +222,9 @@ const COMMAND_LINE: ElementImpl = ElementImpl {
     info: |shell, _| {
         matches!(
             shell.editor.mode,
-            editor::Mode::Normal | editor::Mode::Visual | editor::Mode::PathSelector
+            editor::Mode::Normal
+            | editor::Mode::Visual
+            | editor::Mode::PathSelector
         )
             .then_some(())?;
 
@@ -240,7 +242,9 @@ const COMMAND_LINE: ElementImpl = ElementImpl {
     render: |shell, _, layout, current, mut term| {
         if matches!(
             shell.editor.mode,
-            editor::Mode::Normal | editor::Mode::Visual | editor::Mode::PathSelector
+            editor::Mode::Normal
+            | editor::Mode::Visual
+            | editor::Mode::PathSelector
         ) {
             queue!(term,
                 terminal::DisableLineWrap,
@@ -439,7 +443,7 @@ const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
                 if let Some(limit) = comp_limit {
                     queue!(term,
                         style::Print(LimitAndFill(comp.chars(), None, limit)),
-                        style::Print("… "),
+                        style::Print("…"),
                     )?;
                 } else {
                     queue!(term, style::Print(comp), style::Print(Fill(' ', pad)))?;
