@@ -4,6 +4,7 @@ use std::ffi::{ OsStr, OsString };
 use std::path::{ Path, PathBuf };
 use anyhow::Context;
 use directories::UserDirs;
+use crate::util::path;
 
 
 pub struct Environment {
@@ -64,15 +65,7 @@ impl Environment {
     }
 
     pub fn cd(&mut self, path: &Path) -> io::Result<()> {
-        let newpath = self.pwd.join(path).canonicalize()?;
-
-        if !newpath.is_dir() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotADirectory,
-                "path not a directory"
-            ));
-        }
-
+        let newpath = path::dir(path)?;
         self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
         self.set_pwd();
 
@@ -80,8 +73,8 @@ impl Environment {
     }
 
     pub fn go_home(&mut self) -> io::Result<()> {
-        let home = self.userdir.home_dir().canonicalize()?;
-        self.prev_pwd = Some(mem::replace(&mut self.pwd, home));
+        let newpath = path::dir(self.userdir.home_dir())?;
+        self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
         self.set_pwd();
 
         Ok(())
@@ -89,7 +82,7 @@ impl Environment {
 
     pub fn go_back(&mut self) -> io::Result<()> {
         if let Some(pwd) = self.prev_pwd.take() {
-            let pwd = pwd.canonicalize()?;
+            let pwd = path::dir(&pwd)?;
             self.prev_pwd = Some(mem::replace(&mut self.pwd, pwd));
             self.set_pwd();
         }

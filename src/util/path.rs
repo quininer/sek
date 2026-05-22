@@ -1,5 +1,6 @@
-use std::{ cmp, fmt };
+use std::{ cmp, fmt, io };
 use std::ffi::OsStr;
+use std::path::{ Path, PathBuf };
 use bstr::ByteSlice;
 use icu_collator::Collator;
 
@@ -32,6 +33,18 @@ pub fn contains(path: &OsStr, needle: &str, case_sensitive: bool)
         }
 
         false        
+    }
+}
+
+pub fn dir(path: &Path) -> io::Result<PathBuf> {
+    let path = path.canonicalize()?;
+    if path.is_dir() {
+        Ok(path)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotADirectory,
+            "path not a directory"
+        ))
     }
 }
 
