@@ -1,6 +1,7 @@
 use bstr::ByteSlice;
 use crossterm::{ queue, style, cursor, terminal };
 use unicode_width::{ UnicodeWidthChar, UnicodeWidthStr };
+use anstream::adapter::strip_str;
 use crate::{ editor, ui };
 use crate::ui::layout::{ self, Layout };
 use crate::util::RefWriter;
@@ -148,19 +149,21 @@ impl Editor {
     }
 }
 
-const PROMPT_STRING: &str = "> ";
 const PROMPT: ElementImpl = ElementImpl {
-    info: |_, _| Some(layout::SpaceInfo {
-        length: PROMPT_STRING.width(),
+    info: |shell, _| Some(layout::SpaceInfo {
+        length: strip_str(shell.prompt.as_str()).map(|s| s.width()).sum(),
         cursor: None
     }),
-    render: |_, _, layout, current, mut term| {
-        assert_eq!(layout.padding, 0);
+    render: |shell, _, layout, current, mut term| {
+        debug_assert_eq!(layout.padding, 0);
 
-        let prompt = PROMPT_STRING.get(..usize::from(layout.size.0)).unwrap_or_default();
-        queue!(term, style::Print(prompt))?;
+        queue!(term, style::Print(shell.prompt.as_str()))?;
 
-        assert_eq!(usize::from(current.x) + PROMPT_STRING.width(), usize::from(layout.range.end.x));
+        debug_assert_eq!(
+            usize::from(current.x) + strip_str(shell.prompt.as_str()).map(|s| s.width()).sum::<usize>(),
+            usize::from(layout.range.end.x)
+        );
+
         current.x += layout.size.0;
         Ok(())
     }

@@ -65,10 +65,9 @@ impl Environment {
     }
 
     pub fn cd(&mut self, path: &Path) -> io::Result<()> {
-        let newpath = path::dir(path)?;
+        let newpath = path::dir(&self.pwd.join(path))?;
         self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
         self.set_pwd();
-
         Ok(())
     }
 
@@ -76,7 +75,6 @@ impl Environment {
         let newpath = path::dir(self.userdir.home_dir())?;
         self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
         self.set_pwd();
-
         Ok(())
     }
 

@@ -9,7 +9,8 @@ use crate::shell::env::Environment;
 
 #[derive(Default)]
 pub struct Config {
-    pub theme: Theme   
+    pub theme: Theme,
+    pub prompt: Option<Prompt>,
 }
 
 #[derive(Deserialize, Default)]
@@ -26,11 +27,13 @@ pub struct ConfigFormat<'a> {
     #[serde(rename = "push-path")]
     pub push_path: Vec<CowStr<'a>>,
     #[serde(default)]
-    pub theme: Option<Theme>
+    pub theme: Theme,
+    #[serde(default)]
+    pub prompt: Option<Prompt>
 }
 
 // TODO change color style (like alacritty ?)
-#[derive(Deserialize, Default)]
+#[derive(Deserialize)]
 pub struct Theme {
     // background color
     pub selected: Style,
@@ -92,27 +95,35 @@ impl Style {
     }
 }
 
-fn default_theme() -> Theme {
-    Theme {
-        selected: Style::new(251),
+impl Default for Theme {
+    fn default() -> Self {
+        Theme {
+            selected: Style::new(251),
         
-        exe: Style::new(27),
-        literal: Style::new(33),
-        variable: Style::new(39),
-        escape: Style::new(128),
-        subshell: Style::new(39),
-        single_str: Style::new(3),
-        double_str: Style::new(3),
-        chain: Style::new(39),
-        redirect: Style::new(39),
-        comment: Style::new(128),
-        error: Style::new(9),
+            exe: Style::new(27),
+            literal: Style::new(33),
+            variable: Style::new(39),
+            escape: Style::new(128),
+            subshell: Style::new(39),
+            single_str: Style::new(3),
+            double_str: Style::new(3),
+            chain: Style::new(39),
+            redirect: Style::new(39),
+            comment: Style::new(128),
+            error: Style::new(9),
+        }
     }
+}
+
+#[derive(Deserialize)]
+pub struct Prompt {
+    pub exe: String,
+    pub args: Vec<String>,
 }
 
 pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
     let buf;
-    let config = if config.exists() {
+    let config = if config.is_file() {
         let child = Command::new(config)
             .current_dir(env.pwd())
             .stdin(Stdio::null())
@@ -145,6 +156,7 @@ pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
     }
 
     Ok(Config {
-        theme: config.theme.unwrap_or_else(default_theme)
+        theme: config.theme,
+        prompt: config.prompt
     })
 }

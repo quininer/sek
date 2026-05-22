@@ -134,6 +134,13 @@ impl Status {
         }
     }
 
+    pub fn code(&self) -> i32 {
+        match self {
+            Status::BuiltIn(v) => !v as i32,
+            Status::Process(status) => status.code().unwrap_or_default()
+        }
+    }
+
     #[cfg(unix)]
     pub fn signal(&self) -> Option<libc::c_int> {
         use std::os::unix::process::ExitStatusExt;

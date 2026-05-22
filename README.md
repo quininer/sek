@@ -89,7 +89,7 @@ On the contrary, it is designed to satisfy my personal use.
 + [x] Basic helix mode
 + [x] Local History
 + [x] Path selector
-+ [ ] Completion UI
++ [x] Completion UI
 + [ ] History-based Completion
 + [ ] Rule-based Completion
-+ [ ] Prompt
++ [x] Prompt

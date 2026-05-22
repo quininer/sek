@@ -2,6 +2,7 @@ pub mod env;
 pub mod syntax;
 pub mod execute;
 pub mod complete;
+pub mod prompt;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -18,6 +19,7 @@ use crate::util::stdout::Stdout;
 use env::Environment;
 use execute::external::{ Morgue, Cause };
 use complete::complete;
+use prompt::Prompt;
 
 
 pub struct Shell {
@@ -25,6 +27,7 @@ pub struct Shell {
     pub env: RefCell<Environment>,
     pub cache: RefCell<Cache>,
     pub morgue: Morgue,
+    pub prompt: Prompt,
     pub editor: Editor,
     pub parser: syntax::Parser,
     pub ast: Option<syntax::Command>,
@@ -46,6 +49,7 @@ impl Shell {
         Ok(Shell {
             ast: None,
             morgue: Morgue::default(),
+            prompt: Prompt::default(),
             env, editor, parser, config, cache,
         })        
     }
@@ -74,6 +78,9 @@ impl Shell {
             let _ = terminal::disable_raw_mode();
         });
 
+        self.prompt.set_width(renderer.size.0);
+        self.prompt.update(&self.config, &self.env);
+
         loop {
             self.morgue.wait(Cause::Error).await?;
 
@@ -85,6 +92,7 @@ impl Shell {
                 && renderer.size != (*x, *y)
             {
                 renderer.size = (*x, *y);
+                self.prompt.set_width(*x);
 
                 match self.editor.mode {
                     Mode::PathSelector => {
@@ -189,8 +197,7 @@ impl Shell {
                     });
                     
                     match execute::execute(&self, self.editor.insert.as_str(), cmd).await {
-                        // TODO set prompt
-                        Ok(_status) => (),
+                        Ok(status) => self.prompt.set_status(status),
                         Err(err) => {
                             let mut term = (renderer.term)();
                             queue!(
@@ -205,6 +212,8 @@ impl Shell {
 
                     self.editor.insert.clear();
                 }
+
+                self.prompt.update(&self.config, &self.env);                
             }
         }
 
