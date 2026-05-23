@@ -123,24 +123,27 @@ impl Editor {
                 mem::swap(&mut cursor.start, &mut cursor.end);
             }
 
-            // Normal && PathSelector with command
-            (Mode::Normal | Mode::PathSelector, Event::Key(KeyEvent { modifiers, code, .. }))
+            // Normal && PathSelector && CompleteSelector with command
+            (
+                Mode::Normal | Mode::PathSelector | Mode::CompleteSelector,
+                Event::Key(KeyEvent { modifiers, code, .. })
+            )
                 if modifiers.contains(KM::SHIFT & KM::NONE) && !self.command.is_empty()
             => {
                 match (self.mode, self.command.first(), code) {
                     // command input
-                    (Mode::Normal | Mode::PathSelector, _, KeyCode::Char('\r')) => (),
-                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Char(c))
+                    (_, _, KeyCode::Char('\r')) => (),
+                    (_, Some(_), KeyCode::Char(c))
                         => self.command.push(c),
-                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Backspace)
+                    (_, Some(_), KeyCode::Backspace)
                         => self.command.backspace(),
-                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Delete)
+                    (_, Some(_), KeyCode::Delete)
                         => self.command.delete(),
-                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Left)
+                    (_, Some(_), KeyCode::Left)
                         => self.command.move_left(),
-                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Right)
+                    (_, Some(_), KeyCode::Right)
                         => self.command.move_right(),
-                    (Mode::Normal | Mode::PathSelector, Some(_), KeyCode::Esc)
+                    (_, Some(_), KeyCode::Esc)
                         => self.command.clear(),
                     (Mode::PathSelector, Some('/'), KeyCode::Enter)
                         => {
@@ -168,6 +171,15 @@ impl Editor {
 
                             self.command.clear();
                         }
+                    (Mode::CompleteSelector, Some('/'), KeyCode::Enter)
+                        => {
+                            if let Some(cmd) = self.command.as_str().strip_prefix('/') {
+                                self.complete_selector.search = cmd.into();
+                            }
+
+                            self.command.clear();
+                            self.complete_selector.search_down();
+                        },
                     (_, Some(_), KeyCode::Enter) => {
                         self.command.clear();
                     }
@@ -185,7 +197,11 @@ impl Editor {
                 // command mode
                 (Mode::Normal | Mode::PathSelector, None, KeyCode::Char(':' | ';'))
                     => self.command.push(':'),
-                (Mode::Normal | Mode::PathSelector, None, KeyCode::Char('/'))
+                (
+                    Mode::Normal | Mode::PathSelector | Mode::CompleteSelector,
+                    None,
+                    KeyCode::Char('/')
+                )
                     => self.command.push('/'),
 
                 // normal and visual
@@ -422,6 +438,10 @@ impl Editor {
                         self.complete_selector.update_window();
                     }
                 },
+                (Mode::CompleteSelector, None, KeyCode::Char('n')) =>
+                    self.complete_selector.search_down(),
+                (Mode::CompleteSelector, None, KeyCode::Char('N')) =>
+                    self.complete_selector.search_up(),
                 (Mode::CompleteSelector, None, KeyCode::Enter) => {
                     let s = &self.complete_selector.list[self.complete_selector.cur];
                     self.insert.replace_str_inclusive(s, None);

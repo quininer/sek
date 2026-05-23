@@ -7,7 +7,8 @@ use std::cmp::{ self, Ordering };
 use std::fs::{ self, ReadDir, DirEntry };
 use bstr::ByteSlice;
 use icu_collator::Collator;
-use crate::util::path::{ file_name_cmp, contains };
+use crate::util::path::{ file_name_cmp };
+use crate::util::is_contains;
 
 
 const MAX_ENTRY_CAP: usize = 1024;
@@ -412,7 +413,7 @@ impl List {
             .enumerate()
             .take(self.cur)
             .rev()
-            .find(|(_, e)| contains(&e.name(), needle, case_sensitive))
+            .find(|(_, e)| is_contains(e.name().as_encoded_bytes(), needle, case_sensitive))
         {
             self.cur = cur;
             self.update_window(self.window.len());
@@ -426,9 +427,8 @@ impl List {
 
         if let Some((cur, _)) = self.queue.iter()
             .enumerate()
-            .skip(self.cur)
-            .skip(1)
-            .find(|(_, e)| contains(&e.name(), needle, case_sensitive))
+            .skip(self.cur + 1)
+            .find(|(_, e)| is_contains(e.name().as_encoded_bytes(), needle, case_sensitive))
         {
             self.cur = cur;
 

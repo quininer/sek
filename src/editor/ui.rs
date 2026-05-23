@@ -223,13 +223,13 @@ const MODE: ElementImpl = ElementImpl {
 
 const COMMAND_LINE: ElementImpl = ElementImpl {
     info: |shell, _| {
-        matches!(
-            shell.editor.mode,
+        match shell.editor.mode {
             editor::Mode::Normal
             | editor::Mode::Visual
-            | editor::Mode::PathSelector
-        )
-            .then_some(())?;
+            | editor::Mode::PathSelector => (),
+            editor::Mode::CompleteSelector if !shell.editor.command.is_empty() => (),
+            _ => return None
+        }
 
         let (s0, s1) = shell.editor.command.split(shell.editor.command.cursor().end);
         let s0_len = s0.width();
@@ -243,12 +243,15 @@ const COMMAND_LINE: ElementImpl = ElementImpl {
         })
     },
     render: |shell, _, layout, current, mut term| {
-        if matches!(
-            shell.editor.mode,
+        let hint = match shell.editor.mode {
             editor::Mode::Normal
             | editor::Mode::Visual
-            | editor::Mode::PathSelector
-        ) {
+            | editor::Mode::PathSelector => true,
+            editor::Mode::CompleteSelector if !shell.editor.command.is_empty() => true,
+            _ => false
+        };
+        
+        if hint {
             queue!(term,
                 terminal::DisableLineWrap,
                 style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),

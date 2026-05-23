@@ -1,5 +1,6 @@
 use std::ops::Range;
 use unicode_width::UnicodeWidthStr;
+use crate::util::is_contains;
 
 #[derive(Debug, Default)]
 pub struct CompleteSelector {
@@ -10,12 +11,44 @@ pub struct CompleteSelector {
     pub width: usize,
     pub list: Vec<String>,
     pub desc: Vec<String>,
+    pub search: String,
 }
 
 impl CompleteSelector {
     pub fn set_space(&mut self, space: (u16, u16)) {
         self.space = space;
     }
+
+    pub fn search_up(&mut self) {
+        if self.search.is_empty() {
+            return
+        }
+
+        if let Some((cur, _)) = self.list.iter()
+            .enumerate()
+            .take(self.cur)
+            .rev()
+            .find(|(_, s)| is_contains(s.as_bytes(), &self.search, false))
+        {
+            self.cur = cur;
+            self.update_window();
+        }
+    }
+
+    pub fn search_down(&mut self) {
+        if self.search.is_empty() {
+            return
+        }
+        
+        if let Some((cur, _)) = self.list.iter()
+            .enumerate()
+            .skip(self.cur + 1)
+            .find(|(_, s)| is_contains(s.as_bytes(), &self.search, false))
+        {
+            self.cur = cur;
+            self.update_window();
+        }
+    }    
 
     pub fn update(&mut self) {
         if self.list.is_empty() {
