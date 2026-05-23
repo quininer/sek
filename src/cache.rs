@@ -2,6 +2,7 @@ use std::io::Write;
 use std::{ fs, io, env };
 use std::ffi::OsStr;
 use std::path::Path;
+use crate::config::Config;
 use crate::shell::env::Environment;
 
 
@@ -13,10 +14,12 @@ pub struct ExeSet {
     set: fst::Set<Vec<u8>>,
 }
 
-pub fn load(env: &Environment, cache_dir: &Path) -> anyhow::Result<Cache> {
+pub fn load(config: &Config, env: &Environment, cache_dir: &Path)
+    -> anyhow::Result<Cache>
+{
     fs::create_dir_all(cache_dir)?;
     
-    let exe_set = ExeSet::load(env, &cache_dir.join("exeset.fst"))?;
+    let exe_set = ExeSet::load(config, env, &cache_dir.join("exeset.fst"))?;
 
     //
 
@@ -24,7 +27,9 @@ pub fn load(env: &Environment, cache_dir: &Path) -> anyhow::Result<Cache> {
 }
 
 impl ExeSet {
-    fn load(env: &Environment, path: &Path) -> anyhow::Result<ExeSet> {
+    fn load(config: &Config, env: &Environment, path: &Path)
+        -> anyhow::Result<ExeSet>
+    {
         let mut maybe_data = fs::read(path)
             .map(Some)
             .or_else(|err| if err.kind() == io::ErrorKind::NotFound {
@@ -84,6 +89,10 @@ impl ExeSet {
                     }
                 }
             }
+        }
+
+        for alias in config.alias.iter() {
+            list.push(alias.to_vec());
         }
 
         list.sort();

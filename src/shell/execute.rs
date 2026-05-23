@@ -34,9 +34,15 @@ pub enum Status {
 }
 
 impl Command {
-    pub fn new(exe: &[u8]) -> anyhow::Result<Command> {
+    pub fn new(shell: &Shell, exe: &[u8]) -> anyhow::Result<Command> {
         if let Some(cmd) = builtin::builtin_command(exe) {
             Ok(Command::Builtin(cmd, Vec::new()))
+        } else if let Some((exe, args)) = shell.config.alias.get(exe) {
+            let mut cmd = external::ShellCommand::new(exe.as_bytes())?;
+            for arg in args {
+                cmd.push(arg.as_bytes())?;
+            }
+            Ok(Command::External(cmd))
         } else {
             Ok(Command::External(external::ShellCommand::new(exe)?))
         }

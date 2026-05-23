@@ -24,7 +24,7 @@ pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow
         anyhow::bail!("the expanded command was empty");
     }
 
-    let mut shell_cmd = ShellCommand::new(&osbuf)?;
+    let mut shell_cmd = ShellCommand::new(shell, &osbuf)?;
     let mut push = |osstr: &[u8]| shell_cmd.push(osstr);
 
     for arg in cmd.args(&shell.parser) {
@@ -113,7 +113,7 @@ impl syntax::SubShell {
             anyhow::bail!("the expanded command was empty");
         }        
 
-        let mut shell_cmd = ShellCommand::new(&osbuf)?;
+        let mut shell_cmd = ShellCommand::new(shell, &osbuf)?;
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in cmd.args(&shell.parser) {
@@ -252,7 +252,7 @@ impl syntax::Chain {
             anyhow::bail!("the expanded command was empty");
         }        
 
-        let mut shell_cmd = ShellCommand::new(&osbuf)?;
+        let mut shell_cmd = ShellCommand::new(shell, &osbuf)?;
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in subshell.args(&shell.parser) {

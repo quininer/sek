@@ -39,7 +39,7 @@ impl Shell {
     {
         let mut env = Environment::new(pwd)?;
         let config = config::load(&mut env, config_path)?;
-        let cache = cache::load(&env, projdir.cache_dir())?;
+        let cache = cache::load(&config, &env, projdir.cache_dir())?;
         let env = RefCell::new(env);
         let cache = RefCell::new(cache);
         
