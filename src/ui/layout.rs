@@ -66,6 +66,11 @@ impl Style {
         self.overflow = overflow;
         self
     }
+
+    pub fn hidden(mut self, hidden: bool) -> Self {
+        self.hidden = hidden;
+        self
+    }
 }
 
 pub trait Space {

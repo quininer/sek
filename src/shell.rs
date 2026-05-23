@@ -30,6 +30,7 @@ pub struct Shell {
     pub editor: Editor,
     pub parser: syntax::Parser,
     pub ast: Option<syntax::Command>,
+    pub error: Option<String>,
 }
 
 impl Shell {
@@ -48,6 +49,7 @@ impl Shell {
 
         Ok(Shell {
             ast: None,
+            error: None,
             morgue: Morgue::default(),
             prompt: Prompt::default(),
             env, editor, parser, config, cache,
@@ -57,19 +59,6 @@ impl Shell {
     pub async fn start(mut self) -> anyhow::Result<()> {
         let stdout = Stdout::from(io::stdout());
         let mut size = terminal::size()?;
-
-        #[cfg(unix)] unsafe {
-            let mut act: libc::sigaction = std::mem::zeroed();
-            act.sa_flags = 0;
-            libc::sigemptyset(&mut act.sa_mask);
-
-            // ignore
-            act.sa_sigaction = libc::SIG_IGN;
-
-            let nullptr = std::ptr::null_mut();
-            libc::sigaction(libc::SIGTSTP, &act, nullptr);
-            libc::sigaction(libc::SIGTTOU, &act, nullptr);
-        }
 
         let mut renderer = <Renderer<_>>::new(size, || stdout.lock());
         let mut error_renderer = None;
@@ -88,11 +77,17 @@ impl Shell {
             
             let event = crossterm::event::read()?;
 
+            // update resize
             if let crossterm::event::Event::Resize(x, y) = &event
                 && renderer.size != (*x, *y)
             {
                 renderer.size = (*x, *y);
                 self.prompt.set_width(*x);
+
+                if let Some(render) = error_renderer.as_mut() {
+                    *render = annotate_snippets::Renderer::styled()
+                        .term_width(renderer.size.1.into());
+                }
 
                 match self.editor.mode {
                     Mode::PathSelector => {
@@ -140,6 +135,7 @@ impl Shell {
             }
 
             self.editor.layout_switch();
+            self.error = action.err().map(|err| err.to_string());
 
             match result {
                 Ok(_) => (),

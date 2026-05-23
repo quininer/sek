@@ -11,7 +11,7 @@ struct Options {
     #[argh(option, short = 'c')]
     config: Option<PathBuf>,
     
-    /// use specified pwd
+    /// use specified work directory
     #[argh(option, short = 'p')]
     pwd: Option<PathBuf>,
 }
@@ -24,6 +24,9 @@ fn main() -> anyhow::Result<()> {
     } else {
         env::current_dir()?
     };
+
+    #[cfg(unix)]
+    sek::util::set_signal_ignore();    
 
     let rt = runtime::Builder::new_current_thread()
         .enable_io()

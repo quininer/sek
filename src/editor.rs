@@ -484,6 +484,10 @@ impl Editor {
                     self.ui.layout[self.ui.command].justify = layout::Justify::End;
                 }
 
+                if self.ui.layout[self.ui.error].justify != layout::Justify::End {
+                    self.ui.layout[self.ui.error].justify = layout::Justify::End;
+                }                
+
                 if self.ui.layout[self.ui.path_selector].hidden {
                     self.ui.layout[self.ui.path_selector].hidden = false;
                 }
@@ -492,7 +496,11 @@ impl Editor {
                 if self.ui.layout[self.ui.command].justify != layout::Justify::Start {
                     self.ui.layout[self.ui.command].justify = layout::Justify::Start;
                 }
-                
+
+                if self.ui.layout[self.ui.error].justify != layout::Justify::Start {
+                    self.ui.layout[self.ui.error].justify = layout::Justify::Start;
+                }
+                                
                 if self.ui.layout[self.ui.complete_selector].hidden {
                     self.ui.layout[self.ui.complete_selector].hidden = false;
                 }
@@ -500,6 +508,10 @@ impl Editor {
             _ => {
                 if self.ui.layout[self.ui.command].justify != layout::Justify::Start {
                     self.ui.layout[self.ui.command].justify = layout::Justify::Start;
+                }
+
+                if self.ui.layout[self.ui.error].justify != layout::Justify::Start {
+                    self.ui.layout[self.ui.error].justify = layout::Justify::Start;
                 }
 
                 if !self.ui.layout[self.ui.path_selector].hidden {

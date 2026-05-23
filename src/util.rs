@@ -212,3 +212,18 @@ pub fn is_contains(haystack: &[u8], needle: &str, case_sensitive: bool)
     }
 }
 
+#[cfg(unix)]
+pub fn set_signal_ignore() {
+    unsafe {
+        let mut act: libc::sigaction = std::mem::zeroed();
+        act.sa_flags = 0;
+        libc::sigemptyset(&mut act.sa_mask);
+
+        // ignore
+        act.sa_sigaction = libc::SIG_IGN;
+
+        let nullptr = std::ptr::null_mut();
+        libc::sigaction(libc::SIGTSTP, &act, nullptr);
+        libc::sigaction(libc::SIGTTOU, &act, nullptr);        
+    }
+}

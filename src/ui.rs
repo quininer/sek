@@ -57,74 +57,34 @@ impl Element for Elem {
     }
 }
 
-impl<A, B> Element for (A, B)
-where
-    A: Element,
-    B: Element,
-{
-    fn walk(
-        &self,
-        tree: &mut layout::Tree,
-        table: &mut Table,
-        map: &mut Vec<(Tag, Id<layout::Node>)>,
-        parent: Id<layout::Node>)
-    {
-        self.0.walk(tree, table, map, parent);
-        self.1.walk(tree, table, map, parent);
-    }
+macro_rules! impl_elements {
+    ( $( $typ:ident ),* ) => {
+        impl<$( $typ , )*> Element for ( $( $typ , )* )
+        where
+        $(
+            $typ: Element,
+        )*
+        {
+            #[allow(non_snake_case)]
+            fn walk(
+                &self,
+                tree: &mut layout::Tree,
+                table: &mut Table,
+                map: &mut Vec<(Tag, Id<layout::Node>)>,
+                parent: Id<layout::Node>)
+            {
+                let ( $( $typ , )* ) = self;
+                $(
+                    $typ.walk(tree, table, map, parent);
+                )*
+            }
+        }
+    };
 }
 
-impl<A> Element for (A,)
-where
-    A: Element,
-{
-    fn walk(
-        &self,
-        tree: &mut layout::Tree,
-        table: &mut Table,
-        map: &mut Vec<(Tag, Id<layout::Node>)>,
-        parent: Id<layout::Node>)
-    {
-        self.0.walk(tree, table, map, parent);
-    }
-}
-
-impl<A, B, C> Element for (A, B, C)
-where
-    A: Element,
-    B: Element,
-    C: Element,
-{
-    fn walk(
-        &self,
-        tree: &mut layout::Tree,
-        table: &mut Table,
-        map: &mut Vec<(Tag, Id<layout::Node>)>,
-        parent: Id<layout::Node>)
-    {
-        self.0.walk(tree, table, map, parent);
-        self.1.walk(tree, table, map, parent);
-        self.2.walk(tree, table, map, parent);
-    }
-}
-
-impl<A, B, C, D> Element for (A, B, C, D)
-where
-    A: Element,
-    B: Element,
-    C: Element,
-    D: Element,
-{
-    fn walk(
-        &self,
-        tree: &mut layout::Tree,
-        table: &mut Table,
-        map: &mut Vec<(Tag, Id<layout::Node>)>,
-        parent: Id<layout::Node>)
-    {
-        self.0.walk(tree, table, map, parent);
-        self.1.walk(tree, table, map, parent);
-        self.2.walk(tree, table, map, parent);
-        self.3.walk(tree, table, map, parent);
-    }
-}
+impl_elements!(A);
+impl_elements!(A, B);
+impl_elements!(A, B, C);
+impl_elements!(A, B, C, D);
+impl_elements!(A, B, C, D, E);
+impl_elements!(A, B, C, D, E, F);

@@ -16,6 +16,7 @@ pub struct Editor {
     pub complete_selector: Id<layout::Node>,
     pub path_selector: Id<layout::Node>,
     pub command: Id<layout::Node>,
+    pub error: Id<layout::Node>,
 }
 
 impl Editor {
@@ -25,6 +26,7 @@ impl Editor {
         const TAG_COMMAND: u32 = 1;
         const TAG_PATH_SELECTOR: u32 = 2;
         const TAG_COMPLETE_SELECTOR: u32 = 3;
+        const TAG_ERROR: u32 = 4;
         
         let mut layout = layout::Tree::default();
         let root = layout.root();
@@ -47,7 +49,8 @@ impl Editor {
             Some(TAG_COMPLETE_SELECTOR),
             layout::Style::default()
                 .axis(layout::Axis::Vertical)
-                .justify(layout::Justify::Start),
+                .justify(layout::Justify::Start)
+                .hidden(true),
             ui::Elem(
                 None,
                 layout::Style::default()
@@ -61,7 +64,8 @@ impl Editor {
             Some(TAG_PATH_SELECTOR),
             layout::Style::default()
                 .axis(layout::Axis::Vertical)
-                .justify(layout::Justify::Stretch),
+                .justify(layout::Justify::Stretch)
+                .hidden(true),
             (
                 ui::Box(
                     None, layout::Style::default(),
@@ -107,7 +111,7 @@ impl Editor {
 
         let command = ui::Box(
             Some(TAG_COMMAND),
-            layout::Style::default().justify(layout::Justify::Stretch),
+            layout::Style::default().justify(layout::Justify::Start),
             (
                 ui::Elem(None,layout::Style::default(), MODE),
                 ui::Elem(
@@ -123,10 +127,16 @@ impl Editor {
             )
         );
 
+        let error = ui::Box(
+            Some(TAG_ERROR),
+            layout::Style::default().justify(layout::Justify::Start),
+            ui::Elem(None, layout::Style::default(), ERROR)
+        );
+
         let mut table = ui::Table::default();
         let mut map = Vec::new();
 
-        (insert, complete_values, path_selector, command)
+        (insert, complete_values, path_selector, command, error)
             .walk(&mut layout, &mut table, &mut map, root);
 
         let mut editor = Editor {
@@ -134,6 +144,7 @@ impl Editor {
             complete_selector: Id::default(),
             path_selector: Id::default(),
             command: Id::default(),
+            error: Id::default(),
         };
 
         for (tag, id) in map {
@@ -141,6 +152,7 @@ impl Editor {
                 TAG_COMPLETE_SELECTOR => editor.complete_selector = id,
                 TAG_PATH_SELECTOR => editor.path_selector = id,
                 TAG_COMMAND => editor.command = id,
+                TAG_ERROR => editor.error = id,
                 _ => unreachable!()
             }
         }
@@ -482,5 +494,28 @@ const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
         *current = layout.range.end;
         
         Ok(())        
+    }
+};
+
+const ERROR: ElementImpl = ElementImpl {
+    info: |shell, _| {
+        let err = shell.error.as_ref()?;
+        let err = err.lines().next().unwrap_or_default();
+        Some(layout::SpaceInfo { length: err.width(), cursor: None })
+    },
+    render: |shell, _, layout, current, mut term| {
+        let err = shell.error.as_deref().unwrap_or_default();
+        let err = err.lines().next().unwrap_or_default();
+
+        queue!(term, style::Print(err))?;
+
+        debug_assert_eq!(
+            current.x + err.width() as u16,
+            layout.range.end.x
+        );
+
+        *current = layout.range.end;
+
+        Ok(())
     }
 };
