@@ -35,7 +35,8 @@ impl Prompt {
         self.buf.as_str()
     }
     
-    pub fn update(&mut self, config: &Config, env: &RefCell<Environment>) {
+    pub fn update(&mut self, config: &RefCell<Config>, env: &RefCell<Environment>) {
+        let config = config.borrow();
         let Some(prompt) = &config.prompt
             else {
                 return

@@ -5,6 +5,7 @@ pub mod complete;
 
 use std::mem;
 use std::path::Path;
+use std::cell::RefCell;
 use anyhow::Context;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
@@ -37,6 +38,7 @@ pub enum Mode {
 pub enum Action {
     Continue,
     Completion,
+    Reload,
     Execute,
     Break,
 }
@@ -63,7 +65,7 @@ impl Editor {
         })
     }
 
-    pub fn step(&mut self, env: &Environment, event: Event)
+    pub fn step(&mut self, env: &RefCell<Environment>, event: Event)
         -> anyhow::Result<Action>
     {
         match (self.mode, event) {
@@ -145,6 +147,19 @@ impl Editor {
                         => self.command.move_right(),
                     (_, Some(_), KeyCode::Esc)
                         => self.command.clear(),
+                    (Mode::Normal, Some(':'), KeyCode::Enter)
+                        => match self.command.as_str() {
+                            ":quit" => return Ok(Action::Break),
+                            ":reload" => {
+                                self.command.clear();
+                                self.mode = Mode::Insert;
+                                return Ok(Action::Reload);
+                            },
+                            _ => {
+                                self.command.clear();
+                                self.mode = Mode::Insert;
+                            },
+                        }
                     (Mode::PathSelector, Some('/'), KeyCode::Enter)
                         => {
                             if let Some(cmd) = self.command.as_str().strip_prefix('/') {
@@ -373,6 +388,7 @@ impl Editor {
                                 
                 (Mode::PathSelector, None, KeyCode::Char('y')) => {
                     if let Some(path) = self.path_selector.selected() {
+                        let env = env.borrow();
                         let path = path
                             .strip_prefix(env.pwd())
                             .unwrap_or(&path)
@@ -391,6 +407,7 @@ impl Editor {
                     use crate::util::path::EscapePath;
                     
                     if let Some(path) = self.path_selector.selected() {
+                        let env = env.borrow();
                         let path = path
                             .strip_prefix(env.pwd())
                             .unwrap_or(&path)
@@ -458,6 +475,42 @@ impl Editor {
         }
 
         Ok(Action::Continue)
+    }
+
+    pub fn layout_switch(&mut self) {
+        match self.mode {
+            Mode::PathSelector => {
+                if self.ui.layout[self.ui.command].justify != layout::Justify::End {
+                    self.ui.layout[self.ui.command].justify = layout::Justify::End;
+                }
+
+                if self.ui.layout[self.ui.path_selector].hidden {
+                    self.ui.layout[self.ui.path_selector].hidden = false;
+                }
+            }
+            Mode::CompleteSelector => {
+                if self.ui.layout[self.ui.command].justify != layout::Justify::Start {
+                    self.ui.layout[self.ui.command].justify = layout::Justify::Start;
+                }
+                
+                if self.ui.layout[self.ui.complete_selector].hidden {
+                    self.ui.layout[self.ui.complete_selector].hidden = false;
+                }
+            }
+            _ => {
+                if self.ui.layout[self.ui.command].justify != layout::Justify::Start {
+                    self.ui.layout[self.ui.command].justify = layout::Justify::Start;
+                }
+
+                if !self.ui.layout[self.ui.path_selector].hidden {
+                    self.ui.layout[self.ui.path_selector].hidden = true;
+                }
+
+                if !self.ui.layout[self.ui.complete_selector].hidden {
+                    self.ui.layout[self.ui.complete_selector].hidden = true;
+                }
+            }
+        }
     }
 }
 

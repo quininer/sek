@@ -4,7 +4,7 @@ use crossterm::{ queue, style };
 use crossterm::style::{ Color, Attributes };
 use crate::editor::Mode;
 use crate::shell::Shell;
-use crate::config::Style;
+use crate::config::{ Theme, Style };
 use crate::ui::render::Fill;
 use crate::util::{ RefWriter, ScopeGuard };
 use crate::shell::execute::builtin::builtin_command;
@@ -24,9 +24,12 @@ pub fn colour(shell: &Shell, cmd: Command, input: &str, term: RefWriter<'_>)
         );
     });
     let term = term.as_mut();
+    let config = shell.config.borrow();
 
     let input = Input {
-        shell, parser: &shell.parser,
+        shell,
+        theme: &config.theme,
+        parser: &shell.parser,
         buf: input
     };
     let mut state = State::default();
@@ -50,6 +53,7 @@ pub fn colour(shell: &Shell, cmd: Command, input: &str, term: RefWriter<'_>)
 #[derive(Clone, Copy)]
 struct Input<'a> {
     shell: &'a Shell,
+    theme: &'a Theme,
     parser: &'a Parser,
     buf: &'a str,
 }
@@ -103,7 +107,7 @@ impl State {
 
 
     fn fill(&mut self,
-        shell: &Shell,
+        theme: &Theme,
         new_start: usize,
         selected: Span,
         mut term: RefWriter<'_>
@@ -119,7 +123,7 @@ impl State {
             }
 
             if !boundary.selected.is_empty() {
-                self.set_background_color(shell.config.theme.selected.color(), term.reborrow())?;
+                self.set_background_color(theme.selected.color(), term.reborrow())?;
                 queue!(term, style::Print(Fill(' ', boundary.selected.len())))?;
             }
 
@@ -141,7 +145,7 @@ impl State {
             .then(|| input.shell.editor.insert.cursor_inclusive())
             .unwrap_or_else(|| input.shell.editor.insert.cursor());
         let selected = input.shell.editor.insert.span(insert_cursor);
-        self.fill(input.shell, span.start, selected.clone(), term.reborrow())?;
+        self.fill(input.theme, span.start, selected.clone(), term.reborrow())?;
 
         let boundary = selected_boundary(span.clone(), selected);
 
@@ -153,7 +157,7 @@ impl State {
         }
 
         if !boundary.selected.is_empty() {
-            self.set_background_color(input.shell.config.theme.selected.color(), term.reborrow())?;
+            self.set_background_color(input.theme.selected.color(), term.reborrow())?;
             queue!(term, style::Print(&input.buf[boundary.selected]))?;
         }
 
@@ -196,9 +200,9 @@ impl Exe {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
         let mut args = self.0.slice(input.parser);
         let style = |hint| if hint {
-            input.shell.config.theme.exe
+            input.theme.exe
         } else {
-            input.shell.config.theme.error
+            input.theme.error
         };
         
         if let Some(ArgSlice::Literal(arg)) = args.next()
@@ -222,8 +226,8 @@ impl Exe {
 impl Literal {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
         let style = if state.is_doublestr
-            { input.shell.config.theme.double_str }
-            else { input.shell.config.theme.literal };
+            { input.theme.double_str }
+            else { input.theme.literal };
         state.push_to(style, input, self.span(input.parser), term)
     }
 }
@@ -236,9 +240,9 @@ impl Variable {
             .and_then(|name| env.get(name.as_ref()))
             .is_some()
         {
-            input.shell.config.theme.variable
+            input.theme.variable
         } else {
-            input.shell.config.theme.error
+            input.theme.error
         };
 
         state.push_to(color, input, self.span(input.parser), term)        
@@ -251,7 +255,7 @@ impl Escape {
         let value = self.value(input.parser);
         let span = backslash.start..value.end;
 
-        state.push_to(input.shell.config.theme.escape, input, span, term)
+        state.push_to(input.theme.escape, input, span, term)
     }   
 }
 
@@ -263,7 +267,7 @@ impl SingleStr {
             .unwrap_or_else(|| input.buf.len());
         let span = start..end;
 
-        state.push_to(input.shell.config.theme.escape, input, span, term)
+        state.push_to(input.theme.escape, input, span, term)
     }
 }
 
@@ -291,7 +295,7 @@ impl DoubleStr {
         let state = state.as_mut();
 
         let start_token = self.start(input.parser);
-        state.push_to(input.shell.config.theme.double_str, input, start_token, term.reborrow())?;
+        state.push_to(input.theme.double_str, input, start_token, term.reborrow())?;
 
         for seg in self.slice(input.parser) {
             match seg {
@@ -303,7 +307,7 @@ impl DoubleStr {
         }
 
         if let Some(end_token) = self.end(input.parser) {
-            state.push_to(input.shell.config.theme.double_str, input, end_token, term)?;
+            state.push_to(input.theme.double_str, input, end_token, term)?;
         }
 
         Ok(())
@@ -313,12 +317,12 @@ impl DoubleStr {
 impl SubShell {
     fn colour(self, state: &mut State, input: Input<'_>, mut term: RefWriter<'_>) -> anyhow::Result<()> {
         let start_token = self.start(input.parser);
-        state.push_to(input.shell.config.theme.subshell, input, start_token, term.reborrow())?;
+        state.push_to(input.theme.subshell, input, start_token, term.reborrow())?;
 
         self.command(input.parser).colour(state, input, term.reborrow())?;
 
         if let Some(end_token) = self.end(input.parser) {
-            state.push_to(input.shell.config.theme.subshell, input, end_token, term)?;
+            state.push_to(input.theme.subshell, input, end_token, term)?;
         }
 
         Ok(())        
@@ -328,7 +332,7 @@ impl SubShell {
 impl Redirect {
     fn colour(self, state: &mut State, input: Input<'_>, mut term: RefWriter<'_>) -> anyhow::Result<()> {
         let token = self.token(input.parser);
-        state.push_to(input.shell.config.theme.redirect, input, token, term.reborrow())?;
+        state.push_to(input.theme.redirect, input, token, term.reborrow())?;
 
         self.value(input.parser).colour(state, input, term)
     }
@@ -337,7 +341,7 @@ impl Redirect {
 impl Chain {
     fn colour(self, state: &mut State, input: Input<'_>, mut term: RefWriter<'_>) -> anyhow::Result<()> {
         let token = self.token(input.parser);
-        state.push_to(input.shell.config.theme.chain, input, token, term.reborrow())?;
+        state.push_to(input.theme.chain, input, token, term.reborrow())?;
 
         self.command(input.parser).colour(state, input, term)        
     }
@@ -345,7 +349,7 @@ impl Chain {
 
 impl Comment {
     fn colour(self, state: &mut State, input: Input<'_>, term: RefWriter<'_>) -> anyhow::Result<()> {
-        state.push_to(input.shell.config.theme.comment, input, self.0, term)
+        state.push_to(input.theme.comment, input, self.0, term)
     }
 }
 

@@ -3,13 +3,14 @@ use std::borrow::Cow;
 use std::ffi::{ OsStr, OsString };
 use std::path::{ Path, PathBuf };
 use anyhow::Context;
-use directories::UserDirs;
+use directories::{ UserDirs, ProjectDirs };
 use crate::util::path;
 
 
 pub struct Environment {
     pub max_args_len: usize,
     pub map: Vec<(OsString, OsString)>,
+    pub projdir: ProjectDirs,
     userdir: UserDirs,
     prev_pwd: Option<PathBuf>,
     pwd: PathBuf,
@@ -33,12 +34,16 @@ impl Environment {
             }
         }
 
+        let mut map: Vec<(OsString, OsString)> = env::vars_os().collect();
+        map.sort_by(|(x, _), (y, _)| x.cmp(y));
+
         Ok(Environment {
-            map: env::vars_os().collect(),
+            projdir: ProjectDirs::from("", "", env!("CARGO_PKG_NAME"))
+                .context("Unable to retrieve project path from system")?,
             userdir: UserDirs::new()
                 .context("Unable to retrieve user path from system")?,
             prev_pwd: None,
-            pwd, max_args_len
+            map, pwd, max_args_len
         })
     }
 
@@ -123,5 +128,9 @@ impl Environment {
 
     pub fn pwd(&self) -> &Path {
         &self.pwd
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.map.shrink_to_fit();
     }
 }

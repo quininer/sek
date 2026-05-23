@@ -1,5 +1,5 @@
-use std::io::Write;
 use std::{ fs, io, env };
+use std::io::Write;
 use std::ffi::OsStr;
 use std::path::Path;
 use crate::config::Config;
@@ -14,9 +14,11 @@ pub struct ExeSet {
     set: fst::Set<Vec<u8>>,
 }
 
-pub fn load(config: &Config, env: &Environment, cache_dir: &Path)
+pub fn load(config: &Config, env: &Environment)
     -> anyhow::Result<Cache>
 {
+    let cache_dir = env.projdir.cache_dir();
+
     fs::create_dir_all(cache_dir)?;
     
     let exe_set = ExeSet::load(config, env, &cache_dir.join("exeset.fst"))?;
@@ -91,13 +93,9 @@ impl ExeSet {
             }
         }
 
-        for alias in config.alias.iter() {
-            list.push(alias.to_vec());
-        }
-
+        list.extend(config.alias.keys().map(|a| a.to_vec()));
         list.sort();
         list.dedup();
-        list.shrink_to_fit();
 
         let exe_set = ExeSet { set: fst::Set::from_iter(list).unwrap() };
 

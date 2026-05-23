@@ -343,6 +343,8 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
             _ => unreachable!()
         };
 
+        let config = shell.config.borrow();
+
         for (n, (hint, entry)) in list
             .take(layout.size.1.into())
             .enumerate()
@@ -351,9 +353,9 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
             let name = entry.name();
 
             let color = match entry.type_() {
-                EntryType::Dir => shell.config.theme.variable.color(),
+                EntryType::Dir => config.theme.variable.color(),
                 EntryType::File => Some(style::Color::White),
-                EntryType::Other => shell.config.theme.single_str.color()
+                EntryType::Other => config.theme.single_str.color()
             };
 
             let color = if hint {

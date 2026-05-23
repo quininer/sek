@@ -8,7 +8,6 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::io::{self, Write};
 use crossterm::{ queue, style, terminal };
-use directories::ProjectDirs;
 use crate::cache::{ self, Cache };
 use crate::config::{ self, Config };
 use crate::ui::layout;
@@ -23,7 +22,7 @@ use prompt::Prompt;
 
 
 pub struct Shell {
-    pub config: Config,
+    pub config: RefCell<Config>,
     pub env: RefCell<Environment>,
     pub cache: RefCell<Cache>,
     pub morgue: Morgue,
@@ -34,12 +33,13 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(projdir: ProjectDirs, pwd: PathBuf, config_path: PathBuf)
+    pub fn new(pwd: PathBuf, config_path: Option<PathBuf>)
         -> anyhow::Result<Self>
     {
         let mut env = Environment::new(pwd)?;
         let config = config::load(&mut env, config_path)?;
-        let cache = cache::load(&config, &env, projdir.cache_dir())?;
+        let cache = cache::load(&config, &env)?;
+        let config = RefCell::new(config);
         let env = RefCell::new(env);
         let cache = RefCell::new(cache);
         
@@ -107,11 +107,21 @@ impl Shell {
             }
 
             // TODO render error
-            let mut action = self.editor.step(&self.env.borrow(), event);
+            let mut action = self.editor.step(&self.env, event);
             let is_execute = matches!(action, Ok(Action::Execute));
 
-            if matches!(action, Ok(Action::Break)) {
-                break
+            match action {
+                Ok(Action::Break) => break,
+                Ok(Action::Reload) => {
+                    let mut env = self.env.borrow_mut();
+                    let mut config = self.config.borrow_mut();
+                    let mut cache = self.cache.borrow_mut();
+                    match config::reload(&mut env, &mut config, &mut cache) {
+                        Ok(()) => continue,
+                        Err(err) => action = Err(err)
+                    }
+                },
+                _ => (),
             }
 
             let line = self.editor.insert.as_str();
@@ -125,43 +135,11 @@ impl Shell {
             if let Ok(cmd) = result
                 && matches!(action, Ok(Action::Completion))
             {
-                let ty = complete(&self, cmd).await;
-                ty.resolve(&mut self, &mut renderer, &mut action).await?;
+                complete(&self, cmd).await
+                    .resolve(&mut self, &mut renderer, &mut action).await?;
             }
 
-            match self.editor.mode {
-                Mode::PathSelector => {
-                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::End {
-                        self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::End;
-                    }
-
-                    if self.editor.ui.layout[self.editor.ui.path_selector].hidden {
-                        self.editor.ui.layout[self.editor.ui.path_selector].hidden = false;
-                    }
-                }
-                Mode::CompleteSelector => {
-                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::Start {
-                        self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::Start;
-                    }
-                    
-                    if self.editor.ui.layout[self.editor.ui.complete_selector].hidden {
-                        self.editor.ui.layout[self.editor.ui.complete_selector].hidden = false;
-                    }
-                }
-                _ => {
-                    if self.editor.ui.layout[self.editor.ui.command].justify != layout::Justify::Start {
-                        self.editor.ui.layout[self.editor.ui.command].justify = layout::Justify::Start;
-                    }
-
-                    if !self.editor.ui.layout[self.editor.ui.path_selector].hidden {
-                        self.editor.ui.layout[self.editor.ui.path_selector].hidden = true;
-                    }
-
-                    if !self.editor.ui.layout[self.editor.ui.complete_selector].hidden {
-                        self.editor.ui.layout[self.editor.ui.complete_selector].hidden = true;
-                    }
-                }
-            }
+            self.editor.layout_switch();
 
             match result {
                 Ok(_) => (),

@@ -8,9 +8,11 @@ use serde::Deserialize;
 use crossterm::style::{ Color, Attributes, Attribute };
 use crate::util::CowStr;
 use crate::shell::env::Environment;
+use crate::cache::{ self, Cache };
 
 
 pub struct Config {
+    path: PathBuf,
     pub theme: Theme,
     pub prompt: Option<Prompt>,
     pub alias: AliasMap,
@@ -152,15 +154,20 @@ impl AliasMap {
         args.split_first()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &BString> {
+    pub fn keys(&self) -> impl ExactSizeIterator<Item = &BString> {
         self.map.keys()
     }
 }
 
-pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
+pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
+    -> anyhow::Result<Config>
+{
+    let confpath = confpath
+        .unwrap_or_else(|| env.projdir.config_dir().join("config"));
+    
     let buf;
-    let config = if config.is_file() {
-        let child = Command::new(config)
+    let config = if confpath.exists() {
+        let child = Command::new(&confpath)
             .current_dir(env.pwd())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -170,7 +177,7 @@ pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
         let output = child.wait_with_output()?;
 
         if !output.status.success() {
-            return Err(anyhow::format_err!("build config failed: {}", output.status));
+            anyhow::bail!("build config failed: {}", output.status);
         }
 
         buf = output.stdout;
@@ -194,6 +201,7 @@ pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
     let aliasmap = {
         let mut list = Vec::new();
         let mut map = HashMap::with_capacity(config.alias.len());
+
         for (k, v) in config.alias {
             if v.is_empty() {
                 continue
@@ -204,13 +212,35 @@ pub fn load(env: &mut Environment, config: PathBuf) -> anyhow::Result<Config> {
             let end = list.len();
             map.insert(k.into(), start..end);
         }
+
         list.shrink_to_fit();
+        map.shrink_to_fit();
+
         AliasMap { list, map }
     };
 
+    env.shrink_to_fit();    
+
     Ok(Config {
+        path: confpath,
         theme: config.theme,
         prompt: config.prompt,
         alias: aliasmap,
     })
+}
+
+pub fn reload(env: &mut Environment, config: &mut Config, cache: &mut Cache)
+    -> anyhow::Result<()>
+{
+    use std::{ fs, env };
+    
+    env.map = env::vars_os().collect();
+    env.map.sort_by(|(x, _), (y, _)| x.cmp(y));
+
+    *config = load(env, Some(config.path.clone()))?;
+
+    let _ = fs::remove_dir_all(env.projdir.cache_dir());
+    *cache = cache::load(config, env)?;
+
+    Ok(())
 }
