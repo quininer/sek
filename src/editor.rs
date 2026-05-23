@@ -220,7 +220,7 @@ impl Editor {
                     => self.command.push('/'),
 
                 // normal and visual
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('i'))
+                (_, None, KeyCode::Char('i'))
                     => self.mode = Mode::Insert,
                 (Mode::Normal | Mode::Visual, None, KeyCode::Char('a')) => {
                     self.insert.move_right();

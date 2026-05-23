@@ -325,10 +325,10 @@ const PATH_LINE: ElementImpl = ElementImpl {
 };
 
 const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
-    fn info<const N: usize>(shell: &Shell, _leaf_id: Id<layout::Node>) -> Option<layout::SpaceInfo> {
+    fn info(shell: &Shell, _leaf_id: Id<layout::Node>, n: u8) -> Option<layout::SpaceInfo> {
         matches!(shell.editor.mode, editor::Mode::PathSelector)
             .then_some(())?;
-        let length = match N {
+        let length = match n {
             0 => shell.editor.path_selector.parent.len(),
             1 => shell.editor.path_selector.current.len(),
             2 => shell.editor.path_selector.children.len(),
@@ -337,18 +337,19 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
         Some(layout::SpaceInfo { length, cursor: None })        
     }
 
-    fn render<const N: usize>(
+    fn render(
         shell: &Shell,
         _leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
-        mut term: RefWriter<'_>
+        mut term: RefWriter<'_>,
+        n: u8
     )
         -> anyhow::Result<()>
     {
         use crate::editor::path_selector::EntryType;
     
-        let list = match N {
+        let list = match n {
             0 => &shell.editor.path_selector.parent,
             1 => &shell.editor.path_selector.current,
             2 => &shell.editor.path_selector.children,
@@ -400,10 +401,11 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
         Ok(())      
     }
 
-    const fn imp<const N: usize>() -> ElementImpl {
+    const fn imp<const N: u8>() -> ElementImpl {
         ElementImpl {
-            info: info::<N>,
-            render: render::<N>
+            info: |shell, id| info(shell, id, N),
+            render: |shell, id, layout, current, term|
+                render(shell, id, layout, current, term, N)
         }
     }
 
