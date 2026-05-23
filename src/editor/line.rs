@@ -325,7 +325,7 @@ impl EditableLine {
     pub fn split(&self, mid: usize) -> (&str, &str) {
         let mid = self.index(mid);
         self.as_str().split_at(mid)
-    }    
+    }
 }
 
 impl fmt::Display for EditableLine {

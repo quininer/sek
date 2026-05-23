@@ -100,6 +100,13 @@ impl CompleteSelector {
             };
         }
     }
+
+    pub fn clear(&mut self) {
+        self.cur = 0;
+        self.list.clear();
+        self.desc.clear();
+        self.search.clear();
+    }
 }
 
 fn div_roundup(x: usize, y: usize) -> usize {

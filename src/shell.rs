@@ -101,7 +101,7 @@ impl Shell {
                 }
             }
 
-            // TODO render error
+            let mode = self.editor.mode;
             let mut action = self.editor.step(&self.env, event);
             let is_execute = matches!(action, Ok(Action::Execute));
 
@@ -130,11 +130,15 @@ impl Shell {
             if let Ok(cmd) = result
                 && matches!(action, Ok(Action::Completion))
             {
-                complete(&self, cmd).await
-                    .resolve(&mut self, &mut renderer, &mut action).await?;
+                // complete resolve
+                if let Err(err) = complete(&self, cmd).await
+                    .resolve(&mut self, &mut renderer).await
+                {
+                    action = Err(err);
+                }
             }
 
-            self.editor.layout_switch();
+            self.editor.mode_switch(mode);
             self.error = action.err().map(|err| err.to_string());
 
             match result {

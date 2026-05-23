@@ -4,7 +4,7 @@ use logos::Span;
 use crate::shell::syntax::{ Command, Argument, ArgSlice, StrSlice, Variable };
 use crate::shell::Shell;
 use crate::ui::render::{ Renderer, TermTarget };
-use crate::editor::{ Action, Mode };
+use crate::editor::Mode;
 
 #[derive(Debug)]
 pub enum CompletionType {
@@ -90,7 +90,6 @@ impl CompletionType {
         self,
         shell: &mut Shell,
         renderer: &mut Renderer<T>,
-        action: &mut anyhow::Result<Action>,
     ) -> anyhow::Result<()> {
         match self {
             CompletionType::None => (),
@@ -160,18 +159,10 @@ impl CompletionType {
                 shell.editor.path_selector.search = prefix.into();
                 shell.editor.path_selector.set_glob(None);
                 shell.editor.path_selector.set_space(renderer.size.1.into());
-                match shell.editor.path_selector.cd(dir) {
-                    Ok(()) => {
-                        *shell.editor.insert.cursor_mut() = span;
-                        shell.editor.mode = Mode::PathSelector;
-                        let _ = shell.editor.path_selector.search_down();
-                    },
-                    Err(err) => {
-                        *action = Err(err);
-
-                        // TODO path-selector error
-                    }
-                }
+                shell.editor.path_selector.cd(dir)?;
+                *shell.editor.insert.cursor_mut() = span;
+                shell.editor.mode = Mode::PathSelector;
+                shell.editor.path_selector.search_down()?;
             },
             CompletionType::Flag(..) => (),
             CompletionType::Value => (),

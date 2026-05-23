@@ -25,7 +25,7 @@ pub struct Editor {
     clipboard: String,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Mode {
     Insert,
     Normal,
@@ -152,13 +152,9 @@ impl Editor {
                             ":quit" => return Ok(Action::Break),
                             ":reload" => {
                                 self.command.clear();
-                                self.mode = Mode::Insert;
                                 return Ok(Action::Reload);
                             },
-                            _ => {
-                                self.command.clear();
-                                self.mode = Mode::Insert;
-                            },
+                            _ => self.command.clear(),
                         }
                     (Mode::PathSelector, Some('/'), KeyCode::Enter)
                         => {
@@ -477,9 +473,10 @@ impl Editor {
         Ok(Action::Continue)
     }
 
-    pub fn layout_switch(&mut self) {
-        match self.mode {
-            Mode::PathSelector => {
+    pub fn mode_switch(&mut self, prev_mode: Mode) {
+        match (prev_mode, self.mode) {
+            (x, y) if x == y => (),
+            (_, Mode::PathSelector) => {
                 if self.ui.layout[self.ui.command].justify != layout::Justify::End {
                     self.ui.layout[self.ui.command].justify = layout::Justify::End;
                 }
@@ -487,25 +484,20 @@ impl Editor {
                 if self.ui.layout[self.ui.error].justify != layout::Justify::End {
                     self.ui.layout[self.ui.error].justify = layout::Justify::End;
                 }                
-
+                
                 if self.ui.layout[self.ui.path_selector].hidden {
                     self.ui.layout[self.ui.path_selector].hidden = false;
                 }
-            }
-            Mode::CompleteSelector => {
-                if self.ui.layout[self.ui.command].justify != layout::Justify::Start {
-                    self.ui.layout[self.ui.command].justify = layout::Justify::Start;
-                }
-
-                if self.ui.layout[self.ui.error].justify != layout::Justify::Start {
-                    self.ui.layout[self.ui.error].justify = layout::Justify::Start;
-                }
-                                
+                
+            },
+            (_, Mode::CompleteSelector) => {
+                debug_assert_ne!(prev_mode, Mode::PathSelector);
+                
                 if self.ui.layout[self.ui.complete_selector].hidden {
                     self.ui.layout[self.ui.complete_selector].hidden = false;
                 }
-            }
-            _ => {
+            },
+            (..) => {
                 if self.ui.layout[self.ui.command].justify != layout::Justify::Start {
                     self.ui.layout[self.ui.command].justify = layout::Justify::Start;
                 }
@@ -522,6 +514,17 @@ impl Editor {
                     self.ui.layout[self.ui.complete_selector].hidden = true;
                 }
             }
+        }
+
+        match (prev_mode, self.mode) {
+            (x, y) if x == y => (),
+            (Mode::PathSelector, _) => {
+                self.path_selector.clear();
+            },
+            (Mode::CompleteSelector, _) => {
+                self.complete_selector.clear();
+            },
+            (..) => (),
         }
     }
 }

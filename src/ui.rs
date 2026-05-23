@@ -88,3 +88,36 @@ impl_elements!(A, B, C);
 impl_elements!(A, B, C, D);
 impl_elements!(A, B, C, D, E);
 impl_elements!(A, B, C, D, E, F);
+
+impl<T> Box<T> {
+    pub fn new(node: T) -> Box<T> {
+        Box(None, layout::Style::default(), node)
+    }
+
+    pub fn tag(mut self, tag: Tag) -> Self {
+        self.0 = Some(tag);
+        self
+    }
+
+    pub fn style<F>(mut self, f: F) -> Self
+    where
+        F: FnOnce(layout::Style) -> layout::Style
+    {
+        self.1 = f(self.1);
+        self
+    }    
+}
+
+impl Elem {
+    pub fn new(imp: render::ElementImpl) -> Elem {
+        Elem(None, layout::Style::default(), imp)
+    }
+
+    pub fn style<F>(mut self, f: F) -> Self
+    where
+        F: FnOnce(layout::Style) -> layout::Style
+    {
+        self.1 = f(self.1);
+        self
+    }
+}

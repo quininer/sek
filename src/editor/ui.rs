@@ -3,7 +3,7 @@ use crossterm::{ queue, style, cursor, terminal };
 use unicode_width::{ UnicodeWidthChar, UnicodeWidthStr };
 use anstream::adapter::strip_str;
 use crate::{ editor, ui };
-use crate::ui::layout::{ self, Layout };
+use crate::ui::layout::{ self, Layout, Axis, Justify };
 use crate::util::RefWriter;
 use crate::util::arena::Id;
 use crate::shell::Shell;
@@ -31,112 +31,72 @@ impl Editor {
         let mut layout = layout::Tree::default();
         let root = layout.root();
 
-        let insert = ui::Box(
-            None, layout::Style::default(),
-            (
-                ui::Elem(None, layout::Style::default(), PROMPT),
-                ui::Elem(
-                    None,
-                    layout::Style::default()
-                        .justify(layout::Justify::Stretch)
-                        .overflow(true),
-                    INSERT_LINE,
+        let insert = ui::Box::new((
+            ui::Elem::new(PROMPT),
+            ui::Elem::new(INSERT_LINE)
+                .style(|style| style
+                    .justify(Justify::Stretch)
+                    .overflow(true)
                 )
-            )
-        );
+        ));
 
-        let complete_values = ui::Box(
-            Some(TAG_COMPLETE_SELECTOR),
-            layout::Style::default()
-                .axis(layout::Axis::Vertical)
-                .justify(layout::Justify::Start)
-                .hidden(true),
-            ui::Elem(
-                None,
-                layout::Style::default()
-                    .axis(layout::Axis::Vertical)
-                    .justify(layout::Justify::Start),
-                COMPLETE_SELECTOR
-            )
-        );
+        let complete_selector = ui::Box::new(
+            ui::Elem::new(COMPLETE_SELECTOR)
+                .style(|style| style.axis(Axis::Vertical))
+        )
+            .tag(TAG_COMPLETE_SELECTOR)
+            .style(|style| style
+                .axis(Axis::Vertical)
+                .hidden(true)
+            );
 
-        let path_selector = ui::Box(
-            Some(TAG_PATH_SELECTOR),
-            layout::Style::default()
-                .axis(layout::Axis::Vertical)
-                .justify(layout::Justify::Stretch)
-                .hidden(true),
-            (
-                ui::Box(
-                    None, layout::Style::default(),
-                    ui::Elem(
-                        None,
-                        layout::Style::default()
-                            .justify(layout::Justify::Stretch)
-                            .overflow(true),
-                        PATH_LINE
+        let path_selector = ui::Box::new((
+            ui::Box::new(ui::Elem::new(PATH_LINE)
+                .style(|style| style
+                    .justify(Justify::Stretch)
+                    .overflow(true)
+                )
+            ),
+            ui::Box::new((
+                ui::Elem::new(PATH_SELECTOR.0)
+                    .style(|style| style
+                        .axis(Axis::Vertical)
+                        .justify(Justify::Stretch)
                     ),
-                ),
-                ui::Box(
-                    None,
-                    layout::Style::default()
-                        .axis(layout::Axis::Horizontal)
-                        .justify(layout::Justify::Stretch),
-                    (
-                        ui::Elem(
-                            None,
-                            layout::Style::default()
-                                .axis(layout::Axis::Vertical)
-                                .justify(layout::Justify::Stretch),
-                            PATH_SELECTOR.0,
-                        ),
-                        ui::Elem(
-                            None,
-                            layout::Style::default()
-                                .axis(layout::Axis::Vertical)
-                                .justify(layout::Justify::Stretch),
-                            PATH_SELECTOR.1,
-                        ),
-                        ui::Elem(
-                            None,
-                            layout::Style::default()
-                                .axis(layout::Axis::Vertical)
-                                .justify(layout::Justify::Stretch),
-                            PATH_SELECTOR.2
-                        ),
-                    )
-                )
-            )
-        );
+                ui::Elem::new(PATH_SELECTOR.1)
+                    .style(|style| style
+                        .axis(Axis::Vertical)
+                        .justify(Justify::Stretch)
+                    ),
+                ui::Elem::new(PATH_SELECTOR.2)
+                    .style(|style| style
+                        .axis(Axis::Vertical)
+                        .justify(Justify::Stretch)
+                    ),
+            ))
+                .style(|style| style.justify(Justify::Stretch)),
+        ))
+            .tag(TAG_PATH_SELECTOR)
+            .style(|style| style
+                .axis(Axis::Vertical)
+                .justify(Justify::Stretch)
+                .hidden(true)
+            );
 
-        let command = ui::Box(
-            Some(TAG_COMMAND),
-            layout::Style::default().justify(layout::Justify::Start),
-            (
-                ui::Elem(None,layout::Style::default(), MODE),
-                ui::Elem(
-                    None,
-                    layout::Style::default().justify(layout::Justify::Stretch),
-                    COMMAND_LINE
-                ),
-                ui::Elem(
-                    None,
-                    layout::Style::default().justify(layout::Justify::End),
-                    TIPS
-                )
-            )
-        );
+        let command = ui::Box::new((
+            ui::Elem::new(MODE),
+            ui::Elem::new(COMMAND_LINE).style(|style| style.justify(Justify::Stretch)),
+            ui::Elem::new(TIPS).style(|style| style.justify(Justify::End)),
+        ))
+            .tag(TAG_COMMAND);
 
-        let error = ui::Box(
-            Some(TAG_ERROR),
-            layout::Style::default().justify(layout::Justify::Start),
-            ui::Elem(None, layout::Style::default(), ERROR)
-        );
+        let error = ui::Box::new(ui::Elem::new(ERROR))
+            .tag(TAG_ERROR);
 
         let mut table = ui::Table::default();
         let mut map = Vec::new();
 
-        (insert, complete_values, path_selector, command, error)
+        (insert, complete_selector, path_selector, command, error)
             .walk(&mut layout, &mut table, &mut map, root);
 
         let mut editor = Editor {
@@ -162,17 +122,19 @@ impl Editor {
 }
 
 const PROMPT: ElementImpl = ElementImpl {
-    info: |shell, _| Some(layout::SpaceInfo {
+    info: |shell| Some(layout::SpaceInfo {
         length: strip_str(shell.prompt.as_str()).map(|s| s.width()).sum(),
         cursor: None
     }),
-    render: |shell, _, layout, current, mut term| {
+    render: |shell, layout, current, mut term| {
         debug_assert_eq!(layout.padding, 0);
 
+        // FIXME limit width ?
         queue!(term, style::Print(shell.prompt.as_str()))?;
 
-        debug_assert_eq!(
-            usize::from(current.x) + strip_str(shell.prompt.as_str()).map(|s| s.width()).sum::<usize>(),
+        debug_assert!(
+            usize::from(current.x) + strip_str(shell.prompt.as_str()).map(|s| s.width()).sum::<usize>()
+            <=
             usize::from(layout.range.end.x)
         );
 
@@ -182,7 +144,7 @@ const PROMPT: ElementImpl = ElementImpl {
 };
 
 const INSERT_LINE: ElementImpl = ElementImpl {
-    info: |shell, _| {
+    info: |shell| {
         let (s0, s1) = shell.editor.insert.split(shell.editor.insert.cursor().end);
         let s0_len = s0.width();
         let s1_len = s1.width();
@@ -195,7 +157,7 @@ const INSERT_LINE: ElementImpl = ElementImpl {
             cursor: cursor_len
         })
     },
-    render: |shell, _, layout, current, mut term| {
+    render: |shell, layout, current, mut term| {
         use crate::shell::syntax::highlight::colour;
         
         if let Some(cmd) = shell.ast {
@@ -213,15 +175,17 @@ const INSERT_LINE: ElementImpl = ElementImpl {
 };
 
 const MODE: ElementImpl = ElementImpl {
-    info: |shell, _| shell.editor.mode.str()
+    info: |shell| shell.editor.mode.str()
         .map(|s| layout::SpaceInfo {
             length: s.width() + 1,
             cursor: None
         }),
-    render: |shell, _, layout, current, mut term| {
+    render: |shell, layout, current, mut term| {
         if let Some(s) = shell.editor.mode.str() {
             queue!(term,
-                style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
+                style::SetColors(
+                    style::Colors::new(style::Color::Black, style::Color::White)
+                ),
                 style::Print(" "),
                 style::Print(s),
                 style::ResetColor,
@@ -234,7 +198,7 @@ const MODE: ElementImpl = ElementImpl {
 };
 
 const COMMAND_LINE: ElementImpl = ElementImpl {
-    info: |shell, _| {
+    info: |shell| {
         match shell.editor.mode {
             editor::Mode::Normal
             | editor::Mode::Visual
@@ -254,7 +218,7 @@ const COMMAND_LINE: ElementImpl = ElementImpl {
                 .filter(|_| !shell.editor.command.is_empty())
         })
     },
-    render: |shell, _, layout, current, mut term| {
+    render: |shell, layout, current, mut term| {
         let hint = match shell.editor.mode {
             editor::Mode::Normal
             | editor::Mode::Visual
@@ -280,12 +244,12 @@ const COMMAND_LINE: ElementImpl = ElementImpl {
 };
 
 const TIPS: ElementImpl = ElementImpl {
-    info: |shell, _| shell.editor.ready
+    info: |shell| shell.editor.ready
         .map(|c| layout::SpaceInfo {
             length: c.width().unwrap_or_default() + 2,
             cursor: None
         }),
-    render: |shell, _, layout, current, mut term| {
+    render: |shell, layout, current, mut term| {
         if let Some(ready) = shell.editor.ready {
             queue!(term,
                 style::SetColors(style::Colors::new(style::Color::Black, style::Color::White)),
@@ -302,7 +266,7 @@ const TIPS: ElementImpl = ElementImpl {
 };
 
 const PATH_LINE: ElementImpl = ElementImpl {
-    info: |shell, _| {
+    info: |shell| {
         matches!(shell.editor.mode, editor::Mode::PathSelector)
             .then_some(())?;
 
@@ -316,7 +280,7 @@ const PATH_LINE: ElementImpl = ElementImpl {
             length, cursor: None
         })
     },
-    render: |shell, _, layout, current, mut term| {
+    render: |shell, layout, current, mut term| {
         let path = shell.editor.path_selector.path();
         queue!(term, style::Print(path.display()))?;
         *current = layout.range.end;
@@ -325,7 +289,7 @@ const PATH_LINE: ElementImpl = ElementImpl {
 };
 
 const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
-    fn info(shell: &Shell, _leaf_id: Id<layout::Node>, n: u8) -> Option<layout::SpaceInfo> {
+    fn info(shell: &Shell, n: u8) -> Option<layout::SpaceInfo> {
         matches!(shell.editor.mode, editor::Mode::PathSelector)
             .then_some(())?;
         let length = match n {
@@ -339,7 +303,6 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
 
     fn render(
         shell: &Shell,
-        _leaf_id: Id<layout::Node>,
         layout: &Layout,
         current: &mut layout::Point,
         mut term: RefWriter<'_>,
@@ -403,9 +366,9 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
 
     const fn imp<const N: u8>() -> ElementImpl {
         ElementImpl {
-            info: |shell, id| info(shell, id, N),
-            render: |shell, id, layout, current, term|
-                render(shell, id, layout, current, term, N)
+            info: |shell| info(shell, N),
+            render: |shell, layout, current, term|
+                render(shell, layout, current, term, N)
         }
     }
 
@@ -413,7 +376,7 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
 };
 
 const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
-    info: |shell, _| {
+    info: |shell| {
         matches!(shell.editor.mode, editor::Mode::CompleteSelector)
             .then_some(())?;
 
@@ -422,7 +385,7 @@ const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
             cursor: None
         })
     },
-    render: |shell, _, layout, current, mut term| {
+    render: |shell, layout, current, mut term| {
         let selector = &shell.editor.complete_selector;
 
         for (row, chunk) in selector.list
@@ -500,12 +463,12 @@ const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
 };
 
 const ERROR: ElementImpl = ElementImpl {
-    info: |shell, _| {
+    info: |shell| {
         let err = shell.error.as_ref()?;
         let err = err.lines().next().unwrap_or_default();
         Some(layout::SpaceInfo { length: err.width(), cursor: None })
     },
-    render: |shell, _, layout, current, mut term| {
+    render: |shell, layout, current, mut term| {
         let err = shell.error.as_deref().unwrap_or_default();
         let err = err.lines().next().unwrap_or_default();
 

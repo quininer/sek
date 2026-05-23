@@ -27,10 +27,9 @@ pub struct ElementImpl {
     pub render: RenderMethod<Shell, anyhow::Error>
 }
 
-type SpaceInfoMethod<State> = fn(&State, Id<layout::Node>) -> Option<layout::SpaceInfo>;
+type SpaceInfoMethod<State> = fn(&State) -> Option<layout::SpaceInfo>;
 type RenderMethod<State, Error> = fn(
     &State,
-    Id<layout::Node>,
     &Layout,
     &mut layout::Point,
     RefWriter<'_>
@@ -132,7 +131,7 @@ where
                 queue!(term, terminal::Clear(terminal::ClearType::FromCursorDown))?;
             }
 
-            (vtable.render)(shell, id, layout, &mut self.current, RefWriter(&mut term))?;
+            (vtable.render)(shell, layout, &mut self.current, RefWriter(&mut term))?;
             self.max_y = cmp::max(self.max_y, self.current.y);
         }
 
@@ -157,7 +156,7 @@ struct RenderSpace<'a> {
 impl layout::Space for RenderSpace<'_> {
     fn info(&self, leaf: Id<layout::Node>) -> Option<layout::SpaceInfo> {
         let vtable = self.table.get(leaf)?;
-        (vtable.info)(self.shell, leaf)
+        (vtable.info)(self.shell)
     }
 }
 
