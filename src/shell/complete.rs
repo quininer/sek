@@ -152,6 +152,10 @@ impl CompletionType {
                     (dir, prefix)
                 };
 
+                if prefix.starts_with('.') {
+                    shell.editor.path_selector.set_hidden_file(false);
+                }
+
                 shell.editor.command.clear();
                 shell.editor.path_selector.search = prefix.into();
                 shell.editor.path_selector.set_glob(None);

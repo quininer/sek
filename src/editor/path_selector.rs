@@ -80,6 +80,10 @@ impl PathSelector {
         self.filter.glob = glob;
     }
 
+    pub fn set_hidden_file(&mut self, flag: bool) {
+        self.filter.hidden_file = flag;
+    }
+
     pub fn toggle_hidden_file(&mut self) {
         self.filter.hidden_file = !self.filter.hidden_file;
     }
