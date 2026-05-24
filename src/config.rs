@@ -45,6 +45,7 @@ pub struct ConfigFormat<'a> {
 pub struct Theme {
     // background color
     pub selected: Style,
+    pub suggest: Style,
 
     pub exe: Style,
     pub literal: Style,
@@ -120,6 +121,7 @@ impl Default for Theme {
     fn default() -> Self {
         Theme {
             selected: Style::ansi(251),
+            suggest: Style::ansi(240),
         
             exe: Style::ansi(27),
             literal: Style::ansi(33),

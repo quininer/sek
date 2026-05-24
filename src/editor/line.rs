@@ -6,12 +6,12 @@ use crate::util::MapWindows2;
 
 
 pub struct EditableLine {
+    segmenter: WordSegmenterBorrowed<'static>,
     line: Line,
     list: VecDeque<Line>,
     // empty when buf is ascii
     indices: Vec<usize>,
     current: usize,
-    segmenter: WordSegmenterBorrowed<'static>,
 }
 
 #[derive(Default, Clone)]
@@ -20,16 +20,30 @@ pub struct Line {
     cursor: Range<usize>,
 }
 
+#[derive(Default)]
+pub struct Suggestion {
+    buf: String,
+    kind: SuggestionKind
+}
+
+#[derive(Default)]
+enum SuggestionKind {
+    #[default]
+    Nothing,
+    Value,
+    History(usize),
+}
+
 const MAX_HISTORY: usize = 1024;
 
 impl Default for EditableLine {
     fn default() -> Self {
         EditableLine {
+            segmenter: WordSegmenter::new_auto(Default::default()),
             line: Line::default(),
             list: VecDeque::new(),
             indices: Vec::new(),
             current: 0,
-            segmenter: WordSegmenter::new_auto(Default::default()),
         }
     }
 }
@@ -77,6 +91,10 @@ impl EditableLine {
         } else {
             end..start
         }
+    }
+
+    pub fn is_editing(&self) -> bool {
+        self.current == 0
     }
 
     pub fn is_point_end(&self) -> bool {
@@ -356,6 +374,65 @@ impl EditableLine {
 impl fmt::Display for EditableLine {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(self.as_str(), f)
+    }
+}
+
+impl Suggestion {
+    pub fn has_suggest(&self) -> bool {
+        !matches!(self.kind, SuggestionKind::Nothing)
+    }
+    
+    pub fn as_str<'a>(&'a self, line: &'a EditableLine) -> &'a str {
+        match self.kind {
+            SuggestionKind::Nothing => "",
+            SuggestionKind::Value => &self.buf,
+            SuggestionKind::History(idx) => {
+                let history = &line.list[idx];
+                history.buf.strip_prefix(&line.line.buf).unwrap_or_default()
+            }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.buf.clear();
+        self.kind = SuggestionKind::Nothing;
+    }
+    
+    pub fn set_value(&mut self, value: &str) {
+        self.buf.clear();
+        self.buf.push_str(value);
+        self.kind = SuggestionKind::Value;
+    }
+
+    pub fn set_history(&mut self, line: &EditableLine) {
+        if let Some((idx, _)) = line.list.iter()
+            .map(|line| line.buf.as_str())
+            .enumerate()
+            .rev()
+            .find(|(_, s)| s.starts_with(&line.line.buf))
+        {
+            self.kind = SuggestionKind::History(idx);
+        }
+    }
+
+    pub fn apply(&mut self, line: &mut EditableLine) {
+        match self.kind {
+            SuggestionKind::Nothing => (),
+            SuggestionKind::Value => {
+                line.push_str(&self.buf);
+                line.line.cursor.start = line.line.cursor.end;
+            },
+            SuggestionKind::History(idx) => {
+                line.line.buf.clear();
+                line.line.buf.push_str(&line.list[idx].buf);
+                let is_ascii = line.line.buf.is_ascii();
+                line.update(0, 0, || is_ascii);
+                line.move_end();
+                line.line.cursor.start = line.line.cursor.end;
+            }
+        }
+
+        self.clear();
     }
 }
 

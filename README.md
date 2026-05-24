@@ -91,5 +91,6 @@ On the contrary, it is designed to satisfy my personal use.
 + [x] Path selector
 + [x] Completion UI
 + [x] Prompt
-+ [ ] History-based Suggestion
-+ [ ] Rule-based Completion
++ [x] History-based suggestion
++ [ ] Persistent history
++ [ ] Rule-based completion

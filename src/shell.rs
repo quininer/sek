@@ -127,14 +127,28 @@ impl Shell {
             };
             self.ast = result.as_ref().ok().copied();
 
-            if let Ok(cmd) = result
-                && matches!(action, Ok(Action::Completion))
-            {
-                // complete resolve
-                if let Err(err) = complete(&self, cmd).await
-                    .resolve(&mut self, &mut renderer).await
+            if self.editor.insert.is_empty() || !self.editor.insert.is_editing() {
+                self.editor.suggestion.clear();
+            }
+
+            if let Ok(cmd) = result {
+                if matches!(action, Ok(Action::Completion)) {
+                    // complete resolve
+                    if let Err(err) = complete(&self, cmd).await
+                        .resolve(&mut self, &mut renderer).await
+                    {
+                        action = Err(err);
+                    }
+                } else if self.editor.insert.is_editing()
+                    && !self.editor.insert.is_empty()
+                    && self.editor.insert.is_point_end()
                 {
-                    action = Err(err);
+                    // autosuggestion
+                    if let Err(err) = complete(&self, cmd).await
+                        .suggest(&mut self).await
+                    {
+                        action = Err(err);
+                    }
                 }
             }
 
@@ -189,6 +203,7 @@ impl Shell {
                     }
 
                     self.editor.insert.clear();
+                    self.editor.suggestion.clear();
                 }
 
                 self.prompt.update(&self.config, &self.env);                

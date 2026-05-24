@@ -48,7 +48,7 @@ impl CompleteSelector {
             self.cur = cur;
             self.update_window();
         }
-    }    
+    }
 
     pub fn update(&mut self) {
         if self.list.is_empty() {

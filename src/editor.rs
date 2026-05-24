@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use anyhow::Context;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
+use line::Suggestion;
 use path_selector::PathSelector;
 use complete::CompleteSelector;
 use crate::ui::layout;
@@ -22,6 +23,7 @@ pub struct Editor {
     pub ready: Option<char>,
     pub path_selector: PathSelector,
     pub complete_selector: CompleteSelector,
+    pub suggestion: Suggestion,
     clipboard: String,
 }
 
@@ -61,6 +63,7 @@ impl Editor {
             insert: EditableLine::default(),
             command: EditableLine::default(),
             ready: None,
+            suggestion: Suggestion::default(),
             clipboard: String::new(),
         })
     }
@@ -88,6 +91,17 @@ impl Editor {
                 self.mode = Mode::Normal;
             },
 
+            // Insert: apply suggestion
+            (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
+                if modifiers.contains(KM::ALT)
+                    && code == KeyCode::Char('l')
+                    && self.insert.is_editing()
+                    && self.insert.is_point_end()
+                    && self.suggestion.has_suggest()
+            => {
+                self.suggestion.apply(&mut self.insert);
+            },            
+
             // Insert
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
@@ -95,6 +109,13 @@ impl Editor {
                 match code {
                     KeyCode::Char('\r') => (),
                     KeyCode::Char(c) => self.insert.push(c),
+                    KeyCode::Right if
+                        self.insert.is_editing()
+                        && self.insert.is_point_end()
+                        && self.suggestion.has_suggest()
+                    => {
+                        self.suggestion.apply(&mut self.insert);
+                    },
                     KeyCode::Backspace => self.insert.backspace(),
                     KeyCode::Delete => self.insert.delete(),
                     KeyCode::Left => self.insert.move_left(),

@@ -148,12 +148,13 @@ const INSERT_LINE: ElementImpl = ElementImpl {
         let (s0, s1) = shell.editor.insert.split(shell.editor.insert.cursor().end);
         let s0_len = s0.width();
         let s1_len = s1.width();
+        let s2_len = shell.editor.suggestion.as_str(&shell.editor.insert).width();
 
         let cursor_len = shell.editor.command.is_empty()
             .then_some(s0_len);
 
         Some(layout::SpaceInfo {
-            length: s0_len + s1_len,
+            length: s0_len + s1_len + s2_len,
             cursor: cursor_len
         })
     },
@@ -161,11 +162,21 @@ const INSERT_LINE: ElementImpl = ElementImpl {
         use crate::shell::syntax::highlight::colour;
         
         if let Some(cmd) = shell.ast {
-            colour(shell, cmd, shell.editor.insert.as_str(), term)?;
+            colour(shell, cmd, shell.editor.insert.as_str(), term.reborrow())?;
         } else {
-            queue!(
-                term,
+            queue!(term,
                 style::Print(shell.editor.insert.as_str()),
+            )?;
+        }
+
+        let suggest = shell.editor.suggestion.as_str(&shell.editor.insert);
+        if !suggest.is_empty() {
+            let config = shell.config.borrow();
+            let color = config.theme.suggest.color().unwrap_or(style::Color::DarkGrey);
+            queue!(term,
+                style::SetForegroundColor(color),
+                style::Print(suggest),
+                style::ResetColor,
             )?;
         }
 

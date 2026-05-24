@@ -170,4 +170,49 @@ impl CompletionType {
 
         Ok(())
     }
+
+    pub async fn suggest(self, shell: &mut Shell) -> anyhow::Result<()> {
+        shell.editor.suggestion.clear();
+        
+        match self {
+            CompletionType::None => (),
+            CompletionType::Exe(span) => {
+                let prefix = &shell.editor.insert.as_str()[span.clone()];
+                let cache = shell.cache.borrow();
+                let mut iter = cache
+                    .exe_set
+                    .search(prefix)
+                    .filter_map(|buf| String::from_utf8(buf.into()).ok());
+                if let Some(item) = iter.next()
+                    && iter.next().is_none()
+                    && let Some(item) = item.strip_prefix(prefix)
+                {
+                    shell.editor.suggestion.set_value(item);
+                }
+            },
+            CompletionType::Env(span) => {
+                let span = (span.start + 1)..span.end;
+                let prefix = &shell.editor.insert.as_str()[span.clone()];
+                let env = shell.env.borrow();
+                let mut iter = env
+                    .search(OsStr::new(prefix))
+                    .filter_map(|(k, _)| k.to_str());
+                if let Some(item) = iter.next()
+                    && iter.next().is_none()
+                    && let Some(item) = item.strip_prefix(prefix)
+                {
+                    shell.editor.suggestion.set_value(item);
+                }
+            },
+            CompletionType::Path(..) => (),
+            CompletionType::Flag(..) => (),
+            CompletionType::Value => (),
+        }
+
+        if shell.editor.suggestion.as_str(&shell.editor.insert).is_empty() {
+            shell.editor.suggestion.set_history(&shell.editor.insert);
+        }
+
+        Ok(())
+    }
 }
