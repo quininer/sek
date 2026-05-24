@@ -13,7 +13,7 @@ use crate::config::{ self, Config };
 use crate::ui::layout;
 use crate::ui::render::Renderer;
 use crate::editor::{ Editor, Action, Mode };
-use crate::util::{ ScopeGuard, FmtDebug };
+use crate::util::ScopeGuard;
 use crate::util::stdout::Stdout;
 use env::Environment;
 use execute::external::{ Morgue, Cause };
@@ -195,7 +195,7 @@ impl Shell {
                             queue!(
                                 term,
                                 style::Print(concat!(env!("CARGO_PKG_NAME"), ": ")),
-                                style::Print(FmtDebug(&err)),
+                                style::Print(&err),
                                 style::Print("\r\n")
                             )?;
                             term.flush()?;

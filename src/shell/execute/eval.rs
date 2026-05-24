@@ -209,11 +209,11 @@ impl syntax::Redirect {
         let mut push = |osstr: &[u8]| {
             let path = osstr.to_path()?;
             let fd = fs::OpenOptions::new()
-                .create_new(true)
+                .create(true)
                 .write(true)
                 .append(append)
                 .open(path)
-                .context("failed to open redirect target")?;
+                .with_context(|| format!("failed to open redirect target: {:?}", path))?;
 
             match kind {
                 StdioKind::Out => cmd.stdout(fd.into()),
