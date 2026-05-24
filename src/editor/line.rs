@@ -79,6 +79,11 @@ impl EditableLine {
         }
     }
 
+    pub fn is_point_end(&self) -> bool {
+        let end = self.line().cursor.end;
+        end == self.char_len()
+    }
+
     pub fn cursor(&self) -> Range<usize> {
         self.line().cursor.clone()
     }
@@ -127,18 +132,33 @@ impl EditableLine {
         }
     }
 
+    fn make(&mut self) {
+        if self.current != 0 {
+            let idx = self.list.len() - self.current;
+            let line = &self.list[idx];
+            self.line.cursor = line.cursor.clone();
+            self.line.buf.clear();
+            self.line.buf.push_str(&line.buf);
+            self.current = 0;
+        }
+    }
+
     pub fn push(&mut self, c: char) {
-        let cur = self.line().cursor.end;
+        self.make();
+
+        let cur = self.line.cursor.end;
         let idx = self.index(cur);
-        self.line_mut().buf.insert(idx, c);
+        self.line.buf.insert(idx, c);
         self.update(cur, idx, || c.is_ascii());
-        self.line_mut().cursor.end += 1;
+        self.line.cursor.end += 1;
     }
 
     pub fn replace(&mut self, s: char) {
-        let cur = self.line().cursor.end;
+        self.make();
+
+        let cur = self.line.cursor.end;
         let idx = self.index(cur);
-        let next_len = self.line()
+        let next_len = self.line
             .buf[idx..]
             .chars()
             .next()
@@ -146,9 +166,7 @@ impl EditableLine {
             .unwrap_or_default();
         let mut sbuf = [0; 4];
         let sbuf = s.encode_utf8(&mut sbuf);
-        self.line_mut()
-            .buf
-            .replace_range(idx..(idx + next_len), sbuf);
+        self.line.buf.replace_range(idx..(idx + next_len), sbuf);
 
         if next_len != sbuf.len() {
             self.update(cur, idx, || s.is_ascii());
@@ -156,10 +174,12 @@ impl EditableLine {
     }
 
     pub fn replace_str_inclusive(&mut self, s: &str, clipboard: Option<&mut String>) {
+        self.make();
+
         let cursor = self.cursor_inclusive();
 
         let bytes_range = self.index(cursor.start)..self.index(cursor.end);
-        let line = self.line_mut();
+        let line = &mut self.line;
 
         if let Some(buf) = clipboard {
             buf.clear();
@@ -169,50 +189,54 @@ impl EditableLine {
         line.buf.replace_range(bytes_range.clone(), s);
 
         self.update(cursor.start, bytes_range.start, || s.is_ascii());
-        self.line_mut().cursor.start = cursor.start;
-        self.line_mut().cursor.end = cursor.start + s.chars().count();
+        self.line.cursor.start = cursor.start;
+        self.line.cursor.end = cursor.start + s.chars().count();
     }
 
     pub fn push_str(&mut self, s: &str) {
-        let cur = self.line().cursor.end;
+        self.make();
+
+        let cur = self.line.cursor.end;
         let idx = self.index(cur);
-        self.line_mut()
-            .buf
-            .insert_str(idx, s);
+        self.line.buf.insert_str(idx, s);
         self.update(cur, idx, || s.is_ascii());
-        self.line_mut().cursor.start = cur;
-        self.line_mut().cursor.end = cur + s.chars().count();
+        self.line.cursor.start = cur;
+        self.line.cursor.end = cur + s.chars().count();
     }
 
     pub fn backspace(&mut self) {
-        let cur = self.line().cursor.end;
+        self.make();
+
+        let cur = self.line.cursor.end;
         if cur != 0 {
             let idx = self.index(cur);
             if let Some(prev_char) = self.as_str()[..idx].chars().last() {
                 let idx = idx - prev_char.len_utf8();
-                self.line_mut()
-                    .buf
-                    .remove(idx);
-                self.line_mut().cursor.end -= 1;
+                self.line.buf.remove(idx);
+                self.line.cursor.end -= 1;
                 self.update(cur - 1, idx, || true);
             }
         }
     }
 
     pub fn delete(&mut self) {
-        let cur = self.line().cursor.end;
+        self.make();
+
+        let cur = self.line.cursor.end;
         let idx = self.index(cur);
         if self.bytes_len() > idx {
-            self.line_mut().buf.remove(idx);
+            self.line.buf.remove(idx);
             self.update(cur, idx, || true);
         }
     }
 
     pub fn delete_to_end(&mut self, _cur: usize) {
-        let cur = self.line().cursor.end;
+        self.make();
+
+        let cur = self.line.cursor.end;
         let idx = self.index(cur);
         if self.bytes_len() > idx {
-            self.line_mut().buf.truncate(idx);
+            self.line.buf.truncate(idx);
             self.update(cur, idx, || true);
         }
     }
@@ -271,6 +295,7 @@ impl EditableLine {
     }
 
     pub fn clear(&mut self) {
+        self.current = 0;
         self.indices.clear();
         self.line_mut().cursor = 0..0;
         self.line_mut().buf.clear();
