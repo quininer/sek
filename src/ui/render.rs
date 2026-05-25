@@ -235,3 +235,16 @@ where
         (self)()
     }
 }
+
+pub fn warn<T: TermTarget>(term: &T, msg: &str, err: &dyn fmt::Display) -> io::Result<()> {
+    let mut term = term.access();
+    queue!(
+        term,
+        style::Print(env!("CARGO_PKG_NAME")),
+        style::Print(": "),
+        style::Print(msg),
+        style::Print(err),
+        style::Print("\r\n")
+    )?;
+    term.flush()
+}

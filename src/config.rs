@@ -1,5 +1,6 @@
 use std::ffi::OsStr;
 use std::ops::Range;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{ Path, PathBuf };
 use std::process::{ Command, Stdio };
@@ -231,18 +232,26 @@ pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
     })
 }
 
-pub fn reload(env: &mut Environment, config: &mut Config, cache: &mut Cache)
+pub fn reload(
+    env: &RefCell<Environment>,
+    config: &RefCell<Config>,
+    cache: &RefCell<Cache>
+)
     -> anyhow::Result<()>
 {
     use std::{ fs, env };
+
+    let mut env = env.borrow_mut();
+    let mut config = config.borrow_mut();
+    let mut cache = cache.borrow_mut();
     
     env.map = env::vars_os().collect();
     env.map.sort_by(|(x, _), (y, _)| x.cmp(y));
 
-    *config = load(env, Some(config.path.clone()))?;
+    *config = load(&mut env, Some(config.path.clone()))?;
 
     let _ = fs::remove_dir_all(env.projdir.cache_dir());
-    *cache = cache::load(config, env)?;
+    *cache = cache::load(&config, &env)?;
 
     Ok(())
 }

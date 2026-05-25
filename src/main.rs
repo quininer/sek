@@ -24,5 +24,5 @@ fn main() -> anyhow::Result<()> {
 
     let rt = builder.build()?;
     let shell = sek::shell::Shell::new(options.config.take())?;
-    rt.block_on(shell.start())       
+    rt.block_on(shell.start())
 }
