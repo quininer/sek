@@ -5,7 +5,6 @@ use std::borrow::Cow;
 use std::path::{ PathBuf, Path };
 use std::cmp::{ self, Ordering };
 use std::fs::{ self, ReadDir, DirEntry };
-use bstr::ByteSlice;
 use icu_collator::Collator;
 use crate::util::path::{ file_name_cmp };
 use crate::util::is_contains;
@@ -293,6 +292,8 @@ impl Filter {
             })
         } else if self.hidden_file {
             #[cfg(unix)] {
+                use bstr::ByteSlice;
+
                 let name = entry.file_name();
                 !name.as_encoded_bytes().starts_with_str(".")
             }

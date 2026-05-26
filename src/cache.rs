@@ -83,10 +83,11 @@ impl ExeSet {
                     }
                     
                     #[cfg(windows)] {
-                        if let Some(name_without_ext) = name.strip_suffix(".exe")
-                            .or_else(|| name.strip_suffix(".bat"))
+                        if let Ok(name) = entry.file_name().into_string()
+                            && let Some(name_without_ext) = name.strip_suffix(".exe")
+                                .or_else(|| name.strip_suffix(".bat"))
                         {
-                            list.push(Box::from(name_without_ext));
+                            list.push(name_without_ext.into());
                         }
                     }
                 }

@@ -26,11 +26,14 @@ fn main() -> anyhow::Result<()> {
     };
 
     #[cfg(unix)]
-    sek::util::set_signal_ignore();    
+    sek::util::set_signal_ignore();
 
-    let rt = runtime::Builder::new_current_thread()
-        .enable_io()
-        .build()?;
+    let mut builder = runtime::Builder::new_current_thread();
+
+    #[cfg(unix)]
+    builder.enable_io();
+
+    let rt = builder.build()?;
     let shell = sek::shell::Shell::new(pwd, options.config.take())?;
     rt.block_on(shell.start())       
 }

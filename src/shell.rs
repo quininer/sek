@@ -75,7 +75,7 @@ impl Shell {
 
             renderer.render(&self.editor.ui.table, &self)?;
             
-            let event = crossterm::event::read()?;
+            let event = read()?;
 
             // update resize
             if let crossterm::event::Event::Resize(x, y) = &event
@@ -217,5 +217,14 @@ impl Shell {
 impl AsRef<layout::Tree> for Shell {
     fn as_ref(&self) -> &layout::Tree {
         self.editor.as_ref()
+    }
+}
+
+fn read() -> io::Result<crossterm::event::Event> {
+    loop {
+        let ev = crossterm::event::read()?;
+        if !ev.is_key_release() {
+            return Ok(ev);
+        }
     }
 }

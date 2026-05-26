@@ -1,11 +1,14 @@
 use std::io;
 use std::rc::Rc;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::process::{ ExitStatus, Stdio };
 use tokio::process::{ self, Command };
 use anyhow::Context;
 use bstr::ByteSlice;
 use super::Shell;
+
+#[cfg(unix)]
+use std::cell::Cell;
 
 
 #[derive(Debug)]
@@ -151,7 +154,7 @@ impl Morgue {
         Ok(child)
     }
 
-    #[allow(clippy::await_holding_refcell_ref)]    
+    #[allow(clippy::await_holding_refcell_ref, unused_variables)]    
     pub async fn wait(&self, cause: Cause) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 
