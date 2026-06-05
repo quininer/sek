@@ -17,7 +17,7 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new(pwd: PathBuf) -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         cfg_select! {
             target_os = "linux" => {
                 let max_args_len = match unsafe { libc::sysconf(libc::_SC_ARG_MAX) } {
@@ -34,6 +34,7 @@ impl Environment {
             }
         }
 
+        let pwd = env::current_dir()?;
         let mut map: Vec<(OsString, OsString)> = env::vars_os().collect();
         map.sort_by(|(x, _), (y, _)| x.cmp(y));
 
@@ -71,6 +72,7 @@ impl Environment {
 
     pub fn cd(&mut self, path: &Path) -> io::Result<()> {
         let newpath = path::dir(&self.pwd.join(path))?;
+        env::set_current_dir(&newpath)?;
         self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
         self.set_pwd();
         Ok(())
@@ -78,6 +80,7 @@ impl Environment {
 
     pub fn go_home(&mut self) -> io::Result<()> {
         let newpath = path::dir(self.userdir.home_dir())?;
+        env::set_current_dir(&newpath)?;
         self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
         self.set_pwd();
         Ok(())
@@ -85,8 +88,9 @@ impl Environment {
 
     pub fn go_back(&mut self) -> io::Result<()> {
         if let Some(pwd) = self.prev_pwd.take() {
-            let pwd = path::dir(&pwd)?;
-            self.prev_pwd = Some(mem::replace(&mut self.pwd, pwd));
+            let newpath = path::dir(&pwd)?;
+            env::set_current_dir(&newpath)?;
+            self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
             self.set_pwd();
         }
 

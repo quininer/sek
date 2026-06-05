@@ -131,8 +131,6 @@ impl CompletionType {
                 }
             },
             CompletionType::Path(span, prefix) => {
-                renderer.screen_reset()?;
-
                 let env = shell.env.borrow();
                 let path = prefix.to_path()?;
                 let path = if path.is_relative() {

@@ -34,10 +34,10 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(pwd: PathBuf, config_path: Option<PathBuf>)
+    pub fn new(config_path: Option<PathBuf>)
         -> anyhow::Result<Self>
     {
-        let mut env = Environment::new(pwd)?;
+        let mut env = Environment::new()?;
         let config = config::load(&mut env, config_path)?;
         let cache = cache::load(&config, &env)?;
         let config = RefCell::new(config);
@@ -152,7 +152,7 @@ impl Shell {
                 }
             }
 
-            self.editor.mode_switch(mode);
+            self.editor.mode_switch(mode, &mut renderer)?;
             self.error = action.err().map(|err| err.to_string());
 
             match result {
@@ -206,7 +206,7 @@ impl Shell {
                     self.editor.suggestion.clear();
                 }
 
-                self.prompt.update(&self.config, &self.env);                
+                self.prompt.update(&self.config, &self.env);
             }
         }
 

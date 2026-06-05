@@ -13,6 +13,7 @@ pub struct Renderer<T> {
     current: layout::Point,
     max_y: u16,
     queue: Vec<(Id<layout::Node>, Layout)>,
+    save_position: Option<(u16, layout::Point)>,
 }
 
 pub trait TermTarget {
@@ -45,6 +46,7 @@ where
             current: layout::Point { x: 0, y: 0 },
             max_y: 0,
             queue: Vec::new(),
+            save_position: None,
         }
     }
 
@@ -65,18 +67,31 @@ where
         term.flush()
     }
 
-    pub fn screen_reset(&mut self)  -> io::Result<()> {
+    pub fn enter_alternate(&mut self) -> io::Result<()> {
         let mut term = self.term.access();
         queue!(term,
+            terminal::EnterAlternateScreen,
             cursor::MoveTo(0, 0),
-            terminal::Clear(terminal::ClearType::FromCursorDown),
         )?;
 
+        self.save_position = Some((self.max_y, self.current));
         self.max_y = 0;
         self.current = layout::Point {
             x: 0,
             y: 0
         };
+
+        term.flush()
+    }
+
+    pub fn leave_alternate(&mut self)  -> io::Result<()> {
+        let mut term = self.term.access();
+        queue!(term, terminal::LeaveAlternateScreen)?;
+
+        if let Some((max_y, point)) = self.save_position.take() {
+            self.max_y = max_y;
+            self.current = point;
+        }
 
         term.flush()
     }

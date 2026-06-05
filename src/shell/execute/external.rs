@@ -25,8 +25,6 @@ pub struct Child {
 #[derive(Clone)]
 pub struct Morgue {
     #[cfg(unix)]
-    pgid: libc::pid_t,
-    #[cfg(unix)]
     jobs_pgid: Cell<Option<libc::pid_t>>,
     queue: Rc<RefCell<Vec<process::Child>>>
 }
@@ -114,10 +112,6 @@ impl Default for Morgue {
     fn default() -> Self {
         Morgue {
             #[cfg(unix)]
-            pgid: unsafe {
-                libc::getpid()
-            },
-            #[cfg(unix)]
             jobs_pgid: Cell::new(None),
             queue: Default::default()
         }
@@ -199,7 +193,7 @@ impl Morgue {
 
             if self.jobs_pgid.take().is_some() {
                 unsafe {
-                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), self.pgid) != 0 {
+                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), libc::getpid()) != 0 {
                         return Err(io::Error::last_os_error());
                     }
                 }

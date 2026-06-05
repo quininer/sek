@@ -14,6 +14,7 @@ use path_selector::PathSelector;
 use complete::CompleteSelector;
 use crate::ui::layout;
 use crate::shell::env::Environment;
+use crate::ui::render::{ Renderer, TermTarget };
 
 pub struct Editor {
     pub ui: ui::Editor,
@@ -494,7 +495,7 @@ impl Editor {
         Ok(Action::Continue)
     }
 
-    pub fn mode_switch(&mut self, prev_mode: Mode) {
+    pub fn mode_switch<T: TermTarget>(&mut self, prev_mode: Mode, renderer: &mut Renderer<T>) -> anyhow::Result<()> {
         match (prev_mode, self.mode) {
             (x, y) if x == y => (),
             (_, Mode::PathSelector) => {
@@ -509,7 +510,8 @@ impl Editor {
                 if self.ui.layout[self.ui.path_selector].hidden {
                     self.ui.layout[self.ui.path_selector].hidden = false;
                 }
-                
+
+                renderer.enter_alternate()?;
             },
             (_, Mode::CompleteSelector) => {
                 debug_assert_ne!(prev_mode, Mode::PathSelector);
@@ -541,12 +543,15 @@ impl Editor {
             (x, y) if x == y => (),
             (Mode::PathSelector, _) => {
                 self.path_selector.clear();
+                renderer.leave_alternate()?;
             },
             (Mode::CompleteSelector, _) => {
                 self.complete_selector.clear();
             },
             (..) => (),
         }
+
+        Ok(())
     }
 }
 
