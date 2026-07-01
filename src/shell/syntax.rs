@@ -9,7 +9,7 @@ use token::Token;
 pub use parse::Parser;
 pub use raw::{ ChainKind, StdioKind };
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Command(raw::NodeId);
 
 #[derive(Clone, Copy)]
@@ -253,6 +253,11 @@ impl SingleStr {
 }
 
 impl SubShell {
+    pub fn new(parser: &Parser, node_id: raw::NodeId) -> Option<Self> {
+        matches!(&parser.nodes[node_id], raw::Node::SubShell(_))
+            .then_some(SubShell(node_id))
+    }
+    
     pub fn node_id(self) -> raw::NodeId {
         self.0
     }

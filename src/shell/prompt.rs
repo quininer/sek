@@ -67,10 +67,11 @@ impl Prompt {
             }
         }
 
-        if let Ok(child) = cmd.spawn() {
-            let mut stdout = child.stdout.unwrap();
+        if let Ok(mut child) = cmd.spawn() {
+            let stdout = child.stdout.as_mut().unwrap();
             self.buf.clear();
             let _ = stdout.read_to_string(&mut self.buf);
+            let _ = child.wait();
         }
     }
 }

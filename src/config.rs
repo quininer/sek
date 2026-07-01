@@ -16,6 +16,7 @@ pub struct Config {
     path: PathBuf,
     pub theme: Theme,
     pub prompt: Option<Prompt>,
+    pub complete: Option<Complete>,
     pub alias: AliasMap,
 }
 
@@ -36,6 +37,8 @@ pub struct ConfigFormat<'a> {
     pub theme: Theme,
     #[serde(default)]
     pub prompt: Option<Prompt>,
+    #[serde(default)]
+    pub complete: Option<Complete>,
     #[serde(default)]
     #[serde(with = "tuple_vec_map")]
     pub alias: Vec<(String, Vec<String>)>,
@@ -145,6 +148,12 @@ pub struct Prompt {
     pub args: Vec<String>,
 }
 
+#[derive(Deserialize)]
+pub struct Complete {
+    pub exe: String,
+    pub args: Vec<String>,
+}
+
 pub struct AliasMap {
     list: Vec<String>,
     map: HashMap<BString, Range<usize>>,
@@ -228,6 +237,7 @@ pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
         path: confpath,
         theme: config.theme,
         prompt: config.prompt,
+        complete: config.complete,
         alias: aliasmap,
     })
 }
