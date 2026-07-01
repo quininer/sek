@@ -14,6 +14,8 @@ pub struct CompleteSelector {
     pub search: String,
 }
 
+const MAX_HEIGHT: usize = 12;
+
 impl CompleteSelector {
     pub fn set_space(&mut self, space: (u16, u16)) {
         self.space = space;
@@ -77,7 +79,7 @@ impl CompleteSelector {
         let row = div_roundup(self.list.len(), self.column);
         let hint = div_roundup(self.cur + 1, self.column).saturating_sub(1);
         
-        let window_len = usize::from(self.space.1).min(6);
+        let window_len = usize::from(self.space.1).min(MAX_HEIGHT);
         self.window = if hint + window_len > row {
             row.saturating_sub(window_len)..row
         } else {
@@ -88,7 +90,7 @@ impl CompleteSelector {
     pub fn update_window(&mut self) {
         let row = div_roundup(self.list.len(), self.column);
         let hint = div_roundup(self.cur + 1, self.column).saturating_sub(1);
-        let window_len = usize::from(self.space.1).min(6);
+        let window_len = usize::from(self.space.1).min(MAX_HEIGHT);
 
         if hint < self.window.start {
             self.window = hint..(hint + window_len).min(row);

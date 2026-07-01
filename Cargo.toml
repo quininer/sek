@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [workspace]
 members = [ "protocol" ]
+exclude = [ "scripts" ]
 
 [dependencies]
 sek-protocol = { path = "protocol" }
