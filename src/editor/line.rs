@@ -110,6 +110,12 @@ impl EditableLine {
         &mut self.line_mut().cursor
     }
 
+    pub fn select_span(&mut self, span: Range<usize>) {
+        let start = self.as_str()[..span.start].chars().count();
+        let end = start + self.as_str()[span].chars().count();
+        *self.cursor_mut() = start..end
+    }
+
     pub fn selected(&self) -> &str {
         let span = self.span(self.cursor());
         &self.as_str()[span]

@@ -133,12 +133,11 @@ impl CompletionType {
                 shell.editor.complete_selector.list.clear();
                 shell.editor.complete_selector.desc.clear();
                 shell.editor.complete_selector.list.extend(list);
-
                 if !shell.editor.complete_selector.list.is_empty() {
                     shell.editor.complete_selector.cur = 0;
                     shell.editor.complete_selector.set_space(renderer.size);
                     shell.editor.complete_selector.update();
-                    *shell.editor.insert.cursor_mut() = span;
+                    shell.editor.insert.select_span(span);
                     shell.editor.mode = Mode::CompleteSelector;
                 }
             },
@@ -156,7 +155,7 @@ impl CompletionType {
                     shell.editor.complete_selector.cur = 0;
                     shell.editor.complete_selector.set_space(renderer.size);
                     shell.editor.complete_selector.update();
-                    *shell.editor.insert.cursor_mut() = span;
+                    shell.editor.insert.select_span(span);
                     shell.editor.mode = Mode::CompleteSelector;
                 }
             },
@@ -188,7 +187,7 @@ impl CompletionType {
                 shell.editor.path_selector.set_glob(None);
                 shell.editor.path_selector.set_space(renderer.size.1.into());
                 shell.editor.path_selector.cd(dir)?;
-                *shell.editor.insert.cursor_mut() = select;
+                shell.editor.insert.select_span(select);
                 shell.editor.mode = Mode::PathSelector;
                 shell.editor.path_selector.search_down()?;
             },
@@ -370,7 +369,7 @@ pub async fn do_complete<T: TermTarget>(
         shell.editor.complete_selector.cur = 0;
         shell.editor.complete_selector.set_space(renderer.size);
         shell.editor.complete_selector.update();
-        *shell.editor.insert.cursor_mut() = select;
+        shell.editor.insert.select_span(select);
         shell.editor.mode = Mode::CompleteSelector;
     }
 
