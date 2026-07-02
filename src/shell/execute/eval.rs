@@ -212,6 +212,7 @@ impl syntax::Redirect {
                 .create(true)
                 .write(true)
                 .append(append)
+                .truncate(!append)
                 .open(path)
                 .with_context(|| format!("failed to open redirect target: {:?}", path))?;
 
