@@ -191,7 +191,7 @@ pub fn is_contains(haystack: &[u8], needle: &str, case_sensitive: bool)
     
     if needle.is_empty() {
         false
-    } else if !case_sensitive || !needle.is_ascii() {
+    } else if case_sensitive {
         haystack.find(needle.as_bytes()).is_some()
     } else {
         let first = needle.as_bytes()[0];
