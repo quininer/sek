@@ -164,7 +164,7 @@ async fn process_input<T: TermTarget>(
 
         if let Some(render) = error_renderer.as_mut() {
             *render = annotate_snippets::Renderer::styled()
-                .term_width(renderer.size.1.into());
+                .term_width(renderer.size.0.into());
         }
 
         match shell.editor.mode {
@@ -240,7 +240,7 @@ async fn process_input<T: TermTarget>(
 
             let error_renderer = error_renderer
                 .get_or_insert_with(|| annotate_snippets::Renderer::styled()
-                    .term_width(renderer.size.1.into())
+                    .term_width(renderer.size.0.into())
                 );
 
             let line = shell.editor.insert.as_str();
