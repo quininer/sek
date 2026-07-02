@@ -1,10 +1,11 @@
 use std::ffi::OsStr;
+use std::ops::Range;
 use bstr::{ ByteSlice, BString };
 use logos::Span;
 use crate::shell::syntax::{ Command, SubShell, Argument, ArgSlice, StrSlice, Variable };
 use crate::shell::Shell;
 use crate::ui::render::{ Renderer, TermTarget };
-use crate::editor::Mode;
+use crate::editor::{ Editor, Mode };
 
 #[derive(Debug)]
 pub enum CompletionType {
@@ -133,13 +134,12 @@ impl CompletionType {
                 shell.editor.complete_selector.list.clear();
                 shell.editor.complete_selector.desc.clear();
                 shell.editor.complete_selector.list.extend(list);
-                if !shell.editor.complete_selector.list.is_empty() {
-                    shell.editor.complete_selector.cur = 0;
-                    shell.editor.complete_selector.set_space(renderer.size);
-                    shell.editor.complete_selector.update();
-                    shell.editor.insert.select_span(span);
-                    shell.editor.mode = Mode::CompleteSelector;
-                }
+
+                make_complete_selector(
+                    &mut shell.editor,
+                    span,
+                    renderer.size,
+                );
             },
             CompletionType::Env(span) => {
                 let span = (span.start + 1)..span.end;
@@ -151,13 +151,12 @@ impl CompletionType {
                 shell.editor.complete_selector.list.clear();
                 shell.editor.complete_selector.desc.clear();
                 shell.editor.complete_selector.list.extend(list);
-                if !shell.editor.complete_selector.list.is_empty() {
-                    shell.editor.complete_selector.cur = 0;
-                    shell.editor.complete_selector.set_space(renderer.size);
-                    shell.editor.complete_selector.update();
-                    shell.editor.insert.select_span(span);
-                    shell.editor.mode = Mode::CompleteSelector;
-                }
+
+                make_complete_selector(
+                    &mut shell.editor,
+                    span,
+                    renderer.size,
+                );
             },
             CompletionType::Path { select, prefix } => {
                 let env = shell.env.borrow();
@@ -357,21 +356,46 @@ pub async fn do_complete<T: TermTarget>(
         shell.editor.complete_selector.desc.reserve(items);
     }
 
-    for line in stdout.lines() {
-        let (item, desc) = line.split_once('\t')
-            .unwrap_or((line, ""));
+    let input = stdout
+        .lines()
+        .map(|line| line.split_once('\t').unwrap_or((line, "")))
+        .map(|(item, desc)| (item.into(), desc.into()));
 
-        shell.editor.complete_selector.list.push(item.into());
-        shell.editor.complete_selector.desc.push(desc.into());
-    }
+    shell.editor.complete_selector.list.clear();
+    shell.editor.complete_selector.desc.clear();
 
-    if !shell.editor.complete_selector.list.is_empty() {
-        shell.editor.complete_selector.cur = 0;
-        shell.editor.complete_selector.set_space(renderer.size);
-        shell.editor.complete_selector.update();
-        shell.editor.insert.select_span(select);
-        shell.editor.mode = Mode::CompleteSelector;
+    for (item, desc) in input {
+        shell.editor.complete_selector.list.push(item);
+        shell.editor.complete_selector.desc.push(desc);
     }
+    
+    make_complete_selector(
+        &mut shell.editor,
+        select,
+        renderer.size,
+    );
 
     Ok(())
+}
+
+fn make_complete_selector(
+    editor: &mut Editor,
+    select: Range<usize>,
+    size: (u16, u16),
+) {
+    match editor.complete_selector.list.len() {
+        0 => (),
+        1 => {
+            let s = &editor.complete_selector.list[0];
+            editor.insert.select_span(select);
+            editor.insert.replace_str_inclusive(s, None);
+        },
+        _ => {
+            editor.complete_selector.cur = 0;
+            editor.complete_selector.set_space(size);
+            editor.complete_selector.update();
+            editor.insert.select_span(select);
+            editor.mode = Mode::CompleteSelector;
+        }
+    }
 }
