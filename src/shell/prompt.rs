@@ -9,7 +9,6 @@ use crate::shell::execute::Status;
 pub struct Prompt {
     buf: String,
     status: Status,
-    width: u16,
 }
 
 impl Default for Prompt {
@@ -17,7 +16,6 @@ impl Default for Prompt {
         Prompt {
             buf: "> ".into(),
             status: Status::BuiltIn(true),
-            width: 1,
         }
     }
 }
@@ -27,15 +25,16 @@ impl Prompt {
         self.status = status;
     }
 
-    pub fn set_width(&mut self, width: u16) {
-        self.width = width;
-    }
-
     pub fn as_str(&self) -> &str {
         self.buf.as_str()
     }
     
-    pub fn update(&mut self, config: &RefCell<Config>, env: &RefCell<Environment>) {
+    pub fn update(
+        &mut self,
+        config: &RefCell<Config>,
+        env: &RefCell<Environment>,
+        size: (u16, u16)
+    ) {
         let config = config.borrow();
         let Some(prompt) = &config.prompt
             else {
@@ -58,7 +57,7 @@ impl Prompt {
                     cmd.arg(status);
                 },
                 "@width" => {
-                    let width = self.width.to_string();
+                    let width = size.0.to_string();
                     cmd.arg(width);
                 },
                 _ => {

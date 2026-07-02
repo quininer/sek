@@ -104,8 +104,7 @@ async fn runloop(
     let mut error_renderer = None;
 
     // TODO use ipc
-    shell.prompt.set_width(renderer.size.0);
-    shell.prompt.update(&shell.config, &shell.env);
+    shell.prompt.update(&shell.config, &shell.env, renderer.size);
 
     loop {
         shell.morgue.wait(Cause::Error).await?;
@@ -160,7 +159,6 @@ async fn process_input<T: TermTarget>(
         && renderer.size != (*x, *y)
     {
         renderer.size = (*x, *y);
-        shell.prompt.set_width(*x);
 
         if let Some(render) = error_renderer.as_mut() {
             *render = annotate_snippets::Renderer::styled()
@@ -267,7 +265,7 @@ async fn process_input<T: TermTarget>(
             shell.editor.suggestion.clear();
         }
 
-        shell.prompt.update(&shell.config, &shell.env);
+        shell.prompt.update(&shell.config, &shell.env, renderer.size);
     }    
 
     Ok(true)

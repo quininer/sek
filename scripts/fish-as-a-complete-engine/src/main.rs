@@ -56,6 +56,7 @@ fn main() -> io::Result<()> {
     cmd.args(&[
         "--die-with-parent",
         "--unshare-all",
+        "--cap-drop", "ALL",
         "--ro-bind", "/", "/",
         "--dev-bind", "/dev/null", "/dev/null",
         "--",
