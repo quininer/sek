@@ -361,7 +361,7 @@ impl EditableLine {
         let line = if let Some(mut line) = line {
             line.buf.clear();
             line.buf.push_str(&self.line.buf);
-            self.line.cursor = line.cursor.clone();
+            line.cursor = self.line.cursor.clone();
             line
         } else {
             self.line.clone()
