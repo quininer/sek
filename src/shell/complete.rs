@@ -135,11 +135,14 @@ impl CompletionType {
                 shell.editor.complete_selector.desc.clear();
                 shell.editor.complete_selector.list.extend(list);
 
-                make_complete_selector(
+                if make_complete_selector(
                     &mut shell.editor,
                     span,
                     renderer.size,
-                );
+                ) {
+                    let input = shell.editor.insert.as_str();
+                    shell.ast = shell.parser.parse_incomplete(input).ok();
+                }
             },
             CompletionType::Env(span) => {
                 let span = (span.start + 1)..span.end;
@@ -152,11 +155,14 @@ impl CompletionType {
                 shell.editor.complete_selector.desc.clear();
                 shell.editor.complete_selector.list.extend(list);
 
-                make_complete_selector(
+                if make_complete_selector(
                     &mut shell.editor,
                     span,
                     renderer.size,
-                );
+                ) {
+                    let input = shell.editor.insert.as_str();
+                    shell.ast = shell.parser.parse_incomplete(input).ok();
+                }
             },
             CompletionType::Path { select, prefix } => {
                 let env = shell.env.borrow();
@@ -369,11 +375,14 @@ pub async fn do_complete<T: TermTarget>(
         shell.editor.complete_selector.desc.push(desc);
     }
     
-    make_complete_selector(
+    if make_complete_selector(
         &mut shell.editor,
         select,
         renderer.size,
-    );
+    ) {
+        let input = shell.editor.insert.as_str();
+        shell.ast = shell.parser.parse_incomplete(input).ok();
+    }
 
     Ok(())
 }
@@ -382,13 +391,14 @@ fn make_complete_selector(
     editor: &mut Editor,
     select: Range<usize>,
     size: (u16, u16),
-) {
+) -> bool {
     match editor.complete_selector.list.len() {
-        0 => (),
+        0 => false,
         1 => {
             let s = &editor.complete_selector.list[0];
             editor.insert.select_span(select);
             editor.insert.replace_str_inclusive(s, None);
+            true
         },
         _ => {
             editor.complete_selector.cur = 0;
@@ -396,6 +406,7 @@ fn make_complete_selector(
             editor.complete_selector.update();
             editor.insert.select_span(select);
             editor.mode = Mode::CompleteSelector;
+            false
         }
     }
 }

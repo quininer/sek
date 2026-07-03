@@ -32,8 +32,7 @@ pub struct Morgue {
 #[derive(Clone, Copy, Debug)]
 pub enum Cause {
     Wait,
-    CtrcC,
-    Error,
+    NewRound,
 }
 
 impl ShellCommand {
@@ -158,8 +157,8 @@ impl Morgue {
         if !queue.is_empty() {
             let maybe_signal = match cause {
                 Cause::Wait => None,
-                Cause::CtrcC => Some(libc::SIGINT),
-                Cause::Error => Some(libc::SIGKILL)
+                // Cause::CtrcC => Some(libc::SIGINT),
+                Cause::NewRound => Some(libc::SIGKILL)
             };
 
             if let Some(signal) = maybe_signal {

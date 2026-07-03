@@ -107,7 +107,7 @@ async fn runloop(
     shell.prompt.update(&shell.config, &shell.env, renderer.size);
 
     loop {
-        shell.morgue.wait(Cause::Error).await?;
+        shell.morgue.wait(Cause::NewRound).await?;
         renderer.render(&shell.editor.ui.table, shell)?;
         
         match Select::new(
