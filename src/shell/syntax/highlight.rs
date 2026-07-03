@@ -267,7 +267,7 @@ impl SingleStr {
             .unwrap_or_else(|| input.buf.len());
         let span = start..end;
 
-        state.push_to(input.theme.escape, input, span, term)
+        state.push_to(input.theme.single_str, input, span, term)
     }
 }
 
