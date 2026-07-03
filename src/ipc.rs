@@ -1,19 +1,25 @@
+#![cfg_attr(not(unix), allow(unused))]
+
 use std::io;
 use std::ffi::OsStr;
 use std::num::NonZeroU64;
 use std::cell::RefCell;
 use serde_bytes::Bytes;
 use tokio::io::{ AsyncReadExt, AsyncWriteExt };
-use tokio::net::UnixStream;
 use crate::shell::env::Environment;
 use sek_protocol::{ FILENAME, ClientMessage };
 pub use sek_protocol::{ RequestId, ClientMessageData, ServerMessage, ServerMessageData };
 
+#[cfg(unix)]
+use tokio::net::UnixStream;
+
 pub struct Client {
+    #[cfg(unix)]
     socket: UnixStream,
     request_id: RequestId,
 }
 
+#[cfg(unix)]
 impl Client {
     #[allow(clippy::await_holding_refcell_ref)]
     pub async fn connect(env: &RefCell<Environment>) -> anyhow::Result<Option<Client>> {
@@ -107,6 +113,27 @@ impl Client {
     }
 }
 
+
+#[cfg(not(unix))]
+impl Client {
+    pub async fn connect(env: &RefCell<Environment>) -> anyhow::Result<Option<Client>> {
+        Ok(None)
+    }
+
+    pub async fn send_msg(&mut self, buf: &mut Vec<u8>, data: ClientMessageData<'_>)
+        -> anyhow::Result<RequestId>
+    {
+        anyhow::bail!("unimplemented")
+    }
+
+    pub async fn recv_msg<'a>(&mut self, buf: &'a mut Vec<u8>)
+        -> anyhow::Result<ServerMessage<'a>>
+    {
+        todo!()
+    }
+}
+
+#[cfg(unix)]
 pub async fn readable(client: Option<&Client>) -> anyhow::Result<()> {
     use std::task::Poll;
     use std::future::poll_fn;
@@ -115,6 +142,15 @@ pub async fn readable(client: Option<&Client>) -> anyhow::Result<()> {
         Some(client) => client.socket.poll_read_ready(cx),
         None => Poll::Pending
     }).await?;
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub async fn readable(client: Option<&Client>) -> anyhow::Result<()> {
+    use std::future;
+
+    future::pending::<()>().await;
 
     Ok(())
 }

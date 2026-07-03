@@ -154,7 +154,8 @@ impl Morgue {
 
         queue.retain_mut(|child| !matches!(child.try_wait(), Ok(Some(_))));
 
-        #[cfg(unix)] {
+        #[cfg(unix)]
+        if !queue.is_empty() {
             let maybe_signal = match cause {
                 Cause::Wait => None,
                 Cause::CtrcC => Some(libc::SIGINT),
