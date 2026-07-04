@@ -198,10 +198,7 @@ async fn process_input<T: TermTarget>(
         shell.parser.parse_incomplete(line)
     };
     shell.ast = result.as_ref().ok().copied();
-
-    if shell.editor.insert.is_empty() || !shell.editor.insert.is_editing() {
-        shell.editor.suggestion.clear();
-    }
+    shell.editor.suggestion.clear();
 
     if let Ok(cmd) = result {
         if matches!(action, Ok(Action::Completion)) {
