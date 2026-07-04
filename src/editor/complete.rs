@@ -119,3 +119,25 @@ fn div_roundup(x: usize, y: usize) -> usize {
     let rem = !x.is_multiple_of(y);
     (x / y) + rem as usize
 }
+
+#[test]
+fn complete_selector_shows_more_items_after_resize() {
+    let mut selector = CompleteSelector::default();
+    selector.list = (0..12)
+        .map(|idx| format!("item-{idx}"))
+        .collect();
+    selector.cur = 3;
+
+    selector.set_space((10, 4));
+    selector.update();
+    let initial_column = selector.column;
+    let initial_capacity = selector.window.len() * selector.column;
+
+    selector.set_space((40, 4));
+    selector.update();
+
+    assert!(selector.column > initial_column);
+    assert!(selector.window.contains(&0));
+    assert!(selector.window.contains(&(selector.cur / selector.column)));
+    assert!(selector.window.len() * selector.column > initial_capacity);
+}
