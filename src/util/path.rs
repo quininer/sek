@@ -1,11 +1,12 @@
-use std::{ cmp, fmt, io };
-use std::ffi::OsStr;
-use std::path::{ Path, PathBuf };
 use icu_collator::Collator;
-
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
+use std::{cmp, fmt, io};
 
 pub fn file_name_cmp(collator: &Collator, x: &OsStr, y: &OsStr) -> cmp::Ordering {
-    collator.as_borrowed().compare_utf8(x.as_encoded_bytes(), y.as_encoded_bytes())
+    collator
+        .as_borrowed()
+        .compare_utf8(x.as_encoded_bytes(), y.as_encoded_bytes())
 }
 
 pub fn dir(path: &Path) -> io::Result<PathBuf> {
@@ -15,7 +16,7 @@ pub fn dir(path: &Path) -> io::Result<PathBuf> {
     } else {
         Err(io::Error::new(
             io::ErrorKind::NotADirectory,
-            "path not a directory"
+            "path not a directory",
         ))
     }
 }
@@ -24,8 +25,8 @@ pub struct EscapePath<'a>(pub &'a str);
 
 impl fmt::Display for EscapePath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use std::fmt::Write;
         use bstr::ByteSlice;
+        use std::fmt::Write;
 
         let s = self.0.as_bytes();
 
@@ -42,7 +43,7 @@ impl fmt::Display for EscapePath<'_> {
                     '"' => f.write_str(r#"\""#)?,
                     '$' => f.write_str(r#"\$"#)?,
                     '\\' => f.write_str(r#"\\"#)?,
-                    c => f.write_char(c)?
+                    c => f.write_char(c)?,
                 }
             }
             f.write_char('"')?;

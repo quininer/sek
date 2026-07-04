@@ -1,16 +1,15 @@
-use std::ffi::OsStr;
-use std::ops::Range;
+use crate::cache::{self, Cache};
+use crate::shell::env::Environment;
+use crate::util::CowStr;
+use bstr::BString;
+use crossterm::style::{Attribute, Attributes, Color};
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::{ Path, PathBuf };
-use std::process::{ Command, Stdio };
-use bstr::BString;
-use serde::Deserialize;
-use crossterm::style::{ Color, Attributes, Attribute };
-use crate::util::CowStr;
-use crate::shell::env::Environment;
-use crate::cache::{ self, Cache };
-
+use std::ffi::OsStr;
+use std::ops::Range;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 pub struct Config {
     path: PathBuf,
@@ -73,7 +72,7 @@ pub struct Style {
     #[serde(default)]
     dim: bool,
     #[serde(default)]
-    underlined: bool
+    underlined: bool,
 }
 
 impl Style {
@@ -83,7 +82,7 @@ impl Style {
             rgb: None,
             bold: false,
             dim: false,
-            underlined: false
+            underlined: false,
         }
     }
 
@@ -93,12 +92,13 @@ impl Style {
             rgb: Some([r, g, b]),
             bold: false,
             dim: false,
-            underlined: false
+            underlined: false,
         }
-    }    
+    }
 
     pub fn color(&self) -> Option<Color> {
-        self.rgb.map(|[r, g, b]| Color::Rgb { r, g, b })
+        self.rgb
+            .map(|[r, g, b]| Color::Rgb { r, g, b })
             .or_else(|| self.ansi.map(Color::AnsiValue))
     }
 
@@ -126,7 +126,7 @@ impl Default for Theme {
         Theme {
             selected: Style::ansi(251),
             suggest: Style::ansi(240),
-        
+
             exe: Style::ansi(27),
             literal: Style::ansi(33),
             variable: Style::ansi(39),
@@ -171,12 +171,9 @@ impl AliasMap {
     }
 }
 
-pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
-    -> anyhow::Result<Config>
-{
-    let confpath = confpath
-        .unwrap_or_else(|| env.projdir.config_dir().join("config"));
-    
+pub fn load(env: &mut Environment, confpath: Option<PathBuf>) -> anyhow::Result<Config> {
+    let confpath = confpath.unwrap_or_else(|| env.projdir.config_dir().join("config"));
+
     let buf;
     let config = if confpath.exists() {
         let child = Command::new(&confpath)
@@ -216,9 +213,9 @@ pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
 
         for (k, v) in config.alias {
             if v.is_empty() {
-                continue
+                continue;
             }
-            
+
             let start = list.len();
             list.extend(v);
             let end = list.len();
@@ -231,7 +228,7 @@ pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
         AliasMap { list, map }
     };
 
-    env.shrink_to_fit();    
+    env.shrink_to_fit();
 
     Ok(Config {
         path: confpath,
@@ -245,16 +242,14 @@ pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
 pub fn reload(
     env: &RefCell<Environment>,
     config: &RefCell<Config>,
-    cache: &RefCell<Cache>
-)
-    -> anyhow::Result<()>
-{
-    use std::{ fs, env };
+    cache: &RefCell<Cache>,
+) -> anyhow::Result<()> {
+    use std::{env, fs};
 
     let mut env = env.borrow_mut();
     let mut config = config.borrow_mut();
     let mut cache = cache.borrow_mut();
-    
+
     env.map = env::vars_os().collect();
     env.map.sort_by(|(x, _), (y, _)| x.cmp(y));
 

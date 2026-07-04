@@ -1,27 +1,26 @@
-pub mod env;
-pub mod syntax;
-pub mod execute;
 pub mod complete;
+pub mod env;
+pub mod execute;
 pub mod prompt;
+pub mod syntax;
 
-use std::io;
-use std::cell::RefCell;
-use std::path::PathBuf;
-use crossterm::terminal;
-use crossterm::event::Event;
+use crate::cache::{self, Cache};
+use crate::config::{self, Config};
+use crate::editor::{Action, Editor, Mode};
 use crate::ipc;
-use crate::cache::{ self, Cache };
-use crate::config::{ self, Config };
 use crate::ui::layout;
-use crate::ui::render::{ Renderer, TermTarget, warn };
-use crate::editor::{ Editor, Action, Mode };
+use crate::ui::render::{Renderer, TermTarget, warn};
 use crate::util::ScopeGuard;
 use crate::util::stdout::Stdout;
+use complete::complete;
+use crossterm::event::Event;
+use crossterm::terminal;
 use env::Environment;
 use execute::external::Morgue;
-use complete::complete;
 use prompt::Prompt;
-
+use std::cell::RefCell;
+use std::io;
+use std::path::PathBuf;
 
 pub struct Shell {
     pub config: RefCell<Config>,
@@ -37,16 +36,14 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(config_path: Option<PathBuf>)
-        -> anyhow::Result<Self>
-    {
+    pub fn new(config_path: Option<PathBuf>) -> anyhow::Result<Self> {
         let mut env = Environment::new()?;
         let config = config::load(&mut env, config_path)?;
         let cache = cache::load(&config, &env)?;
         let config = RefCell::new(config);
         let env = RefCell::new(env);
         let cache = RefCell::new(cache);
-        
+
         let editor = Editor::new()?;
         let parser = syntax::Parser::default();
 
@@ -56,8 +53,12 @@ impl Shell {
             ipc: None,
             morgue: Morgue::default(),
             prompt: Prompt::default(),
-            env, editor, parser, config, cache,
-        })        
+            env,
+            editor,
+            parser,
+            config,
+            cache,
+        })
     }
 
     pub async fn start(mut self) -> anyhow::Result<()> {
@@ -70,8 +71,8 @@ impl Shell {
         match ipc::Client::connect(&self.env).await {
             Ok(Some(client)) => self.ipc = Some(client),
             Ok(None) => (),
-            Err(err) => warn(&|| stdout.lock(), ": ipc connect failed; ", &err)?
-        }        
+            Err(err) => warn(&|| stdout.lock(), ": ipc connect failed; ", &err)?,
+        }
 
         runloop(&mut self, &stdout).await
     }
@@ -83,17 +84,14 @@ impl AsRef<layout::Tree> for Shell {
     }
 }
 
-async fn runloop(
-    shell: &mut Shell,
-    stdout: &Stdout,
-) -> anyhow::Result<()> {
+async fn runloop(shell: &mut Shell, stdout: &Stdout) -> anyhow::Result<()> {
+    use crate::ipc;
+    use crate::util::{Either, Select};
+    use crossterm::event::EventStream;
+    use futures_core::Stream;
+    use std::future::poll_fn;
     use std::pin::Pin;
     use std::task::Poll;
-    use std::future::poll_fn;
-    use futures_core::Stream;
-    use crossterm::event::EventStream;
-    use crate::util::{ Select, Either };
-    use crate::ipc;
 
     let size = terminal::size()?;
     let mut reader = EventStream::new();
@@ -104,39 +102,39 @@ async fn runloop(
     let mut error_renderer = None;
 
     // TODO use ipc
-    shell.prompt.update(&shell.config, &shell.env, renderer.size);
+    shell
+        .prompt
+        .update(&shell.config, &shell.env, renderer.size);
 
     loop {
         renderer.render(&shell.editor.ui.table, shell)?;
-        
+
         match Select::new(
-            poll_fn(|cx| loop {
-                match reader.as_mut().poll_next(cx) {
-                    Poll::Ready(Some(Ok(ev))) if ev.is_key_release() => (),
-                    ret => break ret
+            poll_fn(|cx| {
+                loop {
+                    match reader.as_mut().poll_next(cx) {
+                        Poll::Ready(Some(Ok(ev))) if ev.is_key_release() => (),
+                        ret => break ret,
+                    }
                 }
             }),
-            ipc::readable(shell.ipc.as_ref())
-        ).await {
+            ipc::readable(shell.ipc.as_ref()),
+        )
+        .await
+        {
             Either::Left(Some(event)) => {
-                if !process_input(
-                    shell,
-                    &mut renderer,
-                    &mut error_renderer,
-                    event?
-                ).await? {
-                    break
+                if !process_input(shell, &mut renderer, &mut error_renderer, event?).await? {
+                    break;
                 }
-            },
-            Either::Left(None) =>
-                anyhow::bail!("terminal input stop"),
+            }
+            Either::Left(None) => anyhow::bail!("terminal input stop"),
             Either::Right(ready) => {
                 let mut err = ready.err();
 
                 if err.is_none() {
                     err = process_msg(shell, &mut ipcbuf).await.err();
                 }
-                
+
                 if let Some(err) = err {
                     warn(&renderer.term, ": ipc error; ", &err)?;
                     shell.ipc = None;
@@ -152,7 +150,7 @@ async fn process_input<T: TermTarget>(
     shell: &mut Shell,
     renderer: &mut Renderer<T>,
     error_renderer: &mut Option<annotate_snippets::Renderer>,
-    event: Event
+    event: Event,
 ) -> anyhow::Result<bool> {
     if let Event::Resize(x, y) = &event
         && renderer.size != (*x, *y)
@@ -160,23 +158,24 @@ async fn process_input<T: TermTarget>(
         renderer.size = (*x, *y);
 
         if let Some(render) = error_renderer.as_mut() {
-            *render = annotate_snippets::Renderer::styled()
-                .term_width(renderer.size.0.into());
+            *render = annotate_snippets::Renderer::styled().term_width(renderer.size.0.into());
         }
 
         match shell.editor.mode {
             Mode::PathSelector => {
                 shell.editor.path_selector.set_space(renderer.size.1.into());
                 shell.editor.path_selector.cd(std::path::Path::new("."))?;
-            },
+            }
             Mode::CompleteSelector => {
                 shell.editor.complete_selector.set_space(renderer.size);
                 shell.editor.complete_selector.update();
-            },
-            _ => ()
+            }
+            _ => (),
         }
 
-        shell.prompt.update(&shell.config, &shell.env, renderer.size);
+        shell
+            .prompt
+            .update(&shell.config, &shell.env, renderer.size);
     }
 
     let mode = shell.editor.mode;
@@ -185,11 +184,9 @@ async fn process_input<T: TermTarget>(
 
     match action {
         Ok(Action::Break) => return Ok(false),
-        Ok(Action::Reload) => {
-            match config::reload(&shell.env, &shell.config, &shell.cache) {
-                Ok(()) => return Ok(true),
-                Err(err) => action = Err(err)
-            }
+        Ok(Action::Reload) => match config::reload(&shell.env, &shell.config, &shell.cache) {
+            Ok(()) => return Ok(true),
+            Err(err) => action = Err(err),
         },
         _ => (),
     }
@@ -209,18 +206,12 @@ async fn process_input<T: TermTarget>(
     if let Ok(cmd) = result {
         if matches!(action, Ok(Action::Completion)) {
             // complete resolve
-            if let Err(err) = complete(shell, cmd).await
-                .resolve(shell, renderer).await
-            {
+            if let Err(err) = complete(shell, cmd).await.resolve(shell, renderer).await {
                 action = Err(err);
             }
-        } else if shell.editor.insert.is_editing()
-            && shell.editor.insert.is_point_end()
-        {
+        } else if shell.editor.insert.is_editing() && shell.editor.insert.is_point_end() {
             // autosuggestion
-            if let Err(err) = complete(shell, cmd).await
-                .suggest(shell).await
-            {
+            if let Err(err) = complete(shell, cmd).await.suggest(shell).await {
                 action = Err(err);
             }
         }
@@ -238,26 +229,25 @@ async fn process_input<T: TermTarget>(
                 let _ = terminal::enable_raw_mode();
             });
 
-            let error_renderer = error_renderer
-                .get_or_insert_with(|| annotate_snippets::Renderer::styled()
-                    .term_width(renderer.size.0.into())
-                );
+            let error_renderer = error_renderer.get_or_insert_with(|| {
+                annotate_snippets::Renderer::styled().term_width(renderer.size.0.into())
+            });
 
             let line = shell.editor.insert.as_str();
             let display = error_renderer.render(&[err.to_message(line)]);
             renderer.new_line(&display)?;
-        },
-        Err(_) => return Ok(true)
+        }
+        Err(_) => return Ok(true),
     }
 
     if is_execute {
         renderer.new_line(&"")?;
-        
+
         if let Some(cmd) = shell.ast.take() {
             let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
                 let _ = terminal::enable_raw_mode();
             });
-            
+
             match execute::execute(shell, shell.editor.insert.as_str(), cmd).await {
                 Ok(status) => shell.prompt.set_status(status),
                 Err(err) => warn(&renderer.term, "", &err)?,
@@ -267,18 +257,19 @@ async fn process_input<T: TermTarget>(
             shell.editor.suggestion.clear();
         }
 
-        shell.prompt.update(&shell.config, &shell.env, renderer.size);
-    }    
+        shell
+            .prompt
+            .update(&shell.config, &shell.env, renderer.size);
+    }
 
     Ok(true)
 }
 
 async fn process_msg(shell: &mut Shell, ipcbuf: &mut Vec<u8>) -> anyhow::Result<()> {
-    let Some(ipc) = shell.ipc.as_mut()
-        else {
-            return Ok(());
-        };
-    
+    let Some(ipc) = shell.ipc.as_mut() else {
+        return Ok(());
+    };
+
     let _msg = ipc.recv_msg(ipcbuf).await?;
 
     // TODO impl

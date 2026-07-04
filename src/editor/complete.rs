@@ -1,6 +1,6 @@
+use crate::util::is_contains;
 use std::ops::Range;
 use unicode_width::UnicodeWidthStr;
-use crate::util::is_contains;
 
 #[derive(Debug, Default)]
 pub struct CompleteSelector {
@@ -23,10 +23,12 @@ impl CompleteSelector {
 
     pub fn search_up(&mut self) {
         if self.search.is_empty() {
-            return
+            return;
         }
 
-        if let Some((cur, _)) = self.list.iter()
+        if let Some((cur, _)) = self
+            .list
+            .iter()
             .enumerate()
             .take(self.cur)
             .rev()
@@ -39,10 +41,12 @@ impl CompleteSelector {
 
     pub fn search_down(&mut self) {
         if self.search.is_empty() {
-            return
+            return;
         }
-        
-        if let Some((cur, _)) = self.list.iter()
+
+        if let Some((cur, _)) = self
+            .list
+            .iter()
             .enumerate()
             .skip(self.cur + 1)
             .find(|(_, s)| is_contains(s.as_bytes(), &self.search, false))
@@ -56,14 +60,16 @@ impl CompleteSelector {
         if self.list.is_empty() {
             return;
         }
-        
+
         let max_width = usize::from(self.space.0);
-        self.width = self.list
+        self.width = self
+            .list
             .iter()
             .enumerate()
             .map(|(idx, s)| {
                 let comp = s.width();
-                let desc = self.desc
+                let desc = self
+                    .desc
                     .get(idx)
                     // ' (desc)'
                     .map(|desc| desc.width() + 3)
@@ -78,7 +84,7 @@ impl CompleteSelector {
 
         let row = div_roundup(self.list.len(), self.column);
         let hint = div_roundup(self.cur + 1, self.column).saturating_sub(1);
-        
+
         let window_len = usize::from(self.space.1).min(MAX_HEIGHT);
         self.window = if hint + window_len > row {
             row.saturating_sub(window_len)..row
@@ -113,7 +119,7 @@ impl CompleteSelector {
 
 fn div_roundup(x: usize, y: usize) -> usize {
     if x == 0 || y == 0 {
-        return 0
+        return 0;
     }
 
     let rem = !x.is_multiple_of(y);
@@ -123,9 +129,7 @@ fn div_roundup(x: usize, y: usize) -> usize {
 #[test]
 fn complete_selector_shows_more_items_after_resize() {
     let mut selector = CompleteSelector::default();
-    selector.list = (0..12)
-        .map(|idx| format!("item-{idx}"))
-        .collect();
+    selector.list = (0..12).map(|idx| format!("item-{idx}")).collect();
     selector.cur = 3;
 
     selector.set_space((10, 4));

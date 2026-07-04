@@ -1,16 +1,15 @@
-use std::{ fs, io };
-use std::marker::Unpin;
-use std::process::Stdio;
-use anyhow::Context;
-use bstr::ByteSlice;
-use tokio::io::{ AsyncRead, AsyncReadExt };
-use smallvec::SmallVec;
-use crate::shell::Shell;
-use crate::shell::syntax::{ self, ArgSlice, StrSlice, StdioKind, ChainKind };
-use super::external::Leader;
 use super::Command as ShellCommand;
 use super::Status as ExitStatus;
-
+use super::external::Leader;
+use crate::shell::Shell;
+use crate::shell::syntax::{self, ArgSlice, ChainKind, StdioKind, StrSlice};
+use anyhow::Context;
+use bstr::ByteSlice;
+use smallvec::SmallVec;
+use std::marker::Unpin;
+use std::process::Stdio;
+use std::{fs, io};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 pub async fn execute(
     shell: &Shell,
@@ -46,7 +45,7 @@ pub async fn execute(
         shell_cmd.spawn(shell)?.wait().await?
     };
 
-    Ok(status)    
+    Ok(status)
 }
 
 type Push<'a> = &'a mut dyn FnMut(&[u8]) -> anyhow::Result<()>;
@@ -74,7 +73,7 @@ impl syntax::Literal {
         } else {
             push(value.as_ref())
         }
-    }   
+    }
 }
 
 impl syntax::Variable {
@@ -112,11 +111,13 @@ impl syntax::SubShell {
             osbuf.extend_from_slice(osstr);
             Ok(())
         };
-        cmd.exe(&shell.parser).eval(shell, input, &mut push_cmd).await?;
+        cmd.exe(&shell.parser)
+            .eval(shell, input, &mut push_cmd)
+            .await?;
 
         if osbuf.is_empty() {
             anyhow::bail!("the expanded command was empty");
-        }        
+        }
 
         let mut shell_cmd = ShellCommand::new(shell, &osbuf, None)?;
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
@@ -208,7 +209,7 @@ impl syntax::Redirect {
     async fn eval(self, shell: &Shell, input: &str, cmd: &mut ShellCommand) -> anyhow::Result<()> {
         let kind = self.kind(&shell.parser);
         let append = self.append(&shell.parser);
-        
+
         let mut push = |osstr: &[u8]| {
             let path = osstr.to_path()?;
             let fd = fs::OpenOptions::new()
@@ -233,14 +234,19 @@ impl syntax::Redirect {
         };
 
         self.value(&shell.parser)
-            .eval(shell, input, &mut push).await
+            .eval(shell, input, &mut push)
+            .await
     }
 }
 
 impl syntax::Chain {
-    async fn eval(self, shell: &Shell, input: &str, mut prev_cmd: ShellCommand, mut push: Option<Push<'_>>)
-        -> anyhow::Result<ExitStatus>
-    {
+    async fn eval(
+        self,
+        shell: &Shell,
+        input: &str,
+        mut prev_cmd: ShellCommand,
+        mut push: Option<Push<'_>>,
+    ) -> anyhow::Result<ExitStatus> {
         let kind = self.kind(&shell.parser);
         let subshell = self.command(&shell.parser);
 
@@ -249,12 +255,14 @@ impl syntax::Chain {
             osbuf.extend_from_slice(osstr);
             Ok(())
         };
-        subshell.exe(&shell.parser)
-            .eval(shell, input, &mut push_cmd).await?;
+        subshell
+            .exe(&shell.parser)
+            .eval(shell, input, &mut push_cmd)
+            .await?;
 
         if osbuf.is_empty() {
             anyhow::bail!("the expanded command was empty");
-        }        
+        }
 
         let mut shell_cmd = ShellCommand::new(shell, &osbuf, prev_cmd.leader())?;
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
@@ -280,16 +288,16 @@ impl syntax::Chain {
 
                         if let Some(stdout) = prev_child.stdout().take() {
                             shell_cmd.stdin(stdout.try_into()?);
-                        }                        
-                    },
+                        }
+                    }
                     StdioKind::Err => {
                         prev_cmd.stderr(Stdio::piped());
                         prev_child = prev_cmd.spawn(shell)?;
-                        
+
                         if let Some(stderr) = prev_child.stderr().take() {
                             shell_cmd.stdin(stderr.try_into()?);
                         }
-                    },
+                    }
                     StdioKind::All => {
                         let (reader, writer) = io::pipe()?;
                         prev_cmd.stdout(writer.try_clone()?.into());
@@ -297,7 +305,7 @@ impl syntax::Chain {
                         shell_cmd.stdin(reader.into());
 
                         prev_child = prev_cmd.spawn(shell)?;
-                    },
+                    }
                 }
 
                 let status = if let Some(chain) = chain.as_ref() {
@@ -309,7 +317,7 @@ impl syntax::Chain {
                 prev_child.wait().await?;
 
                 Ok(status)
-            },
+            }
             ChainKind::Then => {
                 spawn_and_push(prev_cmd, shell, &mut push).await?;
 
@@ -318,7 +326,7 @@ impl syntax::Chain {
                 } else {
                     spawn_and_push(shell_cmd, shell, &mut push).await
                 }
-            },
+            }
             ChainKind::AndIf => {
                 let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
 
@@ -331,7 +339,7 @@ impl syntax::Chain {
                 } else {
                     Ok(status)
                 }
-            },
+            }
             ChainKind::OrIf => {
                 let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
 
@@ -349,12 +357,12 @@ impl syntax::Chain {
     }
 }
 
-async fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<Push<'_>>)
-    -> anyhow::Result<ExitStatus>
-{
-    let status = if let Some(push) = push.as_mut()
-        .filter(|_| cmd.is_stdout_available())
-    {
+async fn spawn_and_push(
+    mut cmd: ShellCommand,
+    shell: &Shell,
+    push: &mut Option<Push<'_>>,
+) -> anyhow::Result<ExitStatus> {
+    let status = if let Some(push) = push.as_mut().filter(|_| cmd.is_stdout_available()) {
         cmd.stdout(Stdio::piped());
 
         let mut child = cmd.spawn(shell)?;
@@ -368,7 +376,8 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<
         cmd.spawn(shell)?.wait().await?
     };
 
-    #[cfg(unix)] {
+    #[cfg(unix)]
+    {
         if let Some(sig @ (libc::SIGINT | libc::SIGQUIT)) = status.signal() {
             anyhow::bail!("cancel command by signal: {}", sig);
         }
@@ -377,18 +386,15 @@ async fn spawn_and_push(mut cmd: ShellCommand, shell: &Shell, push: &mut Option<
     Ok(status)
 }
 
-async fn read_to_end<R: AsyncRead + Unpin>(
-    mut reader: R,
-    push: Push<'_>
-) -> anyhow::Result<()> {
+async fn read_to_end<R: AsyncRead + Unpin>(mut reader: R, push: Push<'_>) -> anyhow::Result<()> {
     let mut buf = [0; 1024];
-    
+
     loop {
         match reader.read(&mut buf).await {
             Ok(0) => break,
             Ok(n) => push(&buf[..n])?,
             Err(ref err) if err.kind() == io::ErrorKind::Interrupted => (),
-            Err(err) => return Err(err.into())
+            Err(err) => return Err(err.into()),
         }
     }
 

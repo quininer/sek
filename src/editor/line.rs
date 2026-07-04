@@ -1,9 +1,8 @@
-use std::{ cmp, fmt };
-use std::ops::Range;
-use std::collections::VecDeque;
-use icu_segmenter::{ WordSegmenter, WordSegmenterBorrowed };
 use crate::util::MapWindows2;
-
+use icu_segmenter::{WordSegmenter, WordSegmenterBorrowed};
+use std::collections::VecDeque;
+use std::ops::Range;
+use std::{cmp, fmt};
 
 pub struct EditableLine {
     segmenter: WordSegmenterBorrowed<'static>,
@@ -23,7 +22,7 @@ pub struct Line {
 #[derive(Default)]
 pub struct Suggestion {
     buf: String,
-    kind: SuggestionKind
+    kind: SuggestionKind,
 }
 
 #[derive(Default)]
@@ -52,7 +51,7 @@ impl EditableLine {
     pub fn as_str(&self) -> &str {
         self.line().buf.as_str()
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.as_str().is_empty()
     }
@@ -86,11 +85,7 @@ impl EditableLine {
     pub fn span(&self, cursor: Range<usize>) -> Range<usize> {
         let start = self.index(cursor.start);
         let end = self.index(cursor.end);
-        if start <= end {
-            start..end
-        } else {
-            end..start
-        }
+        if start <= end { start..end } else { end..start }
     }
 
     pub fn is_editing(&self) -> bool {
@@ -136,22 +131,22 @@ impl EditableLine {
     fn index(&self, cur: usize) -> usize {
         match self.indices.is_empty() {
             true => cur,
-            false => self.indices.get(cur)
-                .copied()
-                .unwrap_or(self.bytes_len())
+            false => self.indices.get(cur).copied().unwrap_or(self.bytes_len()),
         }
     }
 
     fn update<F: FnOnce() -> bool>(&mut self, cur: usize, idx: usize, is_ascii: F) {
         let is_ascii = self.indices.is_empty() && is_ascii();
-        
+
         if !is_ascii {
             let buf = &self.list.get(self.current()).unwrap_or(&self.line).buf;
             if self.indices.is_empty() {
-                self.indices.extend(buf.char_indices().map(|(offset, _)| offset));
+                self.indices
+                    .extend(buf.char_indices().map(|(offset, _)| offset));
             } else {
                 self.indices.truncate(cur);
-                self.indices.extend(buf[idx..].char_indices().map(|(offset, _)| idx + offset));
+                self.indices
+                    .extend(buf[idx..].char_indices().map(|(offset, _)| idx + offset));
             }
         }
     }
@@ -182,8 +177,7 @@ impl EditableLine {
 
         let cur = self.line.cursor.end;
         let idx = self.index(cur);
-        let next_len = self.line
-            .buf[idx..]
+        let next_len = self.line.buf[idx..]
             .chars()
             .next()
             .map(char::len_utf8)
@@ -209,7 +203,7 @@ impl EditableLine {
             buf.clear();
             buf.push_str(&line.buf[bytes_range.clone()]);
         }
-        
+
         line.buf.replace_range(bytes_range.clone(), s);
 
         self.update(cursor.start, bytes_range.start, || s.is_ascii());
@@ -345,14 +339,14 @@ impl EditableLine {
             let is_ascii = self.line.buf.is_ascii();
             self.update(0, 0, || is_ascii);
         }
-                
+
         if self.list.back().map(|line| line.buf.as_str()) == Some(&self.line.buf) {
             // TODO cursor
 
             self.current = 0;
-            return
+            return;
         }
-        
+
         let line = if self.list.len() >= MAX_HISTORY {
             self.list.pop_front()
         } else {
@@ -387,7 +381,7 @@ impl Suggestion {
     pub fn has_suggest(&self) -> bool {
         !matches!(self.kind, SuggestionKind::Nothing)
     }
-    
+
     pub fn as_str<'a>(&'a self, line: &'a EditableLine) -> &'a str {
         match self.kind {
             SuggestionKind::Nothing => "",
@@ -403,7 +397,7 @@ impl Suggestion {
         self.buf.clear();
         self.kind = SuggestionKind::Nothing;
     }
-    
+
     pub fn set_value(&mut self, value: &str) {
         self.buf.clear();
         self.buf.push_str(value);
@@ -411,7 +405,9 @@ impl Suggestion {
     }
 
     pub fn set_history(&mut self, line: &EditableLine) {
-        if let Some((idx, _)) = line.list.iter()
+        if let Some((idx, _)) = line
+            .list
+            .iter()
             .map(|line| line.buf.as_str())
             .enumerate()
             .rev()
@@ -427,7 +423,7 @@ impl Suggestion {
             SuggestionKind::Value => {
                 line.push_str(&self.buf);
                 line.line.cursor.start = line.line.cursor.end;
-            },
+            }
             SuggestionKind::History(idx) => {
                 line.line.buf.clear();
                 line.line.buf.push_str(&line.list[idx].buf);

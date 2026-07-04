@@ -1,14 +1,14 @@
 #![cfg(unix)]
 
 use std::fs;
-use std::io::{ Read, Write };
-use std::path::{ Path, PathBuf };
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{ Arc, Mutex };
-use std::thread::{ self, JoinHandle };
-use std::time::{ Duration, SystemTime, UNIX_EPOCH };
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use anyhow::{ Context, Result, bail };
+use anyhow::{Context, Result, bail};
 use completest_pty::Term;
 use ptyprocess::PtyProcess;
 use serde_json::json;
@@ -23,8 +23,8 @@ impl TempDir {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .subsec_nanos();
-        let path = std::env::temp_dir()
-            .join(format!("sek-{name}-{}-{suffix:x}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("sek-{name}-{}-{suffix:x}", std::process::id()));
         fs::create_dir_all(&path)?;
         Ok(Self { path })
     }
@@ -49,8 +49,7 @@ struct PtySession {
 
 impl PtySession {
     fn spawn(cwd: &Path, config: &Path, term: Term, home: &Path) -> Result<Self> {
-        let bin = std::env::var_os("CARGO_BIN_EXE_seksh")
-            .context("missing CARGO_BIN_EXE_seksh")?;
+        let bin = std::env::var_os("CARGO_BIN_EXE_seksh").context("missing CARGO_BIN_EXE_seksh")?;
         let cache_home = home.join("xdg-cache");
         let config_home = home.join("xdg-config");
         fs::create_dir_all(&cache_home)?;
@@ -164,11 +163,7 @@ fn write_executable(path: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
-fn write_prompt_config(
-    root: &Path,
-    prompt_script: &Path,
-    prompt_args: &[&str],
-) -> Result<PathBuf> {
+fn write_prompt_config(root: &Path, prompt_script: &Path, prompt_args: &[&str]) -> Result<PathBuf> {
     let config = json!({
         "prompt": {
             "exe": prompt_script,
@@ -189,7 +184,10 @@ fn write_empty_config(root: &Path) -> Result<PathBuf> {
 
 fn visible_name_count(rows: &[String], names: &[String]) -> usize {
     let text = rows.join("\n");
-    names.iter().filter(|name| text.contains(name.as_str())).count()
+    names
+        .iter()
+        .filter(|name| text.contains(name.as_str()))
+        .count()
 }
 
 fn screen_text(rows: &[String]) -> String {
@@ -210,13 +208,19 @@ fn prompt_refreshes_after_resize() -> Result<()> {
     let initial = Term::new().width(10).height(4);
     let mut session = PtySession::spawn(&cwd, &config, initial, &home)?;
     session.wait_for(Duration::from_secs(5), |session| {
-        session.rows().first().is_some_and(|row| row.contains("P10"))
+        session
+            .rows()
+            .first()
+            .is_some_and(|row| row.contains("P10"))
     })?;
 
     let resized = Term::new().width(20).height(4);
     session.resize(&resized)?;
     session.wait_for(Duration::from_secs(5), |session| {
-        session.rows().first().is_some_and(|row| row.contains("P20"))
+        session
+            .rows()
+            .first()
+            .is_some_and(|row| row.contains("P20"))
     })?;
 
     Ok(())
@@ -231,9 +235,7 @@ fn path_selector_expands_visible_entries_after_resize() -> Result<()> {
     fs::create_dir_all(&cwd)?;
     let config = write_empty_config(temp.path())?;
 
-    let names = (0..8)
-        .map(|idx| format!("entry{idx}"))
-        .collect::<Vec<_>>();
+    let names = (0..8).map(|idx| format!("entry{idx}")).collect::<Vec<_>>();
     for name in &names {
         fs::write(cwd.join(name), name)?;
     }

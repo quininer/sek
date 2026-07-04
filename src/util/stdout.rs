@@ -1,16 +1,16 @@
+use std::cell::{RefCell, RefMut};
 use std::fs::File;
+use std::io::{self, BufWriter};
 use std::mem::ManuallyDrop;
-use std::io::{ self, BufWriter };
-use std::cell::{ RefCell, RefMut };
 
 pub struct Stdout {
     stdout: io::Stdout,
-    writer: RefCell<BufWriter<StdoutRaw>>
+    writer: RefCell<BufWriter<StdoutRaw>>,
 }
 
 pub struct StdoutLocked<'lock> {
     _lock: io::StdoutLock<'lock>,
-    writer: RefMut<'lock, BufWriter<StdoutRaw>>
+    writer: RefMut<'lock, BufWriter<StdoutRaw>>,
 }
 
 struct StdoutRaw(ManuallyDrop<File>);
@@ -19,7 +19,7 @@ impl Stdout {
     pub fn lock(&self) -> StdoutLocked<'_> {
         StdoutLocked {
             _lock: self.stdout.lock(),
-            writer: self.writer.borrow_mut()
+            writer: self.writer.borrow_mut(),
         }
     }
 }
@@ -57,7 +57,7 @@ impl From<io::Stdout> for Stdout {
         let writer = StdoutRaw::from(&value);
         Stdout {
             stdout: value,
-            writer: RefCell::new(BufWriter::new(writer))
+            writer: RefCell::new(BufWriter::new(writer)),
         }
     }
 }
@@ -65,8 +65,8 @@ impl From<io::Stdout> for Stdout {
 impl From<&'_ io::Stdout> for StdoutRaw {
     #[cfg(unix)]
     fn from(value: &'_ io::Stdout) -> Self {
-        use std::os::fd::{ FromRawFd, AsRawFd };
-        
+        use std::os::fd::{AsRawFd, FromRawFd};
+
         StdoutRaw(ManuallyDrop::new(unsafe {
             File::from_raw_fd(value.as_raw_fd())
         }))
@@ -74,10 +74,10 @@ impl From<&'_ io::Stdout> for StdoutRaw {
 
     #[cfg(windows)]
     fn from(value: &'_ io::Stdout) -> Self {
-        use std::os::windows::io::{ FromRawHandle, AsRawHandle };
-        
+        use std::os::windows::io::{AsRawHandle, FromRawHandle};
+
         StdoutRaw(ManuallyDrop::new(unsafe {
             File::from_raw_handle(value.as_raw_handle())
         }))
-    }    
+    }
 }

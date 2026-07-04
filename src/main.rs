@@ -1,7 +1,6 @@
-use std::path::PathBuf;
 use argh::FromArgs;
+use std::path::PathBuf;
 use tokio::runtime;
-
 
 /// The Sek Shell
 #[derive(FromArgs)]
@@ -14,7 +13,8 @@ struct Options {
 fn main() -> anyhow::Result<()> {
     let mut options: Options = argh::from_env();
 
-    #[cfg(unix)] {
+    #[cfg(unix)]
+    {
         sek::util::setup_signal_handler()?;
     }
 

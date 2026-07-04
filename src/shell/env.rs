@@ -1,11 +1,10 @@
-use std::{ io, env, mem };
-use std::borrow::Cow;
-use std::ffi::{ OsStr, OsString };
-use std::path::{ Path, PathBuf };
-use anyhow::Context;
-use directories::{ UserDirs, ProjectDirs };
 use crate::util::path;
-
+use anyhow::Context;
+use directories::{ProjectDirs, UserDirs};
+use std::borrow::Cow;
+use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
+use std::{env, io, mem};
 
 pub struct Environment {
     pub max_args_len: usize,
@@ -41,22 +40,25 @@ impl Environment {
         Ok(Environment {
             projdir: ProjectDirs::from("", "", env!("CARGO_PKG_NAME"))
                 .context("Unable to retrieve project path from system")?,
-            userdir: UserDirs::new()
-                .context("Unable to retrieve user path from system")?,
+            userdir: UserDirs::new().context("Unable to retrieve user path from system")?,
             prev_pwd: None,
-            map, pwd, max_args_len
+            map,
+            pwd,
+            max_args_len,
         })
     }
 
     pub fn get(&self, name: &OsStr) -> Option<&OsStr> {
-        self.map.binary_search_by(|(k, _)| k.as_os_str().cmp(name))
+        self.map
+            .binary_search_by(|(k, _)| k.as_os_str().cmp(name))
             .map(|idx| self.map[idx].1.as_os_str())
             .ok()
     }
 
     pub fn search(&self, prefix: &OsStr) -> impl Iterator<Item = (&OsStr, &OsStr)> {
         let idx = self.map.partition_point(|(k, _)| k < prefix);
-        self.map.get(idx..)
+        self.map
+            .get(idx..)
             .into_iter()
             .flatten()
             .take_while(|(k, _)| k.as_encoded_bytes().starts_with(prefix.as_encoded_bytes()))
@@ -121,7 +123,8 @@ impl Environment {
     }
 
     pub fn unset(&mut self, name: &OsStr) -> Option<OsString> {
-        self.map.binary_search_by(|(k, _)| k.as_os_str().cmp(name))
+        self.map
+            .binary_search_by(|(k, _)| k.as_os_str().cmp(name))
             .map(|idx| self.map.remove(idx).1)
             .ok()
     }

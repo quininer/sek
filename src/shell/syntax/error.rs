@@ -1,8 +1,7 @@
-use std::fmt;
-use logos::Span;
-use annotate_snippets::{ Level, Snippet, Group, AnnotationKind };
 use super::token::Token;
-
+use annotate_snippets::{AnnotationKind, Group, Level, Snippet};
+use logos::Span;
+use std::fmt;
 
 #[derive(Debug)]
 pub struct ParseFailed {
@@ -26,7 +25,7 @@ pub enum ErrorKind {
     InvalidToken,
     ExpectedClose,
     ExpectedVariableName,
-    Unreachable
+    Unreachable,
 }
 
 impl ParseFailed {
@@ -37,16 +36,12 @@ impl ParseFailed {
 
     pub fn to_message<'a>(&self, input: &'a str) -> Group<'a> {
         let span = self.span.clone().unwrap_or(0..input.len());
-        
-        Level::ERROR
-            .primary_title("Syntax error")
-            .element(Snippet::source(input)
+
+        Level::ERROR.primary_title("Syntax error").element(
+            Snippet::source(input)
                 .fold(true)
-                .annotation(AnnotationKind::Primary
-                    .span(span)
-                    .label(self.kind.as_str())
-                )
-            )
+                .annotation(AnnotationKind::Primary.span(span).label(self.kind.as_str())),
+        )
     }
 }
 

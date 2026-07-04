@@ -1,6 +1,6 @@
-use logos::Span;
 use super::token::TokenId;
 use crate::util::arena;
+use logos::Span;
 
 pub type NodeId = arena::Id<Node>;
 
@@ -32,7 +32,7 @@ pub struct Command {
     /// redirect list
     pub redirect: NodeId,
     /// chain shell
-    pub chain: NodeId,    
+    pub chain: NodeId,
 }
 
 #[derive(Debug, Clone)]
@@ -61,7 +61,7 @@ pub struct Escape {
     /// escape token
     pub backslash: TokenId,
     /// value token
-    pub value: TokenId
+    pub value: TokenId,
 }
 
 #[derive(Debug)]
@@ -91,7 +91,7 @@ pub struct SubShell {
     pub end_token: Option<TokenId>,
 
     /// command
-    pub cmd: NodeId
+    pub cmd: NodeId,
 }
 
 #[derive(Debug)]
@@ -118,7 +118,7 @@ pub struct Redirect {
     pub append: bool,
 
     /// arg list
-    pub value: NodeId
+    pub value: NodeId,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -126,7 +126,7 @@ pub enum ChainKind {
     Pipe(StdioKind),
     Then,
     AndIf,
-    OrIf
+    OrIf,
 }
 
 #[derive(Clone, Copy, Debug)]

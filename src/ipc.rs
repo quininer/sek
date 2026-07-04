@@ -1,14 +1,14 @@
 #![cfg_attr(not(unix), allow(unused))]
 
-use std::io;
-use std::ffi::OsStr;
-use std::num::NonZeroU64;
-use std::cell::RefCell;
-use serde_bytes::Bytes;
-use tokio::io::{ AsyncReadExt, AsyncWriteExt };
 use crate::shell::env::Environment;
-use sek_protocol::{ FILENAME, ClientMessage };
-pub use sek_protocol::{ RequestId, ClientMessageData, ServerMessage, ServerMessageData };
+use sek_protocol::{ClientMessage, FILENAME};
+pub use sek_protocol::{ClientMessageData, RequestId, ServerMessage, ServerMessageData};
+use serde_bytes::Bytes;
+use std::cell::RefCell;
+use std::ffi::OsStr;
+use std::io;
+use std::num::NonZeroU64;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(unix)]
 use tokio::net::UnixStream;
@@ -28,18 +28,19 @@ impl Client {
         let path = if let Some(path) = env.get(OsStr::new("SEK_IPC_PATH")) {
             path.into()
         } else {
-            env.projdir.runtime_dir()
+            env.projdir
+                .runtime_dir()
                 .unwrap_or_else(|| env.projdir.data_local_dir())
                 .join(FILENAME)
         };
         let socket = match UnixStream::connect(path).await {
             Ok(socket) => socket,
             Err(ref err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err.into())
+            Err(err) => return Err(err.into()),
         };
         let ucred = socket.peer_cred()?;
         let uid = unsafe { libc::getuid() };
-        
+
         if ucred.uid() != uid {
             anyhow::bail!("ipc authentication failed: {} != {}", ucred.uid(), uid);
         }
@@ -54,37 +55,50 @@ impl Client {
         let hello = ClientMessageData::ClientHello {
             version: concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION")),
             cwd: Bytes::new(env.pwd().as_os_str().as_encoded_bytes()),
-            envs: env.map.iter()
-                .map(|(k, v)| (Bytes::new(k.as_encoded_bytes()), Bytes::new(v.as_encoded_bytes())))
-                .collect()
+            envs: env
+                .map
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        Bytes::new(k.as_encoded_bytes()),
+                        Bytes::new(v.as_encoded_bytes()),
+                    )
+                })
+                .collect(),
         };
         let request_id = client.send_msg(&mut buf, hello).await?;
 
         // recv server hello
         let msg: ServerMessage<'_> = client.recv_msg(&mut buf).await?;
-        let ServerMessageData::ServerHello { version } = msg.data
-            else {
-                anyhow::bail!("expected server-hello but recv {:?}", msg.data);
-            };
+        let ServerMessageData::ServerHello { version } = msg.data else {
+            anyhow::bail!("expected server-hello but recv {:?}", msg.data);
+        };
 
         let _version = version;
 
         if msg.request_id != Some(request_id) {
-            anyhow::bail!("request_id mismatch: {:?} != {:?}", msg.request_id, request_id);
+            anyhow::bail!(
+                "request_id mismatch: {:?} != {:?}",
+                msg.request_id,
+                request_id
+            );
         }
 
         Ok(Some(client))
     }
 
-    pub async fn send_msg(&mut self, buf: &mut Vec<u8>, data: ClientMessageData<'_>)
-        -> anyhow::Result<RequestId>
-    {
+    pub async fn send_msg(
+        &mut self,
+        buf: &mut Vec<u8>,
+        data: ClientMessageData<'_>,
+    ) -> anyhow::Result<RequestId> {
         let request_id = self.request_id;
         self.request_id = self.request_id.checked_add(1).unwrap();
 
         let msg = ClientMessage {
             time: jiff::Timestamp::now(),
-            request_id, data,
+            request_id,
+            data,
         };
 
         buf.clear();
@@ -98,9 +112,10 @@ impl Client {
         Ok(request_id)
     }
 
-    pub async fn recv_msg<'a>(&mut self, buf: &'a mut Vec<u8>)
-        -> anyhow::Result<ServerMessage<'a>>
-    {
+    pub async fn recv_msg<'a>(
+        &mut self,
+        buf: &'a mut Vec<u8>,
+    ) -> anyhow::Result<ServerMessage<'a>> {
         let mut lenbuf = [0; 4];
         self.socket.read_exact(&mut lenbuf).await?;
 
@@ -113,35 +128,38 @@ impl Client {
     }
 }
 
-
 #[cfg(not(unix))]
 impl Client {
     pub async fn connect(env: &RefCell<Environment>) -> anyhow::Result<Option<Client>> {
         Ok(None)
     }
 
-    pub async fn send_msg(&mut self, buf: &mut Vec<u8>, data: ClientMessageData<'_>)
-        -> anyhow::Result<RequestId>
-    {
+    pub async fn send_msg(
+        &mut self,
+        buf: &mut Vec<u8>,
+        data: ClientMessageData<'_>,
+    ) -> anyhow::Result<RequestId> {
         anyhow::bail!("unimplemented")
     }
 
-    pub async fn recv_msg<'a>(&mut self, buf: &'a mut Vec<u8>)
-        -> anyhow::Result<ServerMessage<'a>>
-    {
+    pub async fn recv_msg<'a>(
+        &mut self,
+        buf: &'a mut Vec<u8>,
+    ) -> anyhow::Result<ServerMessage<'a>> {
         todo!()
     }
 }
 
 #[cfg(unix)]
 pub async fn readable(client: Option<&Client>) -> anyhow::Result<()> {
-    use std::task::Poll;
     use std::future::poll_fn;
+    use std::task::Poll;
 
     poll_fn(|cx| match client {
         Some(client) => client.socket.poll_read_ready(cx),
-        None => Poll::Pending
-    }).await?;
+        None => Poll::Pending,
+    })
+    .await?;
 
     Ok(())
 }
