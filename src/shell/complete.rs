@@ -308,11 +308,6 @@ pub async fn do_complete<T: TermTarget>(
         list.push(start..end);
     }
 
-    let Some(index) = index
-        else {
-            return Ok(());
-        };
-
     let env = shell.env.borrow();
     let mut cmd = Command::new(&complete.exe);
 
@@ -326,6 +321,7 @@ pub async fn do_complete<T: TermTarget>(
     for arg in &complete.args {
         match arg.as_str() {
             "@index" => {
+                let index = index.unwrap_or(list.len() + 1);
                 cmd.arg(index.to_string());
             },
             _ => {
@@ -341,6 +337,10 @@ pub async fn do_complete<T: TermTarget>(
     for span in list {
         let arg = &buf[span];
         cmd.arg(arg);
+    }
+
+    if index.is_none() {
+        cmd.arg(" ");
     }
 
     let output = cmd.output()?;
