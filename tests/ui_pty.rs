@@ -187,9 +187,30 @@ fn write_empty_config(root: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
+fn write_complete_config(
+    root: &Path,
+    complete_script: &Path,
+    complete_args: &[&str],
+) -> Result<PathBuf> {
+    let config = json!({
+        "complete": {
+            "exe": complete_script,
+            "args": complete_args,
+        }
+    })
+    .to_string();
+    let path = root.join("config.sh");
+    write_executable(&path, &format!("#!/bin/sh\nprintf '%s' '{config}'\n"))?;
+    Ok(path)
+}
+
 fn visible_name_count(rows: &[String], names: &[String]) -> usize {
     let text = rows.join("\n");
     names.iter().filter(|name| text.contains(name.as_str())).count()
+}
+
+fn screen_text(rows: &[String]) -> String {
+    rows.join("\n")
 }
 
 #[test]
@@ -249,5 +270,95 @@ fn path_selector_expands_visible_entries_after_resize() -> Result<()> {
         visible_name_count(&session.rows(), &names) > initial_count
     })?;
 
+    Ok(())
+}
+
+#[test]
+fn complete_selector_expands_visible_entries_after_resize() -> Result<()> {
+    let temp = TempDir::new("cs")?;
+    let home = temp.path().join("home");
+    let cwd = temp.path().join("cwd");
+    fs::create_dir_all(&home)?;
+    fs::create_dir_all(&cwd)?;
+    let complete = temp.path().join("complete.sh");
+    let names = (0..12)
+        .map(|idx| format!("item{idx}"))
+        .collect::<Vec<_>>();
+    let lines = names
+        .iter()
+        .map(|name| format!("printf '%s\\n' '{name}\tdesc-{name}'"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    write_executable(&complete, &format!("#!/bin/sh\n{lines}\n"))?;
+    let config = write_complete_config(temp.path(), &complete, &[])?;
+
+    let initial = Term::new().width(40).height(4);
+    let mut session = PtySession::spawn(&cwd, &config, initial, &home)?;
+    session.send(b"echo item\t")?;
+    session.wait_for(Duration::from_secs(5), |session| {
+        visible_name_count(&session.rows(), &names) >= 2
+    })?;
+
+    let initial_count = visible_name_count(&session.rows(), &names);
+
+    let resized = Term::new().width(40).height(8);
+    session.resize(&resized)?;
+    session.wait_for(Duration::from_secs(5), |session| {
+        visible_name_count(&session.rows(), &names) > initial_count
+    })?;
+
+    Ok(())
+}
+
+#[test]
+fn path_selector_accepts_hidden_path_prefix_without_duplicate_suffix() -> Result<()> {
+    let temp = TempDir::new("ph")?;
+    let home = temp.path().join("home");
+    let cwd = temp.path().join("cwd");
+    fs::create_dir_all(&home)?;
+    fs::create_dir_all(cwd.join("dir"))?;
+    fs::write(cwd.join("dir").join(".config"), "config")?;
+    let config = write_empty_config(temp.path())?;
+
+    let initial = Term::new().width(60).height(8);
+    let mut session = PtySession::spawn(&cwd, &config, initial, &home)?;
+    session.send(b"cd ./dir/.c\t")?;
+    session.wait_for(Duration::from_secs(5), |session| {
+        screen_text(&session.rows()).contains(".config")
+    })?;
+
+    session.send(b"\r")?;
+    session.wait_for(Duration::from_secs(5), |session| {
+        screen_text(&session.rows()).contains("cd ./dir/.config")
+    })?;
+
+    assert!(!screen_text(&session.rows()).contains(".configconfig"));
+    Ok(())
+}
+
+#[test]
+fn path_selector_accepts_exact_file_path_without_directory_error() -> Result<()> {
+    let temp = TempDir::new("pf")?;
+    let home = temp.path().join("home");
+    let cwd = temp.path().join("cwd");
+    fs::create_dir_all(&home)?;
+    fs::create_dir_all(&cwd)?;
+    fs::write(cwd.join("entry0"), "entry0")?;
+    let config = write_empty_config(temp.path())?;
+
+    let initial = Term::new().width(60).height(8);
+    let mut session = PtySession::spawn(&cwd, &config, initial, &home)?;
+    session.send(b"cat ./entry0\t")?;
+    session.wait_for(Duration::from_secs(5), |session| {
+        let text = screen_text(&session.rows());
+        text.contains("entry0") && !text.contains("Not a directory")
+    })?;
+
+    session.send(b"\r")?;
+    session.wait_for(Duration::from_secs(5), |session| {
+        screen_text(&session.rows()).contains("cat ./entry0")
+    })?;
+
+    assert!(!screen_text(&session.rows()).contains("Not a directory"));
     Ok(())
 }
