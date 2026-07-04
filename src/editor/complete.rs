@@ -1,6 +1,6 @@
-use crate::util::is_contains;
 use std::ops::Range;
 use unicode_width::UnicodeWidthStr;
+use crate::util::is_contains;
 
 #[derive(Debug, Default)]
 pub struct CompleteSelector {
