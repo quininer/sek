@@ -399,12 +399,17 @@ const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
     render: |shell, layout, current, mut term| {
         let selector = &shell.editor.complete_selector;
 
+        #[allow(clippy::obfuscated_if_else)]
+        let width = (selector.column == 1)
+            .then_some(layout.size.0 as usize)
+            .unwrap_or(selector.width);
+
         for (row, chunk) in selector.list
             .chunks(selector.column)
             .enumerate()
             .skip(selector.window.start)
             .take(selector.window.len())
-        {
+        {   
             for (column, comp) in chunk.iter().enumerate() {
                 let idx = (row * selector.column) + column;
                 let hint = selector.cur == idx;
@@ -421,42 +426,49 @@ const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
                 // 'comp (desc)'
                 #[allow(clippy::obfuscated_if_else)]
                 let prepad = (desc_width != 0).then_some(3).unwrap_or_default();
-                let comp_limit = if comp_width + prepad + 1 > selector.width {
-                    // 'com… '
-                    Some(selector.width.saturating_sub(prepad + 2))
+                let (comp_limit, rem) = if width >= comp_width + prepad {
+                    // 'comp '
+                    (comp_width, width - comp_width)
                 } else {
-                    None
+                    // 'com… '
+                    (width - 2, 0)
                 };
-                let rem = selector
-                    .width
-                    .saturating_sub(comp_limit.unwrap_or(comp_width) + 1);
-                let (pad, desc_limit) = rem.checked_sub(desc_width)
-                    .map(|pad| (pad, None))
-                    .unwrap_or((0, Some(rem)));
+                let (pad, desc_limit) = rem.checked_sub(prepad + desc_width)
+                    // 'comp(pad-1)[ ]'
+                    // 'comp(pad)[()]desc[ ]'
+                    .map(|pad| (pad - (desc_width == 0) as usize, desc_width))
+                    // 'comp (desc…)'
+                    .unwrap_or_else(|| (1, rem.saturating_sub(prepad + 1)));
 
                 queue!(term, style::SetColors(color))?;
 
-                if let Some(limit) = comp_limit {
+                if comp_limit == comp_width {
+                    queue!(term, style::Print(comp), style::Print(Fill(' ', pad)))?;
+                } else {
                     queue!(term,
-                        style::Print(LimitAndFill(comp.chars(), None, limit)),
+                        style::Print(LimitAndFill(comp.chars(), None, comp_limit)),
                         style::Print("…"),
                     )?;
-                } else {
-                    queue!(term, style::Print(comp), style::Print(Fill(' ', pad)))?;
                 }
 
-                if let Some(limit) = desc_limit {
-                    queue!(term,
-                        style::Print('('),
-                        style::Print(LimitAndFill(desc.chars(), None, limit)),
-                        style::Print('…'),
-                        style::Print(')'),
-                    )?;
-                } else if !desc.is_empty() {
-                    queue!(term, style::Print('('), style::Print(desc), style::Print(')'))?
+                if !desc.is_empty() {
+                    if desc_limit == desc_width {
+                        queue!(term, style::Print('('), style::Print(desc), style::Print(')'))?
+                    } else {
+                        queue!(term,
+                            style::Print('('),
+                            style::Print(LimitAndFill(desc.chars(), None, desc_limit)),
+                            style::Print('…'),
+                            style::Print(')'),
+                        )?;
+                    }
                 }
 
-                queue!(term, style::ResetColor, style::Print(' '))?;
+                queue!(term, style::ResetColor)?;
+
+                if column + 1 != chunk.len() {
+                    queue!(term, style::Print(' '))?;
+                }
             }
 
             queue!(term, style::Print("\r\n"))?;
