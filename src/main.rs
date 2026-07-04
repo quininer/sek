@@ -14,8 +14,9 @@ struct Options {
 fn main() -> anyhow::Result<()> {
     let mut options: Options = argh::from_env();
 
-    #[cfg(unix)]
-    sek::util::set_signal_ignore();
+    #[cfg(unix)] {
+        sek::util::setup_signal_handler()?;
+    }
 
     let mut builder = runtime::Builder::new_current_thread();
 

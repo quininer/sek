@@ -18,7 +18,7 @@ use crate::editor::{ Editor, Action, Mode };
 use crate::util::ScopeGuard;
 use crate::util::stdout::Stdout;
 use env::Environment;
-use execute::external::{ Morgue, Cause };
+use execute::external::Morgue;
 use complete::complete;
 use prompt::Prompt;
 
@@ -107,7 +107,6 @@ async fn runloop(
     shell.prompt.update(&shell.config, &shell.env, renderer.size);
 
     loop {
-        shell.morgue.wait(Cause::NewRound).await?;
         renderer.render(&shell.editor.ui.table, shell)?;
         
         match Select::new(

@@ -7,12 +7,17 @@ use tokio::io::{ AsyncRead, AsyncReadExt };
 use smallvec::SmallVec;
 use crate::shell::Shell;
 use crate::shell::syntax::{ self, ArgSlice, StrSlice, StdioKind, ChainKind };
-use super::external::Cause;
+use super::external::Leader;
 use super::Command as ShellCommand;
 use super::Status as ExitStatus;
 
 
-pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow::Result<ExitStatus> {
+pub async fn execute(
+    shell: &Shell,
+    input: &str,
+    cmd: syntax::Command,
+    leader: &Leader,
+) -> anyhow::Result<ExitStatus> {
     let mut osbuf = <SmallVec<[u8; 32]>>::new();
     let mut push = |osstr: &[u8]| {
         osbuf.extend_from_slice(osstr);
@@ -24,7 +29,7 @@ pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command) -> anyhow
         anyhow::bail!("the expanded command was empty");
     }
 
-    let mut shell_cmd = ShellCommand::new(shell, &osbuf)?;
+    let mut shell_cmd = ShellCommand::new(shell, &osbuf, Some(leader.clone()))?;
     let mut push = |osstr: &[u8]| shell_cmd.push(osstr);
 
     for arg in cmd.args(&shell.parser) {
@@ -113,7 +118,7 @@ impl syntax::SubShell {
             anyhow::bail!("the expanded command was empty");
         }        
 
-        let mut shell_cmd = ShellCommand::new(shell, &osbuf)?;
+        let mut shell_cmd = ShellCommand::new(shell, &osbuf, None)?;
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in cmd.args(&shell.parser) {
@@ -127,9 +132,7 @@ impl syntax::SubShell {
         if let Some(chain) = cmd.chain(&shell.parser) {
             Box::pin(chain.eval(shell, input, shell_cmd, Some(push))).await?;
         } else {
-            let status = spawn_and_push(shell_cmd, shell, &mut Some(push)).await;
-            shell.morgue.wait(Cause::Wait).await?;
-            status?;
+            spawn_and_push(shell_cmd, shell, &mut Some(push)).await?;
         }
 
         Ok(())
@@ -253,7 +256,7 @@ impl syntax::Chain {
             anyhow::bail!("the expanded command was empty");
         }        
 
-        let mut shell_cmd = ShellCommand::new(shell, &osbuf)?;
+        let mut shell_cmd = ShellCommand::new(shell, &osbuf, prev_cmd.leader())?;
         let mut cmd_push = |osstr: &[u8]| shell_cmd.push(osstr);
 
         for arg in subshell.args(&shell.parser) {
@@ -304,34 +307,26 @@ impl syntax::Chain {
                 };
 
                 prev_child.wait().await?;
-                drop(prev_child);
-                shell.morgue.wait(Cause::Wait).await?;
 
                 Ok(status)
             },
             ChainKind::Then => {
                 spawn_and_push(prev_cmd, shell, &mut push).await?;
-                shell.morgue.wait(Cause::Wait).await?;
 
                 if let Some(chain) = chain.as_ref() {
                     Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                 } else {
-                    let status = spawn_and_push(shell_cmd, shell, &mut push).await;
-                    shell.morgue.wait(Cause::Wait).await?;
-                    status
+                    spawn_and_push(shell_cmd, shell, &mut push).await
                 }
             },
             ChainKind::AndIf => {
                 let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
-                shell.morgue.wait(Cause::Wait).await?;
 
                 if status.success() {
                     if let Some(chain) = chain.as_ref() {
                         Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                     } else {
-                        let status = spawn_and_push(shell_cmd, shell, &mut push).await;
-                        shell.morgue.wait(Cause::Wait).await?;
-                        status
+                        spawn_and_push(shell_cmd, shell, &mut push).await
                     }
                 } else {
                     Ok(status)
@@ -339,15 +334,12 @@ impl syntax::Chain {
             },
             ChainKind::OrIf => {
                 let status = spawn_and_push(prev_cmd, shell, &mut push).await?;
-                shell.morgue.wait(Cause::Wait).await?;
 
                 if !status.success() {
                     if let Some(chain) = chain.as_ref() {
                         Box::pin(chain.eval(shell, input, shell_cmd, push)).await
                     } else {
-                        let status = spawn_and_push(shell_cmd, shell, &mut push).await;
-                        shell.morgue.wait(Cause::Wait).await?;
-                        status
+                        spawn_and_push(shell_cmd, shell, &mut push).await
                     }
                 } else {
                     Ok(status)

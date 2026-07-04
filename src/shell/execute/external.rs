@@ -19,20 +19,19 @@ pub struct ShellCommand {
 
 pub struct Child {
     child: Option<process::Child>,
-    morgue: Morgue
+    morgue: Morgue,
+    new_group: bool,
 }
 
 #[derive(Clone)]
 pub struct Morgue {
-    #[cfg(unix)]
-    jobs_pgid: Cell<Option<libc::pid_t>>,
-    queue: Rc<RefCell<Vec<process::Child>>>
+    pgid: libc::pid_t,
+    queue: Rc<RefCell<Vec<(bool, process::Child)>>>
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Cause {
-    Wait,
-    NewRound,
+#[derive(Default, Clone, Debug)]
+pub struct Leader {
+    pgid: Rc<Cell<Option<libc::pid_t>>>
 }
 
 impl ShellCommand {
@@ -40,7 +39,7 @@ impl ShellCommand {
         let exe = exe.to_os_str()?;
         Ok(ShellCommand {
             cmd: Command::new(exe),
-            redirect_stdout: false
+            redirect_stdout: false,
         })
     }
 
@@ -66,21 +65,15 @@ impl ShellCommand {
         !self.redirect_stdout
     }
 
-    pub fn spawn(&mut self, shell: &Shell) -> anyhow::Result<Child> {
+    pub fn spawn(&mut self, shell: &Shell, leader: Option<&Leader>) -> anyhow::Result<Child> {
         let env = shell.env.borrow();
 
         self.cmd
             .current_dir(env.pwd())
             .envs(env.map.iter().map(|(k, v)| (k.as_os_str(), v.as_os_str())));
 
-        match shell.morgue.spawn(&mut self.cmd) {
-            Ok(child) => Ok(Child {
-                child: Some(child),
-                morgue: shell.morgue.clone()
-            }),
-            Err(err) => Err(err)
-                .with_context(|| format!("spawn failed: {:?}", self.cmd.as_std().get_program()))
-        }
+        shell.morgue.spawn(&mut self.cmd, leader)
+            .with_context(|| format!("spawn failed: {:?}", self.cmd.as_std().get_program()))
     }
 }
 
@@ -101,8 +94,11 @@ impl Child {
 
 impl Drop for Child {
     fn drop(&mut self) {
-        if let Some(child) = self.child.take() {
-            self.morgue.queue.borrow_mut().push(child);
+        if let Some(mut child) = self.child.take()
+            && let Ok(status) = child.try_wait()
+            && status.is_none()
+        {
+            self.morgue.queue.borrow_mut().push((self.new_group, child));
         }
     }
 }
@@ -111,89 +107,93 @@ impl Default for Morgue {
     fn default() -> Self {
         Morgue {
             #[cfg(unix)]
-            jobs_pgid: Cell::new(None),
+            pgid: unsafe {
+                libc::getpid()
+            },
             queue: Default::default()
         }
     }
 }
 
 impl Morgue {
-    pub fn spawn(&self, cmd: &mut Command) -> io::Result<process::Child> {
+    pub fn spawn(&self, cmd: &mut Command, leader: Option<&Leader>) -> io::Result<Child> {
         #[cfg(unix)] {
             use std::os::unix::process::CommandExt;
+            use crate::util::reset_signal_ignore;
 
-            let pgid = self.jobs_pgid.get().unwrap_or_default();
+            let pgid = leader
+                .map(|leader| leader.pgid.get().unwrap_or_default())
+                .unwrap_or(self.pgid);
+
             cmd.as_std_mut().process_group(pgid);
+            let new_group = pgid == 0;
+
+            unsafe {
+                cmd.as_std_mut().pre_exec(move || {
+                    if new_group {
+                        libc::tcsetpgrp(libc::STDIN_FILENO, libc::getpid());
+                    }
+
+                    reset_signal_ignore();
+
+                    Ok(())
+                });
+            }
         }
 
         let child = cmd.spawn()?;
 
         #[cfg(unix)] {
-            use std::os::fd::AsRawFd;
 
-            if self.jobs_pgid.get().is_none() {
+            if let Some(leader) = leader
+                && leader.pgid.get().is_none()
+            {
                 let pgid = child.id().unwrap() as libc::pid_t;
-
-                unsafe {
-                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), pgid) != 0 {
-                        return Err(io::Error::last_os_error());
-                    }
-                }
-                
-                self.jobs_pgid.set(Some(pgid));
+                leader.pgid.set(Some(pgid));
             }
         }
 
-        Ok(child)
+        Ok(Child {
+            child: Some(child),
+            morgue: self.clone(),
+            new_group: leader.is_some()
+        })
     }
 
-    #[allow(clippy::await_holding_refcell_ref, unused_variables)]    
-    pub async fn wait(&self, cause: Cause) -> io::Result<()> {
+    #[allow(clippy::await_holding_refcell_ref)]    
+    pub async fn wait(&self, leader: Option<&Leader>) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 
-        queue.retain_mut(|child| !matches!(child.try_wait(), Ok(Some(_))));
-
         #[cfg(unix)]
-        if !queue.is_empty() {
-            let maybe_signal = match cause {
-                Cause::Wait => None,
-                // Cause::CtrcC => Some(libc::SIGINT),
-                Cause::NewRound => Some(libc::SIGKILL)
-            };
+        if !queue.is_empty()
+            && let Some(leader) = leader
+            && let Some(pgid) = leader.pgid.get()
+        {
+            debug_assert_ne!(self.pgid, pgid);
 
-            if let Some(signal) = maybe_signal {
-                if let Some(pgid) = self.jobs_pgid.get() {
-                    unsafe {
-                        libc::killpg(pgid, signal);
-                    }
-                } else {
-                    for ghost in queue.as_mut_slice() {
-                        if signal == libc::SIGKILL {
-                            // Use pidfd kill
-                            let _ = ghost.start_kill();
-                        } else {
-                            let pid = ghost.id().unwrap() as libc::pid_t;
-
-                            // TODO replace it with pidfd
-                            unsafe {
-                                libc::kill(pid, signal);
-                            }                        
-                        }
-                    }
-                }
+            unsafe {
+                libc::killpg(pgid, libc::SIGKILL);
             }
         }
 
-        for mut ghost in queue.drain(..) {
+        for (new_group, ghost) in queue.iter_mut() {
+            let skip = *new_group && cfg!(unix);
+
+            if !skip {
+                let _ = ghost.start_kill();
+            }
+        }
+
+        for (_, mut ghost) in queue.drain(..) {
             ghost.wait().await?;
         }
 
         #[cfg(unix)] {
             use std::os::fd::AsRawFd;
 
-            if self.jobs_pgid.take().is_some() {
+            if leader.is_some_and(|leader| leader.pgid.get().is_some()) {
                 unsafe {
-                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), libc::getpid()) != 0 {
+                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), self.pgid) != 0 {
                         return Err(io::Error::last_os_error());
                     }
                 }

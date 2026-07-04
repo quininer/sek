@@ -6,15 +6,24 @@ use std::process::{ Stdio, ExitStatus };
 use tokio::process;
 use bstr::BString;
 use super::{ syntax, Shell };
+use external::Leader;
 
 
 pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command)
     -> anyhow::Result<Status>
 {
-    eval::execute(shell, input, cmd).await
+    let leader = Leader::default();
+    let result = eval::execute(shell, input, cmd, &leader).await;
+    shell.morgue.wait(Some(&leader)).await?;
+    result
 }
 
-pub enum Command {
+pub struct Command {
+    kind: CommandKind,
+    leader: Option<Leader>,
+}
+
+pub enum CommandKind {
     Builtin(builtin::BuiltinCommand, Vec<BString>),
     External(external::ShellCommand),
 }
@@ -34,68 +43,79 @@ pub enum Status {
 }
 
 impl Command {
-    pub fn new(shell: &Shell, exe: &[u8]) -> anyhow::Result<Command> {
+    pub fn new(shell: &Shell, exe: &[u8], leader: Option<Leader>)
+        -> anyhow::Result<Command>
+    {
         let config = shell.config.borrow();
 
-        if let Some(cmd) = builtin::builtin_command(exe) {
-            Ok(Command::Builtin(cmd, Vec::new()))
+        let kind = if let Some(cmd) = builtin::builtin_command(exe) {
+            CommandKind::Builtin(cmd, Vec::new())
         } else if let Some((exe, args)) = config.alias.get(exe) {
             let mut cmd = external::ShellCommand::new(exe.as_bytes())?;
             for arg in args {
                 cmd.push(arg.as_bytes())?;
             }
-            Ok(Command::External(cmd))
+            CommandKind::External(cmd)
         } else {
-            Ok(Command::External(external::ShellCommand::new(exe)?))
-        }
+            CommandKind::External(external::ShellCommand::new(exe)?)
+        };
+
+        Ok(Command { kind, leader })
     }
 
     pub fn push(&mut self, arg: &[u8]) -> anyhow::Result<()> {
-        match self {
-            Command::Builtin(_, args) => {
+        match &mut self.kind {
+            CommandKind::Builtin(_, args) => {
                 args.push(arg.into());
                 Ok(())
             },
-            Command::External(cmd) => cmd.push(arg)
+            CommandKind::External(cmd) => cmd.push(arg)
         }
     }
 
     pub fn stdin(&mut self, stdio: Stdio) {
-        match self {
-            Command::Builtin(..) => (),
-            Command::External(cmd) => cmd.stdin(stdio)
+        match &mut self.kind {
+            CommandKind::Builtin(..) => (),
+            CommandKind::External(cmd) => cmd.stdin(stdio)
         }
     }
 
     pub fn stdout(&mut self, stdio: Stdio) {
-        match self {
-            Command::Builtin(..) => (),
-            Command::External(cmd) => cmd.stdout(stdio)
+        match &mut self.kind {
+            CommandKind::Builtin(..) => (),
+            CommandKind::External(cmd) => cmd.stdout(stdio)
         }        
     }
 
     pub fn stderr(&mut self, stdio: Stdio) {
-        match self {
-            Command::Builtin(..) => (),
-            Command::External(cmd) => cmd.stderr(stdio)
+        match &mut self.kind {
+            CommandKind::Builtin(..) => (),
+            CommandKind::External(cmd) => cmd.stderr(stdio)
         }
     }
 
     pub fn is_stdout_available(&self) -> bool {
-        match self {
-            Command::Builtin(..) => false,
-            Command::External(cmd) => cmd.is_stdout_available()
+        match &self.kind {
+            CommandKind::Builtin(..) => false,
+            CommandKind::External(cmd) => cmd.is_stdout_available()
         }
-    }    
+    }
 
-    pub fn spawn<'a>(&'a mut self, shell: &'a Shell) -> anyhow::Result<Child<'a>> {
-        match self {
-            Command::Builtin(cmd, args) => Ok(Child::BuiltIn {
+    pub fn leader(&self) -> Option<Leader> {
+        self.leader.clone()
+    }
+
+    pub fn spawn<'a>(&'a mut self, shell: &'a Shell)
+        -> anyhow::Result<Child<'a>>
+    {
+        match &mut self.kind {
+            CommandKind::Builtin(cmd, args) => Ok(Child::BuiltIn {
                 future: cmd(shell, args),
                 stdout: None,
                 stderr: None,
             }),
-            Command::External(cmd) => cmd.spawn(shell).map(Child::External),
+            CommandKind::External(cmd) =>
+                cmd.spawn(shell, self.leader.as_ref()).map(Child::External),
         }
     }
 }

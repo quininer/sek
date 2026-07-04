@@ -213,7 +213,9 @@ pub fn is_contains(haystack: &[u8], needle: &str, case_sensitive: bool)
 }
 
 #[cfg(unix)]
-pub fn set_signal_ignore() {
+pub fn setup_signal_handler() -> io::Result<()> {
+    let mut result = 0;
+    
     unsafe {
         let mut act: libc::sigaction = std::mem::zeroed();
         act.sa_flags = 0;
@@ -223,7 +225,31 @@ pub fn set_signal_ignore() {
         act.sa_sigaction = libc::SIG_IGN;
 
         let nullptr = std::ptr::null_mut();
+        result |= libc::sigaction(libc::SIGTSTP, &act, nullptr);
+        result |= libc::sigaction(libc::SIGTTOU, &act, nullptr);
+        result |= libc::sigaction(libc::SIGINT, &act, nullptr);
+    }
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(unix)]
+pub fn reset_signal_ignore() {
+    unsafe {
+        let mut act: libc::sigaction = std::mem::zeroed();
+        act.sa_flags = 0;
+        libc::sigemptyset(&mut act.sa_mask);
+
+        // ignore
+        act.sa_sigaction = libc::SIG_DFL;
+
+        let nullptr = std::ptr::null_mut();
         libc::sigaction(libc::SIGTSTP, &act, nullptr);
-        libc::sigaction(libc::SIGTTOU, &act, nullptr);        
+        libc::sigaction(libc::SIGTTOU, &act, nullptr);
+        libc::sigaction(libc::SIGINT, &act, nullptr);
     }
 }
