@@ -167,13 +167,16 @@ async fn process_input<T: TermTarget>(
         match shell.editor.mode {
             Mode::PathSelector => {
                 shell.editor.path_selector.set_space(renderer.size.1.into());
+                shell.editor.path_selector.cd(std::path::Path::new("."))?;
             },
             Mode::CompleteSelector => {
                 shell.editor.complete_selector.set_space(renderer.size);
                 shell.editor.complete_selector.update();
             },
             _ => ()
-        }        
+        }
+
+        shell.prompt.update(&shell.config, &shell.env, renderer.size);
     }
 
     let mode = shell.editor.mode;
