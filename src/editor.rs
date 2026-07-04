@@ -482,6 +482,12 @@ impl Editor {
                     self.insert.replace_str_inclusive(s, None);
                     self.mode = Mode::Insert;
                 },
+                (Mode::CompleteSelector, None, KeyCode::Char(' ')) => {
+                    let s = &self.complete_selector.list[self.complete_selector.cur];
+                    self.insert.replace_str_inclusive(s, None);
+                    self.insert.push(' ');
+                    self.mode = Mode::Insert;
+                },
 
                 (Mode::PathSelector | Mode::CompleteSelector, None, KeyCode::Backspace) => {
                     self.insert.backspace();
