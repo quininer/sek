@@ -1,16 +1,17 @@
-use std::convert::TryInto;
 use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
 use std::num::NonZero;
-use std::ops::{Index, IndexMut};
+use std::convert::TryInto;
+use std::marker::PhantomData;
+use std::hash::{ Hash, Hasher };
+use std::ops::{ Index, IndexMut };
+
 
 #[derive(Debug)]
 pub struct Arena<T>(Vec<T>);
 
 pub struct ArenaMap<T, V> {
     map: Vec<Option<V>>,
-    _phantom: PhantomData<Id<T>>,
+    _phantom: PhantomData<Id<T>>
 }
 
 pub struct Id<T>(NonZero<u32>, PhantomData<fn() -> T>);
@@ -39,10 +40,7 @@ impl<T> Arena<T> {
     }
 
     pub fn iter(&self) -> Iter<'_, T> {
-        Iter {
-            arena: self,
-            index: 0,
-        }
+        Iter{ arena: self, index: 0 }
     }
 
     pub fn clear(&mut self) {
@@ -64,7 +62,7 @@ impl<T> Default for Arena<T> {
 
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
-
+    
     fn index(&self, index: Id<T>) -> &Self::Output {
         &self.0[index.get()]
     }
@@ -118,7 +116,7 @@ impl<T> fmt::Debug for Id<T> {
 
 pub struct Iter<'a, T> {
     arena: &'a Arena<T>,
-    index: usize,
+    index: usize
 }
 
 impl<T> Iterator for Iter<'_, T> {
@@ -183,9 +181,6 @@ impl<T, V> ArenaMap<T, V> {
 
 impl<T, V> Default for ArenaMap<T, V> {
     fn default() -> Self {
-        ArenaMap {
-            map: Vec::new(),
-            _phantom: PhantomData,
-        }
+        ArenaMap { map: Vec::new(), _phantom: PhantomData }
     }
 }

@@ -1,13 +1,14 @@
-use crate::util::is_contains;
-use crate::util::path::file_name_cmp;
-use icu_collator::Collator;
-use std::borrow::Cow;
-use std::cmp::{self, Ordering};
-use std::ffi::OsStr;
-use std::fs::{self, DirEntry, ReadDir};
 use std::mem;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::ffi::OsStr;
+use std::borrow::Cow;
+use std::path::{ PathBuf, Path };
+use std::cmp::{ self, Ordering };
+use std::fs::{ self, ReadDir, DirEntry };
+use icu_collator::Collator;
+use crate::util::path::{ file_name_cmp };
+use crate::util::is_contains;
+
 
 const MAX_ENTRY_CAP: usize = 1024;
 
@@ -20,14 +21,14 @@ pub struct PathSelector {
     pub search: String,
     pub parent: List,
     pub current: List,
-    pub children: List,
+    pub children: List
 }
 
 #[derive(Debug)]
 struct Filter {
     glob: Option<glob::Pattern>,
     hidden_file: bool,
-    case_sensitive: bool,
+    case_sensitive: bool
 }
 
 #[derive(Default, Debug)]
@@ -35,28 +36,29 @@ pub struct List {
     window: Range<usize>,
     cur: usize,
     queue: Vec<Entry>,
-    readdir: Option<ReadDir>,
+    readdir: Option<ReadDir>
 }
 
 #[derive(Debug)]
 pub struct Entry {
     entry: DirEntry,
-    ty: EntryType,
+    ty: EntryType
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum EntryType {
     Dir,
     File,
-    Other,
+    Other
 }
 
 impl PathSelector {
     pub fn new() -> anyhow::Result<PathSelector> {
         let mut prefs = icu_collator::CollatorPreferences::default();
-        prefs.numeric_ordering = Some(icu_collator::preferences::CollationNumericOrdering::True);
+        prefs.numeric_ordering =
+            Some(icu_collator::preferences::CollationNumericOrdering::True);
         let collator = Collator::try_new(prefs, Default::default())?;
-
+        
         Ok(PathSelector {
             collator: collator.static_to_owned(),
             space: 0,
@@ -65,7 +67,7 @@ impl PathSelector {
             search: String::new(),
             parent: List::default(),
             current: List::default(),
-            children: List::default(),
+            children: List::default()
         })
     }
 
@@ -94,10 +96,7 @@ impl PathSelector {
     }
 
     pub fn selected(&self) -> Option<PathBuf> {
-        self.current
-            .queue
-            .get(self.current.cur)
-            .map(|entry| entry.path())
+        self.current.queue.get(self.current.cur).map(|entry| entry.path())
     }
 
     pub fn clear(&mut self) {
@@ -125,7 +124,7 @@ impl PathSelector {
             &self.path,
             filename.as_deref(),
             &self.filter,
-            self.space,
+            self.space
         )?;
 
         if let Some(parent) = self.path.parent() {
@@ -134,7 +133,7 @@ impl PathSelector {
                 parent,
                 self.path.file_name(),
                 &self.filter,
-                self.space,
+                self.space
             )?;
         } else {
             self.parent.clear();
@@ -163,10 +162,7 @@ impl PathSelector {
     }
 
     pub fn down(&mut self) -> anyhow::Result<()> {
-        let cur = cmp::min(
-            self.current.cur + 1,
-            self.current.queue.len().saturating_sub(1),
-        );
+        let cur = cmp::min(self.current.cur + 1, self.current.queue.len().saturating_sub(1));
         if self.current.cur != cur {
             self.current.cur = cur;
 
@@ -192,13 +188,7 @@ impl PathSelector {
         self.current.fill(&self.collator, &self.filter)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(
-                &self.collator,
-                parent,
-                self.path.file_name(),
-                &self.filter,
-                self.space,
-            )?;
+            self.parent.cd(&self.collator, parent, self.path.file_name(), &self.filter, self.space)?;
         } else {
             self.parent.clear();
         }
@@ -207,10 +197,7 @@ impl PathSelector {
     }
 
     pub fn right(&mut self) -> anyhow::Result<()> {
-        if let Some(children) = self
-            .current
-            .queue
-            .get(self.current.cur)
+        if let Some(children) = self.current.queue.get(self.current.cur)
             .filter(|children| children.ty == EntryType::Dir)
         {
             let path = children.entry.path();
@@ -229,9 +216,7 @@ impl PathSelector {
 
     pub fn search_up(&mut self) -> anyhow::Result<()> {
         if !self.search.is_empty()
-            && self
-                .current
-                .search_up(&self.search, self.filter.case_sensitive)
+            && self.current.search_up(&self.search, self.filter.case_sensitive)
         {
             self.update_children()?;
         }
@@ -241,9 +226,7 @@ impl PathSelector {
 
     pub fn search_down(&mut self) -> anyhow::Result<()> {
         if !self.search.is_empty()
-            && self
-                .current
-                .search_down(&self.search, self.filter.case_sensitive)
+            && self.current.search_down(&self.search, self.filter.case_sensitive)
         {
             self.update_children()?;
         }
@@ -261,17 +244,14 @@ impl PathSelector {
 
     pub fn move_bottom(&mut self) -> anyhow::Result<()> {
         if self.current.move_bottom() {
-            self.update_children()?;
+            self.update_children()?;            
         }
 
         Ok(())
-    }
+    }    
 
     pub fn update_children(&mut self) -> anyhow::Result<()> {
-        if let Some(children) = self
-            .current
-            .queue
-            .get(self.current.cur)
+        if let Some(children) = self.current.queue.get(self.current.cur)
             .filter(|children| children.ty == EntryType::Dir)
         {
             self.children.cd(
@@ -279,7 +259,7 @@ impl PathSelector {
                 &children.entry.path(),
                 None,
                 &self.filter,
-                self.space,
+                self.space
             )?;
         } else {
             self.children.clear();
@@ -294,7 +274,7 @@ impl Default for Filter {
         Filter {
             glob: None,
             hidden_file: true,
-            case_sensitive: false,
+            case_sensitive: false
         }
     }
 }
@@ -305,31 +285,25 @@ impl Filter {
             let name = entry.file_name();
             let name = Path::new(&name);
 
-            glob.matches_path_with(
-                name,
-                glob::MatchOptions {
-                    case_sensitive: self.case_sensitive,
-                    require_literal_separator: true,
-                    require_literal_leading_dot: self.hidden_file,
-                },
-            )
+            glob.matches_path_with(name, glob::MatchOptions {
+                case_sensitive: self.case_sensitive,
+                require_literal_separator: true,
+                require_literal_leading_dot: self.hidden_file
+            })
         } else if self.hidden_file {
-            #[cfg(unix)]
-            {
+            #[cfg(unix)] {
                 use bstr::ByteSlice;
 
                 let name = entry.file_name();
                 !name.as_encoded_bytes().starts_with_str(".")
             }
 
-            #[cfg(windows)]
-            {
+            #[cfg(windows)] {
                 use std::os::windows::fs::MetadataExt;
 
                 const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
 
-                entry
-                    .metadata()
+                entry.metadata()
                     .ok()
                     .map(|metadata| metadata.file_attributes())
                     .filter(|attr| attr & FILE_ATTRIBUTE_HIDDEN != 0)
@@ -342,8 +316,7 @@ impl Filter {
 }
 
 impl List {
-    fn cd(
-        &mut self,
+    fn cd(&mut self,
         collator: &Collator,
         path: &Path,
         lookup: Option<&OsStr>,
@@ -353,8 +326,7 @@ impl List {
         self.queue.clear();
         let mut readdir = path.read_dir()?;
 
-        for entry in readdir
-            .by_ref()
+        for entry in readdir.by_ref()
             .filter_map(Result::ok)
             .filter(|entry| filter.matches(entry))
             .take(MAX_ENTRY_CAP)
@@ -364,11 +336,13 @@ impl List {
 
         self.queue.sort_by(|x, y| match Ord::cmp(&x.ty, &y.ty) {
             Ordering::Equal => file_name_cmp(collator, &x.name(), &y.name()),
-            ord => ord,
+            ord => ord
         });
 
         self.cur = lookup
-            .and_then(|name| self.queue.iter().position(|e| e.name() == name))
+            .and_then(|name| self.queue.iter()
+                .position(|e| e.name() == name)
+            )
             .unwrap_or_default();
 
         self.readdir = Some(readdir);
@@ -380,7 +354,7 @@ impl List {
     fn fill(&mut self, collator: &Collator, filter: &Filter) -> anyhow::Result<()> {
         let readdir = match self.readdir.take() {
             Some(readdir) => readdir,
-            None => return Ok(()),
+            None => return Ok(())
         };
 
         for entry in readdir
@@ -392,8 +366,9 @@ impl List {
         }
 
         self.queue.sort_by(|x, y| match Ord::cmp(&x.ty, &y.ty) {
-            Ordering::Equal => file_name_cmp(collator, &x.entry.file_name(), &y.entry.file_name()),
-            ord => ord,
+            Ordering::Equal =>
+                file_name_cmp(collator, &x.entry.file_name(), &y.entry.file_name()),
+            ord => ord
         });
 
         Ok(())
@@ -428,8 +403,7 @@ impl List {
     }
 
     pub fn take(&self, space: usize) -> impl Iterator<Item = (bool, &Entry)> {
-        self.queue
-            .iter()
+        self.queue.iter()
             .enumerate()
             .skip(self.window.start)
             .map(move |(i, entry)| (i == self.cur, entry))
@@ -440,9 +414,7 @@ impl List {
     fn search_up(&mut self, needle: &str, case_sensitive: bool) -> bool {
         let prev_cur = self.cur;
 
-        if let Some((cur, _)) = self
-            .queue
-            .iter()
+        if let Some((cur, _)) = self.queue.iter()
             .enumerate()
             .take(self.cur)
             .rev()
@@ -458,9 +430,7 @@ impl List {
     fn search_down(&mut self, needle: &str, case_sensitive: bool) -> bool {
         let prev_cur = self.cur;
 
-        if let Some((cur, _)) = self
-            .queue
-            .iter()
+        if let Some((cur, _)) = self.queue.iter()
             .enumerate()
             .skip(self.cur + 1)
             .find(|(_, e)| is_contains(e.name().as_encoded_bytes(), needle, case_sensitive))
@@ -503,7 +473,7 @@ impl Entry {
         let ty = match ty {
             Some(ty) if ty.is_dir() => EntryType::Dir,
             Some(ty) if ty.is_file() => EntryType::File,
-            _ => EntryType::Other,
+            _ => EntryType::Other
         };
 
         Entry { entry, ty }
@@ -526,9 +496,9 @@ impl Entry {
 
 #[test]
 fn test_path_selector() -> anyhow::Result<()> {
-    use crate::util::ScopeGuard;
     use std::fs;
-    use std::hash::{BuildHasher, RandomState};
+    use std::hash::{ RandomState, BuildHasher };
+    use crate::util::ScopeGuard;
 
     let dir = {
         let tmpfs = std::env::temp_dir();

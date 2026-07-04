@@ -1,14 +1,15 @@
-use super::Shell;
+use std::io;
+use std::rc::Rc;
+use std::cell::RefCell;
+use std::process::{ ExitStatus, Stdio };
+use tokio::process::{ self, Command };
 use anyhow::Context;
 use bstr::ByteSlice;
-use std::cell::RefCell;
-use std::io;
-use std::process::{ExitStatus, Stdio};
-use std::rc::Rc;
-use tokio::process::{self, Command};
+use super::Shell;
 
 #[cfg(unix)]
 use std::cell::Cell;
+
 
 #[derive(Debug)]
 pub struct ShellCommand {
@@ -25,12 +26,12 @@ pub struct Child {
 #[derive(Clone)]
 pub struct Morgue {
     pgid: libc::pid_t,
-    queue: Rc<RefCell<Vec<(bool, process::Child)>>>,
+    queue: Rc<RefCell<Vec<(bool, process::Child)>>>
 }
 
 #[derive(Default, Clone, Debug)]
 pub struct Leader {
-    pgid: Rc<Cell<Option<libc::pid_t>>>,
+    pgid: Rc<Cell<Option<libc::pid_t>>>
 }
 
 impl ShellCommand {
@@ -71,9 +72,7 @@ impl ShellCommand {
             .current_dir(env.pwd())
             .envs(env.map.iter().map(|(k, v)| (k.as_os_str(), v.as_os_str())));
 
-        shell
-            .morgue
-            .spawn(&mut self.cmd, leader)
+        shell.morgue.spawn(&mut self.cmd, leader)
             .with_context(|| format!("spawn failed: {:?}", self.cmd.as_std().get_program()))
     }
 }
@@ -85,8 +84,8 @@ impl Child {
 
     pub fn stderr(&mut self) -> &mut Option<process::ChildStderr> {
         &mut self.child.as_mut().unwrap().stderr
-    }
-
+    }    
+    
     pub async fn wait(&mut self) -> io::Result<ExitStatus> {
         let mut child = self.child.take().unwrap();
         child.wait().await
@@ -108,18 +107,19 @@ impl Default for Morgue {
     fn default() -> Self {
         Morgue {
             #[cfg(unix)]
-            pgid: unsafe { libc::getpid() },
-            queue: Default::default(),
+            pgid: unsafe {
+                libc::getpid()
+            },
+            queue: Default::default()
         }
     }
 }
 
 impl Morgue {
     pub fn spawn(&self, cmd: &mut Command, leader: Option<&Leader>) -> io::Result<Child> {
-        #[cfg(unix)]
-        {
-            use crate::util::reset_signal_ignore;
+        #[cfg(unix)] {
             use std::os::unix::process::CommandExt;
+            use crate::util::reset_signal_ignore;
 
             let pgid = leader
                 .map(|leader| leader.pgid.get().unwrap_or_default())
@@ -143,8 +143,8 @@ impl Morgue {
 
         let child = cmd.spawn()?;
 
-        #[cfg(unix)]
-        {
+        #[cfg(unix)] {
+
             if let Some(leader) = leader
                 && leader.pgid.get().is_none()
             {
@@ -156,11 +156,11 @@ impl Morgue {
         Ok(Child {
             child: Some(child),
             morgue: self.clone(),
-            new_group: leader.is_some(),
+            new_group: leader.is_some()
         })
     }
 
-    #[allow(clippy::await_holding_refcell_ref)]
+    #[allow(clippy::await_holding_refcell_ref)]    
     pub async fn wait(&self, leader: Option<&Leader>) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 
@@ -188,8 +188,7 @@ impl Morgue {
             ghost.wait().await?;
         }
 
-        #[cfg(unix)]
-        {
+        #[cfg(unix)] {
             use std::os::fd::AsRawFd;
 
             if leader.is_some_and(|leader| leader.pgid.get().is_some()) {
@@ -201,6 +200,6 @@ impl Morgue {
             }
         }
 
-        Ok(())
+        Ok(())        
     }
 }

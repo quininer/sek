@@ -1,22 +1,30 @@
-use crate::editor::{Editor, Mode};
-use crate::shell::Shell;
-use crate::shell::syntax::{ArgSlice, Argument, Command, StrSlice, SubShell, Variable};
-use crate::ui::render::{Renderer, TermTarget};
-use bstr::{BString, ByteSlice};
-use logos::Span;
 use std::ffi::OsStr;
 use std::ops::Range;
+use bstr::{ ByteSlice, BString };
+use logos::Span;
+use crate::shell::syntax::{ Command, SubShell, Argument, ArgSlice, StrSlice, Variable };
+use crate::shell::Shell;
+use crate::ui::render::{ Renderer, TermTarget };
+use crate::editor::{ Editor, Mode };
 
 #[derive(Debug)]
 pub enum CompletionType {
     None,
     Exe(Span),
     Env(Span),
-    Path { select: Span, prefix: BString },
-    Item { command: Command, select: Span },
+    Path {
+        select: Span,
+        prefix: BString,
+    },
+    Item {
+        command: Command,
+        select: Span,
+    },
 }
 
-pub async fn complete(shell: &Shell, cmd: Command) -> CompletionType {
+pub async fn complete(shell: &Shell, cmd: Command)
+    -> CompletionType
+{
     let point = shell.editor.insert.cursor().end;
 
     // check exe
@@ -34,9 +42,7 @@ pub async fn complete(shell: &Shell, cmd: Command) -> CompletionType {
     }
 
     // check env
-    if let Some(span) = shell
-        .parser
-        .iter()
+    if let Some(span) = shell.parser.iter()
         .filter_map(|node_id| Variable::new(&shell.parser, node_id))
         .find_map(|var| {
             let span = var.span(&shell.parser);
@@ -47,22 +53,20 @@ pub async fn complete(shell: &Shell, cmd: Command) -> CompletionType {
     }
 
     // check path
-    if let Some(args) = shell
-        .parser
-        .iter()
+    if let Some(args) = shell.parser.iter()
         .filter_map(|node_id| Argument::new(&shell.parser, node_id))
         .find(|args| {
             let span = args.span(&shell.parser);
             span.contains(&point) || span.end == point
         })
     {
-        let has_subshell = args.slice(&shell.parser).any(|arg| match arg {
-            ArgSlice::SubShell(_) => true,
-            ArgSlice::DoubleStr(s) => s
-                .slice(&shell.parser)
-                .any(|s| matches!(s, StrSlice::SubShell(_))),
-            _ => false,
-        });
+        let has_subshell = args.slice(&shell.parser)
+            .any(|arg| match arg {
+                ArgSlice::SubShell(_) => true,
+                ArgSlice::DoubleStr(s) => s.slice(&shell.parser)
+                    .any(|s| matches!(s, StrSlice::SubShell(_))),
+                _ => false
+            });
         if !has_subshell {
             let s = shell.editor.insert.as_str();
             let mut buf = Vec::new();
@@ -80,16 +84,14 @@ pub async fn complete(shell: &Shell, cmd: Command) -> CompletionType {
                 {
                     return CompletionType::Path {
                         select: args.span(&shell.parser),
-                        prefix: buf.into(),
+                        prefix: buf.into()
                     };
                 }
             }
         }
     }
 
-    let command = shell
-        .parser
-        .iter()
+    let command = shell.parser.iter()
         .filter_map(|node_id| SubShell::new(&shell.parser, node_id))
         .map(|subshell| {
             let start = subshell.start(&shell.parser).start;
@@ -103,9 +105,7 @@ pub async fn complete(shell: &Shell, cmd: Command) -> CompletionType {
         .min_by_key(|(_, span)| span.len())
         .map(|(cmd, _)| cmd)
         .unwrap_or(cmd);
-    let select = shell
-        .parser
-        .iter()
+    let select = shell.parser.iter()
         .filter_map(|node_id| Argument::new(&shell.parser, node_id))
         .find_map(|args| {
             let span = args.span(&shell.parser);
@@ -135,11 +135,15 @@ impl CompletionType {
                 shell.editor.complete_selector.desc.clear();
                 shell.editor.complete_selector.list.extend(list);
 
-                if make_complete_selector(&mut shell.editor, span, renderer.size) {
+                if make_complete_selector(
+                    &mut shell.editor,
+                    span,
+                    renderer.size,
+                ) {
                     let input = shell.editor.insert.as_str();
                     shell.ast = shell.parser.parse_incomplete(input).ok();
                 }
-            }
+            },
             CompletionType::Env(span) => {
                 let span = (span.start + 1)..span.end;
                 let prefix = &shell.editor.insert.as_str()[span.clone()];
@@ -151,11 +155,15 @@ impl CompletionType {
                 shell.editor.complete_selector.desc.clear();
                 shell.editor.complete_selector.list.extend(list);
 
-                if make_complete_selector(&mut shell.editor, span, renderer.size) {
+                if make_complete_selector(
+                    &mut shell.editor,
+                    span,
+                    renderer.size,
+                ) {
                     let input = shell.editor.insert.as_str();
                     shell.ast = shell.parser.parse_incomplete(input).ok();
                 }
-            }
+            },
             CompletionType::Path { select, prefix } => {
                 let env = shell.env.borrow();
                 let path = prefix.to_path()?;
@@ -164,13 +172,12 @@ impl CompletionType {
                 } else {
                     path.into()
                 };
-
+                
                 let (dir, prefix) = if prefix.ends_with_str(b"/") || path.is_dir() {
                     (&*path, "")
                 } else {
                     let dir = path.parent().unwrap_or(env.pwd());
-                    let prefix = path
-                        .file_name()
+                    let prefix = path.file_name()
                         .and_then(|name| name.to_str())
                         .unwrap_or_default();
                     (dir, prefix)
@@ -188,10 +195,9 @@ impl CompletionType {
                 shell.editor.insert.select_span(select);
                 shell.editor.mode = Mode::PathSelector;
                 shell.editor.path_selector.search_down()?;
-            }
-            CompletionType::Item { command, select } => {
-                do_complete(shell, renderer, command, select).await?
-            }
+            },
+            CompletionType::Item { command, select } =>
+                do_complete(shell, renderer, command, select).await?,
         }
 
         Ok(())
@@ -199,7 +205,7 @@ impl CompletionType {
 
     pub async fn suggest(self, shell: &mut Shell) -> anyhow::Result<()> {
         shell.editor.suggestion.clear();
-
+        
         match self {
             CompletionType::None => (),
             CompletionType::Exe(span) => {
@@ -215,7 +221,7 @@ impl CompletionType {
                 {
                     shell.editor.suggestion.set_value(item);
                 }
-            }
+            },
             CompletionType::Env(span) => {
                 let span = (span.start + 1)..span.end;
                 let prefix = &shell.editor.insert.as_str()[span.clone()];
@@ -229,17 +235,12 @@ impl CompletionType {
                 {
                     shell.editor.suggestion.set_value(item);
                 }
-            }
+            },
             CompletionType::Path { .. } => (),
             CompletionType::Item { .. } => (),
         }
 
-        if shell
-            .editor
-            .suggestion
-            .as_str(&shell.editor.insert)
-            .is_empty()
-        {
+        if shell.editor.suggestion.as_str(&shell.editor.insert).is_empty() {
             shell.editor.suggestion.set_history(&shell.editor.insert);
         }
 
@@ -252,26 +253,26 @@ pub async fn do_complete<T: TermTarget>(
     shell: &mut Shell,
     renderer: &mut Renderer<T>,
     command: Command,
-    select: Span,
+    select: Span
 ) -> anyhow::Result<()> {
     use std::iter;
-    use std::process::{Command, Stdio};
+    use std::process::{ Command, Stdio };
 
     let config = shell.config.borrow();
 
-    let Some(complete) = config.complete.as_ref() else {
-        return Ok(());
-    };
+    let Some(complete) = config.complete.as_ref()
+        else {
+            return Ok(())
+        };
 
     let has_subshell = iter::once(command.exe(&shell.parser))
         .chain(command.args(&shell.parser))
         .flat_map(|arg| arg.slice(&shell.parser))
         .any(|arg| match arg {
             ArgSlice::SubShell(_) => true,
-            ArgSlice::DoubleStr(s) => s
-                .slice(&shell.parser)
+            ArgSlice::DoubleStr(s) => s.slice(&shell.parser)
                 .any(|s| matches!(s, StrSlice::SubShell(_))),
-            _ => false,
+            _ => false
         });
     if has_subshell {
         return Ok(());
@@ -282,7 +283,9 @@ pub async fn do_complete<T: TermTarget>(
     let mut list = Vec::new();
     let mut index = None;
 
-    for arg in iter::once(command.exe(&shell.parser)).chain(command.args(&shell.parser)) {
+    for arg in iter::once(command.exe(&shell.parser))
+        .chain(command.args(&shell.parser))
+    {
         let span = arg.span(&shell.parser);
 
         if span.start >= select.end {
@@ -291,29 +294,30 @@ pub async fn do_complete<T: TermTarget>(
         }
 
         let start = buf.len();
-
+        
         arg.eval(shell, input, &mut |osstr| {
             buf.extend_from_slice(osstr);
             Ok(())
-        })
-        .await?;
+        }).await?;
 
         if span == select {
             index = Some(list.len());
-        }
+        }        
 
         let end = buf.len();
         list.push(start..end);
     }
 
-    let Some(index) = index else {
-        return Ok(());
-    };
+    let Some(index) = index
+        else {
+            return Ok(());
+        };
 
     let env = shell.env.borrow();
     let mut cmd = Command::new(&complete.exe);
 
-    cmd.current_dir(env.pwd())
+    cmd
+        .current_dir(env.pwd())
         .envs(env.map.iter().map(|(k, v)| (k.as_os_str(), v.as_os_str())))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -323,7 +327,7 @@ pub async fn do_complete<T: TermTarget>(
         match arg.as_str() {
             "@index" => {
                 cmd.arg(index.to_string());
-            }
+            },
             _ => {
                 cmd.arg(arg);
             }
@@ -347,13 +351,12 @@ pub async fn do_complete<T: TermTarget>(
 
     let stdout = output.stdout.to_str()?;
     let items = stdout.lines().count();
-    let has_desc = stdout
-        .lines()
+    let has_desc = stdout.lines()
         .next()
         .is_some_and(|line| line.contains('\t'));
 
     shell.editor.complete_selector.list.clear();
-    shell.editor.complete_selector.desc.clear();
+    shell.editor.complete_selector.desc.clear();    
     shell.editor.complete_selector.list.reserve(items);
     if has_desc {
         shell.editor.complete_selector.desc.reserve(items);
@@ -371,8 +374,12 @@ pub async fn do_complete<T: TermTarget>(
         shell.editor.complete_selector.list.push(item);
         shell.editor.complete_selector.desc.push(desc);
     }
-
-    if make_complete_selector(&mut shell.editor, select, renderer.size) {
+    
+    if make_complete_selector(
+        &mut shell.editor,
+        select,
+        renderer.size,
+    ) {
         let input = shell.editor.insert.as_str();
         shell.ast = shell.parser.parse_incomplete(input).ok();
     }
@@ -380,7 +387,11 @@ pub async fn do_complete<T: TermTarget>(
     Ok(())
 }
 
-fn make_complete_selector(editor: &mut Editor, select: Range<usize>, size: (u16, u16)) -> bool {
+fn make_complete_selector(
+    editor: &mut Editor,
+    select: Range<usize>,
+    size: (u16, u16),
+) -> bool {
     match editor.complete_selector.list.len() {
         0 => false,
         1 => {
@@ -389,7 +400,7 @@ fn make_complete_selector(editor: &mut Editor, select: Range<usize>, size: (u16,
             editor.insert.replace_str_inclusive(s, None);
             editor.insert.push(' ');
             true
-        }
+        },
         _ => {
             editor.complete_selector.cur = 0;
             editor.complete_selector.set_space(size);

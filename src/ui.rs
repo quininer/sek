@@ -1,8 +1,8 @@
 pub mod layout;
 pub mod render;
 
-use crate::util::arena::{ArenaMap, Id};
 use std::fmt;
+use crate::util::arena::{ Id, ArenaMap };
 
 pub trait Element: fmt::Debug {
     fn walk(
@@ -10,7 +10,7 @@ pub trait Element: fmt::Debug {
         tree: &mut layout::Tree,
         table: &mut Table,
         map: &mut Vec<(Tag, Id<layout::Node>)>,
-        parent: Id<layout::Node>,
+        parent: Id<layout::Node>
     );
 }
 
@@ -29,14 +29,14 @@ impl<T: Element> Element for Box<T> {
         tree: &mut layout::Tree,
         table: &mut Table,
         map: &mut Vec<(Tag, Id<layout::Node>)>,
-        parent: Id<layout::Node>,
+        parent: Id<layout::Node>
     ) {
         let id = tree.new_node(parent, self.1);
         self.2.walk(tree, table, map, id);
 
         if let Some(tag) = self.0 {
             map.push((tag, id));
-        }
+        }        
     }
 }
 
@@ -46,7 +46,7 @@ impl Element for Elem {
         tree: &mut layout::Tree,
         table: &mut Table,
         map: &mut Vec<(Tag, Id<layout::Node>)>,
-        parent: Id<layout::Node>,
+        parent: Id<layout::Node>
     ) {
         let id = tree.new_node(parent, self.1);
         table.insert(id, self.2);
@@ -101,11 +101,11 @@ impl<T> Box<T> {
 
     pub fn style<F>(mut self, f: F) -> Self
     where
-        F: FnOnce(layout::Style) -> layout::Style,
+        F: FnOnce(layout::Style) -> layout::Style
     {
         self.1 = f(self.1);
         self
-    }
+    }    
 }
 
 impl Elem {
@@ -115,7 +115,7 @@ impl Elem {
 
     pub fn style<F>(mut self, f: F) -> Self
     where
-        F: FnOnce(layout::Style) -> layout::Style,
+        F: FnOnce(layout::Style) -> layout::Style
     {
         self.1 = f(self.1);
         self

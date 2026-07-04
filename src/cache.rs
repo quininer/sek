@@ -1,9 +1,10 @@
+use std::{ fs, io, env };
+use std::io::Write;
+use std::ffi::OsStr;
+use std::path::Path;
 use crate::config::Config;
 use crate::shell::env::Environment;
-use std::ffi::OsStr;
-use std::io::Write;
-use std::path::Path;
-use std::{env, fs, io};
+
 
 pub struct Cache {
     pub exe_set: ExeSet,
@@ -13,11 +14,13 @@ pub struct ExeSet {
     set: fst::Set<Vec<u8>>,
 }
 
-pub fn load(config: &Config, env: &Environment) -> anyhow::Result<Cache> {
+pub fn load(config: &Config, env: &Environment)
+    -> anyhow::Result<Cache>
+{
     let cache_dir = env.projdir.cache_dir();
 
     fs::create_dir_all(cache_dir)?;
-
+    
     let exe_set = ExeSet::load(config, env, &cache_dir.join("exeset.fst"))?;
 
     //
@@ -26,14 +29,16 @@ pub fn load(config: &Config, env: &Environment) -> anyhow::Result<Cache> {
 }
 
 impl ExeSet {
-    fn load(config: &Config, env: &Environment, path: &Path) -> anyhow::Result<ExeSet> {
-        let mut maybe_data = fs::read(path).map(Some).or_else(|err| {
-            if err.kind() == io::ErrorKind::NotFound {
+    fn load(config: &Config, env: &Environment, path: &Path)
+        -> anyhow::Result<ExeSet>
+    {
+        let mut maybe_data = fs::read(path)
+            .map(Some)
+            .or_else(|err| if err.kind() == io::ErrorKind::NotFound {
                 Ok(None)
             } else {
                 Err(err)
-            }
-        })?;
+            })?;
 
         if let Some(data) = maybe_data.take() {
             match fst::Set::new(data) {
@@ -44,31 +49,30 @@ impl ExeSet {
                 }
             }
         }
-
+        
         let paths = env.get(OsStr::new("PATH")).unwrap_or_default();
         let mut list = Vec::new();
 
         for dir in env::split_paths(paths) {
-            for entry in dir
-                .read_dir()
+            for entry in dir.read_dir()
                 .ok()
                 .into_iter()
                 .flatten()
                 .flat_map(|entry| entry.ok())
             {
-                let Ok(mut metadata) = entry.metadata() else {
-                    continue;
-                };
+                let Ok(mut metadata) = entry.metadata()
+                    else {
+                        continue
+                    };
                 if metadata.is_symlink()
                     && let path = entry.path()
                     && let Ok(symlink_metadata) = fs::metadata(&path)
                 {
                     metadata = symlink_metadata;
                 }
-
+                
                 if metadata.is_file() {
-                    #[cfg(unix)]
-                    {
+                    #[cfg(unix)] {
                         use std::os::unix::fs::PermissionsExt;
 
                         if metadata.permissions().mode() & 0o111 != 0
@@ -77,12 +81,10 @@ impl ExeSet {
                             list.push(name.into_bytes());
                         }
                     }
-
-                    #[cfg(windows)]
-                    {
+                    
+                    #[cfg(windows)] {
                         if let Ok(name) = entry.file_name().into_string()
-                            && let Some(name_without_ext) = name
-                                .strip_suffix(".exe")
+                            && let Some(name_without_ext) = name.strip_suffix(".exe")
                                 .or_else(|| name.strip_suffix(".bat"))
                         {
                             list.push(name_without_ext.into());
@@ -96,17 +98,15 @@ impl ExeSet {
         list.sort();
         list.dedup();
 
-        let exe_set = ExeSet {
-            set: fst::Set::from_iter(list).unwrap(),
-        };
+        let exe_set = ExeSet { set: fst::Set::from_iter(list).unwrap() };
 
-        let maybe_fd = fs::File::create_new(path).map(Some).or_else(|err| {
-            if err.kind() == io::ErrorKind::AlreadyExists {
+        let maybe_fd = fs::File::create_new(path)
+            .map(Some)
+            .or_else(|err| if err.kind() == io::ErrorKind::AlreadyExists {
                 Ok(None)
             } else {
                 Err(err)
-            }
-        })?;
+            })?;
 
         if let Some(mut fd) = maybe_fd {
             fd.write_all(exe_set.set.as_fst().as_bytes())?;
@@ -115,9 +115,11 @@ impl ExeSet {
         Ok(exe_set)
     }
 
-    pub fn search<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = Box<[u8]>> + 'a {
-        use fst::automaton::{StartsWith, Str};
-        use fst::{Automaton, IntoStreamer, Streamer};
+    pub fn search<'a>(&'a self, prefix: &'a str)
+        -> impl Iterator<Item = Box<[u8]>> + 'a
+    {
+        use fst::{ Automaton, IntoStreamer, Streamer };
+        use fst::automaton::{ StartsWith, Str };
 
         struct SearchResult<'a>(fst::set::Stream<'a, StartsWith<Str<'a>>>);
 

@@ -1,9 +1,10 @@
+use std::io::Read;
+use std::cell::RefCell;
+use std::process::{ Command, Stdio };
 use crate::config::Config;
 use crate::shell::Environment;
 use crate::shell::execute::Status;
-use std::cell::RefCell;
-use std::io::Read;
-use std::process::{Command, Stdio};
+
 
 pub struct Prompt {
     buf: String,
@@ -27,19 +28,23 @@ impl Prompt {
     pub fn as_str(&self) -> &str {
         self.buf.as_str()
     }
-
+    
     pub fn update(
         &mut self,
         config: &RefCell<Config>,
         env: &RefCell<Environment>,
-        size: (u16, u16),
+        size: (u16, u16)
     ) {
         let config = config.borrow();
-        let Some(prompt) = &config.prompt else { return };
+        let Some(prompt) = &config.prompt
+            else {
+                return
+            };
 
-        let env = env.borrow();
+        let env = env.borrow();        
         let mut cmd = Command::new(&prompt.exe);
-        cmd.current_dir(env.pwd())
+        cmd
+            .current_dir(env.pwd())
             .envs(env.map.iter().map(|(k, v)| (k.as_os_str(), v.as_os_str())))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -50,11 +55,11 @@ impl Prompt {
                 "@status" => {
                     let status = self.status.code().to_string();
                     cmd.arg(status);
-                }
+                },
                 "@width" => {
                     let width = size.0.to_string();
                     cmd.arg(width);
-                }
+                },
                 _ => {
                     cmd.arg(arg);
                 }

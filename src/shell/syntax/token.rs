@@ -1,6 +1,6 @@
+use logos::{ Logos, Span };
 use super::error::LexingError;
 use crate::util::arena;
-use logos::{Logos, Span};
 
 pub type TokenItem = (Token, Span);
 pub type TokenId = arena::Id<TokenItem>;
@@ -117,7 +117,7 @@ mod test {
             (Ok(Token::Redirect), "2>>"),
             (Ok(Token::Text), "fd3"),
             (Ok(Token::Then), ";"),
-            (Ok(Token::Text), "exe3"),
+            (Ok(Token::Text), "exe3")
         ];
 
         assert_eq!(expected, result);
@@ -142,7 +142,7 @@ mod test {
             (Ok(Token::Pipe), "2|"),
             (Ok(Token::Text), "exe3"),
             (Ok(Token::Pipe), "*|"),
-            (Ok(Token::Text), "exe4"),
+            (Ok(Token::Text), "exe4")
         ];
 
         assert_eq!(expected, result);
@@ -169,7 +169,7 @@ mod test {
             (Ok(Token::Backslash), "\\"),
             (Ok(Token::DoubleQuote), "\""),
             (Ok(Token::Text), "ccc"),
-            (Ok(Token::DoubleQuote), "\""),
+            (Ok(Token::DoubleQuote), "\"")
         ];
 
         assert_eq!(expected, result);
@@ -197,7 +197,7 @@ mod test {
             (Ok(Token::Pipe), "|"),
             (Ok(Token::Text), "exe3"),
             (Ok(Token::ShellClose), ")"),
-            (Ok(Token::DoubleQuote), "\""),
+            (Ok(Token::DoubleQuote), "\"")
         ];
 
         assert_eq!(expected, result);
@@ -259,6 +259,6 @@ mod test {
             (Ok(Token::SingleQuote), "'"),
         ];
 
-        assert_eq!(expected, result);
+        assert_eq!(expected, result);        
     }
 }

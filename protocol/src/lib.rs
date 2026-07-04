@@ -1,13 +1,14 @@
-use jiff::Timestamp;
-use serde::{Deserialize, Serialize};
-use serde_bytes::Bytes;
 use std::num::NonZeroU64;
+use serde::{ Serialize, Deserialize };
+use serde_bytes::Bytes;
+use jiff::Timestamp;
 
 pub type RequestId = NonZeroU64;
 
 pub const FILENAME: &str = "sek.ipc";
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct ClientMessage<'a> {
     pub request_id: RequestId,
     pub time: Timestamp,
@@ -15,7 +16,8 @@ pub struct ClientMessage<'a> {
     pub data: ClientMessageData<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct ServerMessage<'a> {
     pub request_id: Option<RequestId>,
     pub time: Timestamp,
@@ -23,7 +25,8 @@ pub struct ServerMessage<'a> {
     pub data: ServerMessageData<'a>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub enum ClientMessageData<'a> {
     ClientHello {
         version: &'a str,
@@ -31,7 +34,7 @@ pub enum ClientMessageData<'a> {
         envs: Vec<(&'a Bytes, &'a Bytes)>,
     },
     ChangeDir {
-        cwd: &'a Bytes,
+        cwd: &'a Bytes
     },
     ChangeEnv {
         key: &'a Bytes,
@@ -42,14 +45,15 @@ pub enum ClientMessageData<'a> {
     },
     EndExecute,
     RequestPrompt {
-        width: u16,
+        width: u16
     },
     RequestSuggest {
         command: &'a str,
     },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub enum ServerMessageData<'a> {
     ServerHello {
         version: &'a str,
@@ -63,9 +67,10 @@ pub enum ServerMessageData<'a> {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Prompt<'a> {
     #[serde(borrow)]
     pub data: &'a Bytes,
-    pub size: (u16, u16),
+    pub size: (u16, u16)
 }

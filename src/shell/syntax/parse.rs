@@ -1,47 +1,47 @@
-use super::Command;
-use super::error::{ErrorKind, ParseFailed};
-use super::raw::{self as syntax, Node, NodeId};
-use super::token::{Token, TokenId, TokenItem};
-use crate::util::ScopeGuard;
-use crate::util::arena::{self, Arena};
 use std::mem;
 use std::ops::ControlFlow;
+use super::Command;
+use super::error::{ ParseFailed, ErrorKind };
+use super::token::{ Token, TokenId, TokenItem };
+use super::raw::{ self as syntax, Node, NodeId };
+use crate::util::arena::{ self, Arena };
+use crate::util::ScopeGuard;
+
 
 #[derive(Default)]
 pub struct Parser {
     pub(super) tokens: Arena<TokenItem>,
-    pub(super) nodes: Arena<Node>,
+    pub(super) nodes: Arena<Node>
 }
 
 impl Parser {
     pub fn iter(&self) -> impl ExactSizeIterator<Item = NodeId> {
         self.nodes.iter()
     }
-
+    
     pub fn parse(&mut self, input: &str) -> Result<Command, ParseFailed> {
         self.parse_raw(input, false).map(Command)
     }
 
     pub fn parse_incomplete(&mut self, input: &str) -> Result<Command, ParseFailed> {
         self.parse_raw(input, true).map(Command)
-    }
-
+    }    
+    
     fn parse_raw(&mut self, input: &str, incomplete: bool) -> Result<NodeId, ParseFailed> {
         self.tokens.clear();
         self.nodes.clear();
 
         let tokens = logos::Lexer::new(input)
             .spanned()
-            .map(|(token, span)| {
-                token
-                    .map(|token| (token, span.clone()))
-                    .map_err(|err| (err, span))
-            })
+            .map(|(token, span)| token
+                .map(|token| (token, span.clone()))
+                .map_err(|err| (err, span))
+            )
             .collect::<Result<Vec<_>, _>>()
             .map_err(|(_, span)| ParseFailed {
                 token: None,
                 span: Some(span),
-                kind: ErrorKind::InvalidToken,
+                kind: ErrorKind::InvalidToken
             })?;
         self.tokens.extend(tokens);
         let null = self.nodes.alloc(Node::Null);
@@ -54,8 +54,7 @@ impl Parser {
             iter: self.tokens.iter(),
 
             is_subshell: false,
-            null,
-            incomplete,
+            null, incomplete
         };
 
         state.command()
@@ -96,7 +95,9 @@ macro_rules! lookup {
     )
 }
 
-fn failed(item: &TokenItem) -> ParseFailed {
+fn failed(item: &TokenItem)
+    -> ParseFailed
+{
     let (token, span) = &item;
     ParseFailed {
         token: Some(*token),
@@ -106,12 +107,7 @@ fn failed(item: &TokenItem) -> ParseFailed {
 }
 
 impl State<'_> {
-    fn chain_to(
-        &mut self,
-        link: NodeId,
-        current: NodeId,
-        token: TokenId,
-    ) -> Result<NodeId, ParseFailed> {
+    fn chain_to(&mut self, link: NodeId, current: NodeId, token: TokenId) -> Result<NodeId, ParseFailed> {
         let item = &self.tokens[token];
 
         {
@@ -120,12 +116,12 @@ impl State<'_> {
             if link_node.current == self.null {
                 link_node.current = current;
                 return Ok(link);
-            }
+            }  
         }
-
+        
         let next = self.nodes.alloc(Node::Link(syntax::Link {
             current,
-            next: None,
+            next: None
         }));
 
         let link = matches2!(&mut self.nodes[link], Node::Link)
@@ -134,22 +130,18 @@ impl State<'_> {
 
         Ok(next)
     }
-
+    
     fn command(&mut self) -> Result<NodeId, ParseFailed> {
         #[derive(Clone, Copy)]
         enum SubState {
             Argument(NodeId),
-            Redirect(NodeId),
+            Redirect(NodeId) 
         }
 
-        type LookupAction = fn(
-            &mut State<'_>,
-            SubState,
-            NodeId,
-            TokenId,
-        ) -> Result<ControlFlow<(), SubState>, ParseFailed>;
+        type LookupAction = fn(&mut State<'_>, SubState, NodeId, TokenId)
+            -> Result<ControlFlow<(), SubState>, ParseFailed>;
 
-        lookup! {
+        lookup!{
             static LUT = [LookupAction; Token::size()];
 
             Token::Text
@@ -177,7 +169,7 @@ impl State<'_> {
                         let cmd = matches2!(&mut state.nodes[node], Node::Command)
                             .ok_or_else(|| failed(item).with_kind(ErrorKind::Unreachable))?;
                         cmd.redirect = link;
-                        link
+                        link                  
                     },
                     SubState::Redirect(link) => link,
                 };
@@ -192,7 +184,7 @@ impl State<'_> {
                 | Token::OrIf
             => |state, _, node, token| {
                 let chain = state.chain()?;
-
+                
                 let item = &state.tokens[token];
                 let cmd = matches2!(&mut state.nodes[node], Node::Command)
                     .ok_or_else(|| failed(item).with_kind(ErrorKind::Unreachable))?;
@@ -214,12 +206,12 @@ impl State<'_> {
             Token::Comment => |_, _, _, _| Ok(ControlFlow::Break(())),
             #_ => |state, _, _, token| Err(failed(&state.tokens[token]).with_kind(ErrorKind::UnexpectedToken)),
         }
-
+        
         let node_id = self.nodes.alloc(syntax::Node::Command(syntax::Command {
             exe: self.null,
             args: self.null,
             redirect: self.null,
-            chain: self.null,
+            chain: self.null
         }));
 
         // skip empty
@@ -227,17 +219,19 @@ impl State<'_> {
             if matches!(&self.tokens[token], (Token::Empty, _)) {
                 self.iter.bump();
             } else {
-                break;
+                break
             }
-        }
+        }        
 
         // first token
         let mut substate = {
-            let token = self.iter.peek().ok_or_else(|| ParseFailed {
-                token: None,
-                kind: ErrorKind::EmptyCommand,
-                span: self.iter.prev().map(|id| self.tokens[id].1.clone()),
-            })?;
+            let token = self.iter.peek()
+                .ok_or_else(|| ParseFailed {
+                    token: None,
+                    kind: ErrorKind::EmptyCommand,
+                    span: self.iter.prev()
+                        .map(|id| self.tokens[id].1.clone())
+                })?;
             let item = &self.tokens[token];
             let (token, _span) = item;
 
@@ -249,16 +243,15 @@ impl State<'_> {
                 | Token::ShellOpen
                 | Token::Backslash
                 | Token::Variable => (),
-                Token::ShellClose if self.is_subshell => {
-                    return Err(failed(item).with_kind(ErrorKind::EmptyCommand));
-                }
+                Token::ShellClose if self.is_subshell =>
+                    return Err(failed(item).with_kind(ErrorKind::EmptyCommand)),
                 _ => return Err(failed(item).with_kind(ErrorKind::UnexpectedToken)),
             }
 
             let exe = self.arg()?;
             let args = self.nodes.alloc(Node::Link(syntax::Link {
                 current: self.null,
-                next: None,
+                next: None
             }));
 
             let cmd = matches2!(&mut self.nodes[node_id], Node::Command)
@@ -279,22 +272,19 @@ impl State<'_> {
             }
         }
 
-        Ok(node_id)
+        Ok(node_id)        
     }
 
     fn arg(&mut self) -> Result<NodeId, ParseFailed> {
         #[derive(Clone, Copy)]
         struct SubState {
-            link: NodeId,
+            link: NodeId
         }
 
-        type LookupAction = fn(
-            &mut State<'_>,
-            SubState,
-            TokenId,
-        ) -> Result<ControlFlow<TokenId, SubState>, ParseFailed>;
+        type LookupAction = fn(&mut State<'_>, SubState, TokenId)
+            -> Result<ControlFlow<TokenId, SubState>, ParseFailed>;
 
-        lookup! {
+        lookup!{
             static LUT = [LookupAction; Token::size()];
 
             Token::SingleQuote => |state, substate, token| {
@@ -318,7 +308,7 @@ impl State<'_> {
                         kind: ErrorKind::ExpectedVariableName
                     });
                 }
-
+                
                 let node = state.nodes.alloc(Node::Variable(syntax::Variable(token)));
                 let next = state.chain_to(substate.link, node, token)?;
                 Ok(ControlFlow::Continue(SubState { link: next }))
@@ -338,7 +328,7 @@ impl State<'_> {
                 let (_, span) = &state.tokens[token];
                 let node = state.nodes.alloc(Node::Literal(syntax::Literal(span.clone())));
                 let next = state.chain_to(substate.link, node, token)?;
-                Ok(ControlFlow::Continue(SubState { link: next }))
+                Ok(ControlFlow::Continue(SubState { link: next }))               
             },
             Token::Backslash => |state, substate, token| {
                 let node = state.escape()?;
@@ -357,14 +347,14 @@ impl State<'_> {
 
         let link = self.nodes.alloc(Node::Link(syntax::Link {
             current: self.null,
-            next: None,
+            next: None
         }));
         let mut substate = SubState { link };
-        let point_start = self
-            .iter
-            .peek()
+        let point_start = self.iter.peek()
             .map(|token| self.tokens[token].1.start)
-            .or_else(|| self.iter.prev().map(|token| self.tokens[token].1.end))
+            .or_else(|| self.iter.prev()
+                .map(|token| self.tokens[token].1.end)
+            )
             .unwrap_or_default();
         let mut token_end = None;
 
@@ -376,7 +366,7 @@ impl State<'_> {
                 ControlFlow::Continue(next) => substate = next,
                 ControlFlow::Break(token) => {
                     token_end = Some(token);
-                    break;
+                    break
                 }
             }
         }
@@ -387,8 +377,8 @@ impl State<'_> {
 
         Ok(self.nodes.alloc(Node::Argument(syntax::Argument {
             span: point_start..point_end,
-            list: link,
-        })))
+            list: link
+        })))        
     }
 
     fn single_str(&mut self) -> Result<NodeId, ParseFailed> {
@@ -400,33 +390,29 @@ impl State<'_> {
         for token in self.iter.by_ref() {
             if matches!(&self.tokens[token], (Token::SingleQuote, _)) {
                 end_token = Some(token);
-                break;
+                break
             }
         }
 
         if !self.incomplete && end_token.is_none() {
             return Err(failed(&self.tokens[start_token]).with_kind(ErrorKind::ExpectedClose));
-        }
+        }        
 
         Ok(self.nodes.alloc(Node::SingleStr(syntax::SingleStr {
-            start_token,
-            end_token,
+            start_token, end_token
         })))
     }
 
     fn double_str(&mut self) -> Result<NodeId, ParseFailed> {
         #[derive(Clone, Copy)]
         struct SubState {
-            link: NodeId,
+            link: NodeId
         }
 
-        type LookupAction = fn(
-            &mut State<'_>,
-            SubState,
-            TokenId,
-        ) -> Result<ControlFlow<TokenId, SubState>, ParseFailed>;
+        type LookupAction = fn(&mut State<'_>, SubState, TokenId)
+            -> Result<ControlFlow<TokenId, SubState>, ParseFailed>;
 
-        lookup! {
+        lookup!{
             static LUT = [LookupAction; Token::size()];
 
             Token::SingleQuote
@@ -454,7 +440,7 @@ impl State<'_> {
                     let lit = state.nodes.alloc(Node::Literal(syntax::Literal(span.clone())));
                     state.chain_to(substate.link, lit, token)?
                 };
-
+                
                 state.iter.bump();
                 Ok(ControlFlow::Continue(SubState { link }))
             },
@@ -478,10 +464,10 @@ impl State<'_> {
                         kind: ErrorKind::ExpectedVariableName
                     });
                 }
-
+                                
                 let node = state.nodes.alloc(Node::Variable(syntax::Variable(token)));
                 let next = state.chain_to(substate.link, node, token)?;
-                Ok(ControlFlow::Continue(SubState { link: next }))
+                Ok(ControlFlow::Continue(SubState { link: next }))               
             },
             Token::Backslash => |state, substate, token| {
                 let node = state.escape()?;
@@ -494,13 +480,12 @@ impl State<'_> {
         let start_token = self.iter.next().unwrap();
         debug_assert!(
             matches!(&self.tokens[start_token], (Token::DoubleQuote, _)),
-            "{:?}",
-            self.tokens[start_token]
+            "{:?}", self.tokens[start_token]
         );
 
         let link = self.nodes.alloc(Node::Link(syntax::Link {
             current: self.null,
-            next: None,
+            next: None
         }));
         let mut substate = SubState { link };
         let mut end_token = None;
@@ -513,7 +498,7 @@ impl State<'_> {
                 ControlFlow::Continue(next) => substate = next,
                 ControlFlow::Break(last) => {
                     end_token = Some(last);
-                    break;
+                    break
                 }
             }
         }
@@ -523,29 +508,23 @@ impl State<'_> {
         }
 
         Ok(self.nodes.alloc(Node::DoubleStr(syntax::DoubleStr {
-            start_token,
-            end_token,
-            list: link,
-        })))
+            start_token, end_token,
+            list: link
+        })))        
     }
 
     fn escape(&mut self) -> Result<NodeId, ParseFailed> {
         let token = self.iter.next().unwrap();
         assert!(matches!(&self.tokens[token], (Token::Backslash, _)));
 
-        let value = self
-            .iter
-            .peek()
+        let value = self.iter.peek()
             .ok_or_else(|| failed(&self.tokens[token]).with_kind(ErrorKind::IncompleteEscape))?;
 
         if let (Token::Text, _) = &self.tokens[value] {
             Err(failed(&self.tokens[token]).with_kind(ErrorKind::UnknownEscape))
         } else {
             self.iter.bump();
-            Ok(self.nodes.alloc(Node::Escape(syntax::Escape {
-                backslash: token,
-                value,
-            })))
+            Ok(self.nodes.alloc(Node::Escape(syntax::Escape { backslash: token, value })))
         }
     }
 
@@ -573,15 +552,13 @@ impl State<'_> {
         }
 
         Ok(state.nodes.alloc(Node::SubShell(syntax::SubShell {
-            start_token,
-            end_token,
-            cmd,
+            start_token, end_token, cmd
         })))
     }
 
     fn redirect(&mut self) -> Result<NodeId, ParseFailed> {
         use syntax::StdioKind;
-
+        
         fn parse_redirect(token: &str) -> Option<(StdioKind, bool)> {
             match token {
                 ">" | "1>" => Some((StdioKind::Out, false)),
@@ -590,7 +567,7 @@ impl State<'_> {
                 "2>>" => Some((StdioKind::Err, true)),
                 "*>" => Some((StdioKind::All, false)),
                 "*>>" => Some((StdioKind::All, true)),
-                _ => None,
+                _ => None
             }
         }
 
@@ -607,7 +584,7 @@ impl State<'_> {
             if matches!(&self.tokens[token], (Token::Empty, _)) {
                 self.iter.bump();
             } else {
-                break;
+                break
             }
         }
 
@@ -616,14 +593,13 @@ impl State<'_> {
         Ok(self.nodes.alloc(Node::Redirect(syntax::Redirect {
             token: token_id,
             value: node,
-            kind,
-            append,
+            kind, append
         })))
     }
 
     fn chain(&mut self) -> Result<NodeId, ParseFailed> {
-        use syntax::{ChainKind, StdioKind};
-
+        use syntax::{ ChainKind, StdioKind };
+        
         let token_id = self.iter.next().unwrap();
         let item = &self.tokens[token_id];
         let (token, span) = item;
@@ -638,7 +614,7 @@ impl State<'_> {
                 };
 
                 ChainKind::Pipe(stdio)
-            }
+            },
             Token::Then => ChainKind::Then,
             Token::AndIf => ChainKind::AndIf,
             Token::OrIf => ChainKind::OrIf,
@@ -649,8 +625,7 @@ impl State<'_> {
 
         Ok(self.nodes.alloc(Node::Chain(syntax::Chain {
             token: token_id,
-            kind,
-            shell,
+            kind, shell
         })))
     }
 }

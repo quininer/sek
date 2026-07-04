@@ -1,19 +1,19 @@
 pub mod arena;
-pub mod path;
 pub mod stdout;
+pub mod path;
 
-use serde::Deserialize;
-use std::borrow::Cow;
-use std::future::Future;
+use std::{ io, fmt };
 use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::{fmt, io};
+use std::future::Future;
+use std::task::{ Context, Poll };
+use std::borrow::Cow;
+use serde::Deserialize;
 
 macro_rules! matches2 {
     ( $expr:expr, $item:path ) => {
         match $expr {
-            $item(val) => Some(val),
-            _ => None,
+            $item ( val ) => Some(val),
+            _ => None
         }
     };
 }
@@ -60,7 +60,7 @@ impl io::Write for RefWriter<'_> {
 pub struct CowStr<'s>(
     #[serde(borrow)]
     #[serde(deserialize_with = "deserialize_cow")]
-    pub Cow<'s, str>,
+    pub Cow<'s, str>
 );
 
 impl AsRef<str> for CowStr<'_> {
@@ -73,9 +73,9 @@ fn deserialize_cow<'de, D>(deserializer: D) -> Result<Cow<'de, str>, D::Error>
 where
     D: serde::de::Deserializer<'de>,
 {
-    use serde::de;
     use std::fmt;
-
+    use serde::de;
+    
     struct Visitor;
 
     impl<'de> de::Visitor<'de> for Visitor {
@@ -113,16 +113,18 @@ impl<T: std::fmt::Debug> fmt::Display for FmtDebug<T> {
 pub struct MapWindows2<I: Iterator, F> {
     iter: I,
     f: F,
-    buffer: Option<[I::Item; 2]>,
+    buffer: Option<[I::Item; 2]>
 }
 
 impl<I, F, U> MapWindows2<I, F>
 where
     I: Iterator,
-    F: FnMut(&[I::Item; 2]) -> U,
-{
+    F: FnMut(&[I::Item; 2]) -> U
+{    
     pub fn new(mut iter: I, f: F) -> Self {
-        let buffer = iter.next().zip(iter.next()).map(|(x, y)| [x, y]);
+        let buffer = iter.next()
+            .zip(iter.next())
+            .map(|(x, y)| [x, y]);
         MapWindows2 { iter, f, buffer }
     }
 }
@@ -130,7 +132,7 @@ where
 impl<I, F, U> Iterator for MapWindows2<I, F>
 where
     I: Iterator,
-    F: FnMut(&[I::Item; 2]) -> U,
+    F: FnMut(&[I::Item; 2]) -> U
 {
     type Item = U;
 
@@ -151,7 +153,7 @@ where
 
 pub enum Either<L, R> {
     Left(L),
-    Right(R),
+    Right(R)
 }
 
 pin_project_lite::pin_project! {
@@ -177,14 +179,16 @@ impl<L: Future, R: Future> Future for Select<L, R> {
 
         match this.left.poll(cx) {
             Poll::Ready(result) => Poll::Ready(Either::Left(result)),
-            Poll::Pending => this.right.poll(cx).map(Either::Right),
+            Poll::Pending => this.right.poll(cx).map(Either::Right)
         }
     }
 }
 
-pub fn is_contains(haystack: &[u8], needle: &str, case_sensitive: bool) -> bool {
+pub fn is_contains(haystack: &[u8], needle: &str, case_sensitive: bool)
+    -> bool
+{
     use bstr::ByteSlice;
-
+    
     if needle.is_empty() {
         false
     } else if case_sensitive {
@@ -204,14 +208,14 @@ pub fn is_contains(haystack: &[u8], needle: &str, case_sensitive: bool) -> bool 
             }
         }
 
-        false
+        false        
     }
 }
 
 #[cfg(unix)]
 pub fn setup_signal_handler() -> io::Result<()> {
     let mut result = 0;
-
+    
     unsafe {
         let mut act: libc::sigaction = std::mem::zeroed();
         act.sa_flags = 0;
