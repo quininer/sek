@@ -22,9 +22,9 @@ impl TempDir {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_nanos();
+            .subsec_nanos();
         let path = std::env::temp_dir()
-            .join(format!("sek-{name}-{}-{suffix}", std::process::id()));
+            .join(format!("sek-{name}-{}-{suffix:x}", std::process::id()));
         fs::create_dir_all(&path)?;
         Ok(Self { path })
     }
@@ -194,13 +194,17 @@ fn visible_name_count(rows: &[String], names: &[String]) -> usize {
 
 #[test]
 fn prompt_refreshes_after_resize() -> Result<()> {
-    let temp = TempDir::new("prompt-resize")?;
+    let temp = TempDir::new("pr")?;
+    let home = temp.path().join("home");
+    let cwd = temp.path().join("cwd");
+    fs::create_dir_all(&home)?;
+    fs::create_dir_all(&cwd)?;
     let prompt = temp.path().join("prompt.sh");
     write_executable(&prompt, "#!/bin/sh\nprintf 'P%s' \"$1\"\n")?;
     let config = write_prompt_config(temp.path(), &prompt, &["@width"])?;
 
     let initial = Term::new().width(10).height(4);
-    let mut session = PtySession::spawn(temp.path(), &config, initial, temp.path())?;
+    let mut session = PtySession::spawn(&cwd, &config, initial, &home)?;
     session.wait_for(Duration::from_secs(5), |session| {
         session.rows().first().is_some_and(|row| row.contains("P10"))
     })?;
@@ -216,19 +220,23 @@ fn prompt_refreshes_after_resize() -> Result<()> {
 
 #[test]
 fn path_selector_expands_visible_entries_after_resize() -> Result<()> {
-    let temp = TempDir::new("path-selector-resize")?;
+    let temp = TempDir::new("ps")?;
+    let home = temp.path().join("home");
+    let cwd = temp.path().join("cwd");
+    fs::create_dir_all(&home)?;
+    fs::create_dir_all(&cwd)?;
     let config = write_empty_config(temp.path())?;
 
     let names = (0..8)
         .map(|idx| format!("entry{idx}"))
         .collect::<Vec<_>>();
     for name in &names {
-        fs::write(temp.path().join(name), name)?;
+        fs::write(cwd.join(name), name)?;
     }
 
     let initial = Term::new().width(40).height(5);
-    let mut session = PtySession::spawn(temp.path(), &config, initial, temp.path())?;
-    session.send(b"./\t")?;
+    let mut session = PtySession::spawn(&cwd, &config, initial, &home)?;
+    session.send(b"echo ./\t")?;
     session.wait_for(Duration::from_secs(5), |session| {
         visible_name_count(&session.rows(), &names) >= 2
     })?;
