@@ -141,32 +141,33 @@ impl Morgue {
             }
         }
 
-        let child = cmd.spawn()?;
+        let child = cmd.spawn();
 
         #[cfg(unix)] {
-
             if let Some(leader) = leader
                 && leader.pgid.get().is_none()
             {
-                let pgid = child.id().unwrap() as libc::pid_t;
-                leader.pgid.set(Some(pgid));
+                let pgid = child
+                    .as_ref()
+                    .map(|child| child.id().unwrap())
+                    .unwrap_or_default();
+                leader.pgid.set(Some(pgid as libc::pid_t));
             }
         }
 
         Ok(Child {
-            child: Some(child),
+            child: Some(child?),
             morgue: self.clone(),
             new_group: leader.is_some()
         })
     }
 
     #[allow(clippy::await_holding_refcell_ref)]    
-    pub async fn wait(&self, leader: Option<&Leader>) -> io::Result<()> {
+    pub async fn wait(&self, leader: &Leader) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 
         #[cfg(unix)]
         if !queue.is_empty()
-            && let Some(leader) = leader
             && let Some(pgid) = leader.pgid.get()
         {
             debug_assert_ne!(self.pgid, pgid);
@@ -191,7 +192,7 @@ impl Morgue {
         #[cfg(unix)] {
             use std::os::fd::AsRawFd;
 
-            if leader.is_some_and(|leader| leader.pgid.get().is_some()) {
+            if leader.pgid.get().is_some() {
                 unsafe {
                     if libc::tcsetpgrp(io::stdin().as_raw_fd(), self.pgid) != 0 {
                         return Err(io::Error::last_os_error());

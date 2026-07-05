@@ -14,7 +14,7 @@ pub async fn execute(shell: &Shell, input: &str, cmd: syntax::Command)
 {
     let leader = Leader::default();
     let result = eval::execute(shell, input, cmd, &leader).await;
-    shell.morgue.wait(Some(&leader)).await?;
+    shell.morgue.wait(&leader).await?;
     result
 }
 
@@ -37,6 +37,7 @@ pub enum Child<'a> {
     External(external::Child),
 }
 
+#[derive(Debug)]
 pub enum Status {
     BuiltIn(bool),
     Process(ExitStatus),
