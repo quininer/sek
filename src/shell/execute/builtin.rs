@@ -44,6 +44,10 @@ async fn set_env(shell: &Shell, args: &[BString]) -> anyhow::Result<bool> {
     let val = &args[1].to_os_str().context("not os str value")?;
     shell.env.borrow_mut().set(key, val.into());
 
+    if let Some(ipc) = shell.ipc.as_ref() {
+        ipc.borrow_mut().env_changed(key);
+    }
+
     Ok(true)    
 }
 
@@ -53,14 +57,24 @@ async fn unset_env(shell: &Shell, args: &[BString]) -> anyhow::Result<bool> {
     let key = &args[0].to_os_str().context("not os str key")?;
     shell.env.borrow_mut().unset(key);
 
+    if let Some(ipc) = shell.ipc.as_ref() {
+        ipc.borrow_mut().env_changed(key);
+    }
+
     Ok(true)    
 }
 
 async fn push_path(shell: &Shell, args: &[BString]) -> anyhow::Result<bool> {
+    use std::ffi::OsStr;
+    
     anyhow::ensure!(args.len() == 1, "push-path args length != 1");
     
     let path = &args[0].to_path().context("not os str value")?;
     shell.env.borrow_mut().push_path(path)?;
+
+    if let Some(ipc) = shell.ipc.as_ref() {
+        ipc.borrow_mut().env_changed(OsStr::new("PATH"));
+    }
 
     Ok(true)    
 }

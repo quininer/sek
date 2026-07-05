@@ -135,6 +135,8 @@ impl Editor {
                     _ => ()
                 }
 
+                self.suggestion.clear();
+
                 let cursor = self.insert.cursor_mut();
                 cursor.start = cursor.end;
             },
@@ -250,6 +252,13 @@ impl Editor {
                     self.mode = Mode::Normal,
 
                 // move
+                (Mode::Normal | Mode::Visual, None, KeyCode::Char('0')) => {
+                    self.insert.move_head();
+
+                    if matches!(self.mode, Mode::Normal) {
+                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    }
+                },
                 (Mode::Normal | Mode::Visual, None, KeyCode::Char('h')) => {
                     self.insert.move_left();
 
@@ -295,9 +304,11 @@ impl Editor {
                 // history
                 (Mode::Normal | Mode::Visual, None, KeyCode::Up | KeyCode::Char('k')) => {
                     self.insert.up();
+                    self.suggestion.clear();
                 },
                 (Mode::Normal | Mode::Visual, None, KeyCode::Down | KeyCode::Char('j')) => {
                     self.insert.down();
+                    self.suggestion.clear();
                 },
 
                 // execute
@@ -310,6 +321,7 @@ impl Editor {
                 // delete selection
                 (Mode::Visual, None, KeyCode::Char('d')) => {
                     self.insert.replace_str_inclusive("", Some(&mut self.clipboard));
+                    self.suggestion.clear();
                     self.mode = Mode::Normal;
                 },
 
@@ -319,6 +331,7 @@ impl Editor {
                     self.clipboard.clear();
                     self.clipboard.push_str(self.insert.as_str());
                     self.insert.clear();
+                    self.suggestion.clear();
                 },
 
                 // gh
@@ -350,6 +363,7 @@ impl Editor {
                     cursor.end = char_len.min(cursor.end.saturating_add(1));
 
                     self.insert.push_str(&self.clipboard);
+                    self.suggestion.clear();
 
                     let cursor = self.insert.cursor_mut();
                     cursor.end = cursor.start.max(cursor.end.saturating_sub(1));
@@ -360,6 +374,7 @@ impl Editor {
                     self.insert.replace_str_inclusive(&self.clipboard, None);
                     *self.insert.cursor_mut() =
                         start..(start + self.clipboard.chars().count().saturating_sub(1));
+                    self.suggestion.clear();
                 },
 
                 // visual cancel
@@ -441,6 +456,7 @@ impl Editor {
                         } else {
                             self.insert.replace_str_inclusive(&path, None);
                         }
+                        self.suggestion.clear();
                         self.mode = Mode::Insert;
                     }
                 },
@@ -480,12 +496,14 @@ impl Editor {
                 (Mode::CompleteSelector, None, KeyCode::Enter) => {
                     let s = &self.complete_selector.list[self.complete_selector.cur];
                     self.insert.replace_str_inclusive(s, None);
+                    self.suggestion.clear();
                     self.mode = Mode::Insert;
                 },
                 (Mode::CompleteSelector, None, KeyCode::Char(' ')) => {
                     let s = &self.complete_selector.list[self.complete_selector.cur];
                     self.insert.replace_str_inclusive(s, None);
                     self.insert.push(' ');
+                    self.suggestion.clear();
                     self.mode = Mode::Insert;
                 },
 

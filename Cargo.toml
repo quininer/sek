@@ -11,6 +11,7 @@ path = "src/main.rs"
 [workspace]
 members = [ "protocol" ]
 exclude = [ "scripts" ]
+# members = [ "protocol", "scripts/fish-as-a-complete-engine", "scripts/atuin-daemon" ]
 
 [dependencies]
 sek-protocol = { path = "protocol" }
@@ -24,7 +25,7 @@ memchr = { version = "2", default-features = false }
 futures-core = { version = "0.3", default-features = false }
 
 # options
-argh = "0.1"
+argh = { version = "0.1", default-features = false, features = [ "help" ] }
 directories = "6"
 serde = { version = "1", features = [ "derive" ] }
 serde_bytes = { version = "0.11", default-features = false }
@@ -47,7 +48,7 @@ icu_collator = "2"
 # command execute
 tokio = { version = "1", features = [
   "rt", "io-util", "sync",
-  "signal", "process", "net",
+  "signal", "process", "time", "net",
 ] }
 
 # executable file

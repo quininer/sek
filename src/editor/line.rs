@@ -391,7 +391,8 @@ impl Suggestion {
     pub fn as_str<'a>(&'a self, line: &'a EditableLine) -> &'a str {
         match self.kind {
             SuggestionKind::Nothing => "",
-            SuggestionKind::Value => &self.buf,
+            SuggestionKind::Value =>
+                self.buf.strip_prefix(&line.line.buf).unwrap_or_default(),
             SuggestionKind::History(idx) => {
                 let history = &line.list[idx];
                 history.buf.strip_prefix(&line.line.buf).unwrap_or_default()
@@ -425,7 +426,11 @@ impl Suggestion {
         match self.kind {
             SuggestionKind::Nothing => (),
             SuggestionKind::Value => {
+                line.clear();
                 line.push_str(&self.buf);
+                let is_ascii = line.line.buf.is_ascii();
+                line.update(0, 0, || is_ascii);
+                line.move_end();
                 line.line.cursor.start = line.line.cursor.end;
             },
             SuggestionKind::History(idx) => {

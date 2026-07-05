@@ -1,0 +1,24 @@
+[package]
+name = "sek-autin-daemon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sek-protocol = { path = "../../protocol" }
+
+anyhow = "1"
+argh = { version = "0.1", default-features = false, features = [ "help" ] }
+directories = "6"
+cbor4ii = { version = "1", features = [ "serde1", "use_std" ] }
+jiff = { version = "0.2", default-features = false, features = [ "std", "serde" ] }
+time = { version = "0.3", default-features = false }
+atuin-client = { version = "18", default-features = false }
+
+tokio = { version = "1", features = [
+  "rt", "io-util", "sync", "net", "time",
+] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3" }
+
+libc = "0.2"
+hostname = "0.4"

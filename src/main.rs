@@ -22,6 +22,7 @@ fn main() -> anyhow::Result<()> {
 
     #[cfg(unix)]
     builder.enable_io();
+    builder.enable_time();
 
     let rt = builder.build()?;
     let shell = sek::shell::Shell::new(options.config.take())?;

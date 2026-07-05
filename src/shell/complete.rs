@@ -248,7 +248,6 @@ impl CompletionType {
     }
 }
 
-#[allow(clippy::await_holding_refcell_ref)]
 pub async fn do_complete<T: TermTarget>(
     shell: &mut Shell,
     renderer: &mut Renderer<T>,

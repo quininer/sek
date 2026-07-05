@@ -5,10 +5,11 @@ pub mod complete;
 pub mod prompt;
 
 use std::io;
+use std::pin::Pin;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use crossterm::terminal;
-use crossterm::event::Event;
+use crossterm::event::{ Event, EventStream };
 use crate::ipc;
 use crate::cache::{ self, Cache };
 use crate::config::{ self, Config };
@@ -27,13 +28,14 @@ pub struct Shell {
     pub config: RefCell<Config>,
     pub env: RefCell<Environment>,
     pub cache: RefCell<Cache>,
-    pub ipc: Option<ipc::Client>,
+    pub ipc: Option<RefCell<ipc::Client>>,
     pub morgue: Morgue,
     pub prompt: Prompt,
     pub editor: Editor,
     pub parser: syntax::Parser,
     pub ast: Option<syntax::Command>,
     pub error: Option<String>,
+    pub wait_request: Option<ipc::RequestId>,
 }
 
 impl Shell {
@@ -69,6 +71,7 @@ impl Shell {
             ipc: None,
             morgue: Morgue::default(),
             prompt: Prompt::default(),
+            wait_request: None,
             env, editor, parser, config, cache,
         })        
     }
@@ -81,9 +84,9 @@ impl Shell {
         let stdout = Stdout::from(io::stdout());
 
         match ipc::Client::connect(&self.env).await {
-            Ok(Some(client)) => self.ipc = Some(client),
+            Ok(Some(client)) => self.ipc = Some(RefCell::new(client)),
             Ok(None) => (),
-            Err(err) => warn(&|| stdout.lock(), ": ipc connect failed; ", &err)?
+            Err(err) => warn(&|| stdout.lock(), "ipc connect failed; ", &err)?
         }        
 
         runloop(&mut self, &stdout).await
@@ -100,11 +103,6 @@ async fn runloop(
     shell: &mut Shell,
     stdout: &Stdout,
 ) -> anyhow::Result<()> {
-    use std::pin::Pin;
-    use std::task::Poll;
-    use std::future::poll_fn;
-    use futures_core::Stream;
-    use crossterm::event::EventStream;
     use crate::util::{ Select, Either };
     use crate::ipc;
 
@@ -123,35 +121,63 @@ async fn runloop(
         renderer.render(&shell.editor.ui.table, shell)?;
         
         match Select::new(
-            poll_fn(|cx| loop {
-                match reader.as_mut().poll_next(cx) {
-                    Poll::Ready(Some(Ok(ev))) if ev.is_key_release() => (),
-                    ret => break ret
-                }
-            }),
-            ipc::readable(shell.ipc.as_ref())
+            Select::new(
+                input(reader.as_mut()),
+                request_debounce(shell)
+            ),
+            ipc::read(shell.ipc.as_ref(), &mut ipcbuf)
         ).await {
-            Either::Left(Some(event)) => {
+            Either::Left(Either::Left(Some(event))) => {
                 if !process_input(
                     shell,
                     &mut renderer,
                     &mut error_renderer,
+                    &mut ipcbuf,
                     event?
                 ).await? {
                     break
                 }
-            },
-            Either::Left(None) =>
-                anyhow::bail!("terminal input stop"),
-            Either::Right(ready) => {
-                let mut err = ready.err();
 
-                if err.is_none() {
-                    err = process_msg(shell, &mut ipcbuf).await.err();
+                let mut has_error = false;
+
+                if let Some(ipc) = shell.ipc.as_ref()
+                    && let Err(err) = ipc.borrow_mut()
+                        .send_update(&shell.env, &mut ipcbuf)
+                        .await
+                {
+                    warn(&renderer.term, "ipc error; ", &err)?;
+                    has_error = true;
                 }
-                
+
+                if has_error {
+                    shell.ipc = None;
+                }
+            },
+            Either::Left(Either::Left(None)) =>
+                anyhow::bail!("terminal input stop"),
+            Either::Left(Either::Right(())) => {
+                match ipc::request_suggest(
+                    shell.ipc.as_ref(),
+                    &mut ipcbuf,
+                    shell.editor.insert.as_str()
+                ).await {
+                    Ok(Some(request_id)) =>
+                        shell.wait_request = Some(request_id),
+                    Ok(None) => (),
+                    Err(err) => {
+                        warn(&renderer.term, "ipc error; ", &err)?;
+                        shell.ipc = None;
+                    }
+                }
+            },
+            Either::Right(msg) => {
+                let err = match msg {
+                    Ok(msg) => process_msg(shell, msg).await.err(),
+                    Err(err) => Some(err)
+                };
+
                 if let Some(err) = err {
-                    warn(&renderer.term, ": ipc error; ", &err)?;
+                    warn(&renderer.term, "ipc error; ", &err)?;
                     shell.ipc = None;
                 }
             }
@@ -161,10 +187,40 @@ async fn runloop(
     Ok(())
 }
 
+async fn request_debounce(shell: &Shell) {
+    use std::time::Duration;
+    
+    if shell.ipc.is_some()
+        && !shell.editor.insert.as_str().is_empty()
+        && !shell.editor.insert.as_str().starts_with(' ')
+        && shell.editor.insert.is_editing()
+        && shell.editor.insert.is_point_end()
+        && !shell.editor.suggestion.has_suggest()
+    {
+        tokio::time::sleep(Duration::from_millis(300)).await
+    } else {
+        std::future::pending().await
+    }
+}
+
+async fn input(mut reader: Pin<&mut EventStream>) -> Option<io::Result<Event>> {
+    use std::task::Poll;
+    use std::future::poll_fn;
+    use futures_core::Stream;
+
+    poll_fn(|cx| loop {
+        match reader.as_mut().poll_next(cx) {
+            Poll::Ready(Some(Ok(ev))) if ev.is_key_release() => (),
+            ret => break ret
+        }
+    }).await
+}
+
 async fn process_input<T: TermTarget>(
     shell: &mut Shell,
     renderer: &mut Renderer<T>,
     error_renderer: &mut Option<annotate_snippets::Renderer>,
+    ipcbuf: &mut Vec<u8>,
     event: Event
 ) -> anyhow::Result<bool> {
     if let Event::Resize(x, y) = &event
@@ -211,7 +267,6 @@ async fn process_input<T: TermTarget>(
         shell.parser.parse_incomplete(line)
     };
     shell.ast = result.as_ref().ok().copied();
-    shell.editor.suggestion.clear();
 
     if let Ok(cmd) = result {
         if matches!(action, Ok(Action::Completion)) {
@@ -261,11 +316,24 @@ async fn process_input<T: TermTarget>(
         renderer.new_line(&"")?;
         
         if let Some(cmd) = shell.ast.take() {
-            let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
-                let _ = terminal::enable_raw_mode();
-            });
-            
-            match execute::execute(shell, shell.editor.insert.as_str(), cmd).await {
+            let input = shell.editor.insert.as_str();
+            let request_id = ipc::start_execute(shell.ipc.as_ref(), ipcbuf, input)
+                .await
+                .ok()
+                .flatten();
+
+            let result = {
+                let _guard = ScopeGuard(terminal::disable_raw_mode(), |_| {
+                    let _ = terminal::enable_raw_mode();
+                });
+
+                execute::execute(shell, input, cmd).await
+            };
+
+            let code = result.as_ref().ok().map(|status| status.code()).unwrap_or(-1);
+            let _ = ipc::end_execute(shell.ipc.as_ref(), ipcbuf, request_id, code).await;
+
+            match result {
                 Ok(status) => shell.prompt.set_status(status),
                 Err(err) => warn(&renderer.term, "", &err)?,
             }
@@ -280,15 +348,25 @@ async fn process_input<T: TermTarget>(
     Ok(true)
 }
 
-async fn process_msg(shell: &mut Shell, ipcbuf: &mut Vec<u8>) -> anyhow::Result<()> {
-    let Some(ipc) = shell.ipc.as_mut()
-        else {
-            return Ok(());
-        };
-    
-    let _msg = ipc.recv_msg(ipcbuf).await?;
+async fn process_msg(
+    shell: &mut Shell,
+    msg: ipc::ServerMessage<'_>,
+) -> anyhow::Result<()> {
+    if shell.wait_request.is_none()
+        && shell.wait_request != msg.request_id
+    {
+        return Ok(());
+    }
 
-    // TODO impl
+    match msg.data {
+        ipc::ServerMessageData::PushSuggest { command } => {
+            shell.editor.suggestion.set_value(command);
+        },
+        ipc::ServerMessageData::PushHistory { .. } => {
+            // TODO
+        },
+        _ => ()
+    }
 
     Ok(())
 }

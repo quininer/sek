@@ -162,7 +162,6 @@ impl Morgue {
         })
     }
 
-    #[allow(clippy::await_holding_refcell_ref)]    
     pub async fn wait(&self, leader: &Leader) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 
@@ -189,14 +188,13 @@ impl Morgue {
             ghost.wait().await?;
         }
 
-        #[cfg(unix)] {
+        #[cfg(unix)]
+        if leader.pgid.get().is_some() {
             use std::os::fd::AsRawFd;
 
-            if leader.pgid.get().is_some() {
-                unsafe {
-                    if libc::tcsetpgrp(io::stdin().as_raw_fd(), self.pgid) != 0 {
-                        return Err(io::Error::last_os_error());
-                    }
+            unsafe {
+                if libc::tcsetpgrp(io::stdin().as_raw_fd(), self.pgid) != 0 {
+                    return Err(io::Error::last_os_error());
                 }
             }
         }

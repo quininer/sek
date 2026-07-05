@@ -43,12 +43,19 @@ pub enum ClientMessageData<'a> {
     StartExecute {
         command: &'a str,
     },
-    EndExecute,
+    EndExecute {
+        request_id: RequestId,
+        code: i32,
+    },
     RequestPrompt {
         width: u16
     },
     RequestSuggest {
         command: &'a str,
+    },
+    RequestHistory {
+        command: &'a str,
+        num: u16,
     },
 }
 
@@ -65,6 +72,9 @@ pub enum ServerMessageData<'a> {
     PushSuggest {
         command: &'a str,
     },
+    PushHistory {
+        commands: Vec<&'a str>,
+    }
 }
 
 #[derive(Serialize, Deserialize)]

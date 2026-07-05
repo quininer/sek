@@ -127,7 +127,9 @@ impl Environment {
     }
 
     pub fn home(&self) -> &Path {
-        self.userdir.home_dir()
+        self.get(OsStr::new("HOME"))
+            .map(Path::new)
+            .unwrap_or(self.userdir.home_dir())
     }
 
     pub fn pwd(&self) -> &Path {
