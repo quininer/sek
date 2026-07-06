@@ -59,12 +59,6 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-### No environment variable (and subshell) expand
-
-Like glob, this is also a footgun function.
-
-It is important in script, but I have never used it in interactive mode.
-
 ### No unpopular syntax
 
 There are some almost quirky syntax in shell,
@@ -92,5 +86,27 @@ On the contrary, it is designed to satisfy my personal use.
 + [x] Completion UI
 + [x] Prompt
 + [x] History-based suggestion
-+ [ ] Persistent history
-+ [ ] Rule-based completion
++ [x] Shell completion
++ [ ] Persistent history daemon
+
+### External feature
+
+I don’t plan to start from scratch,
+especially since features like command completion require a lot of ecosystem,
+which means it’s impossible to have a good user experience in the early stages.
+
+Fortunately, tools like `fish` and `starship` provide excellent support for this.
+
+As a result, we gain an additional benefit.
+because our complex feature run in separate processes, they can be sandboxed.
+This means we won’t be vulnerable to attacks from an untrusted codebase simply
+because the `prompt` function executes a `git` or the `complete` executes a `cargo` command.
+
+As a result, we gain an additional benefit.
+because our complex feature runs in separate processes, it can be sandboxed.
+This means that when execute `git` (by prompt) and `cargo` (by complete) in untrusted codebase,
+we add an extra layer of defense.
+
+# License
+
+This project is licensed under [the MIT license](LICENSE).
