@@ -52,18 +52,10 @@ fn main() -> io::Result<()> {
     }
     let complete = format!("complete -C '{}'", s);
 
-    let mut cmd = Command::new("bwrap");
-    cmd.args(&[
-        "--die-with-parent",
-        "--unshare-all",
-        "--cap-drop", "ALL",
-        "--ro-bind", "/", "/",
-        "--dev-bind", "/dev/null", "/dev/null",
-        "--",
-    ]);
+    let mut cmd = sandbox();
 
     // TODO https://github.com/fish-shell/fish-shell/issues/6943
-    cmd.args(&[
+    cmd.args([
         "fish",
         "-P",
         "-c",
@@ -71,4 +63,35 @@ fn main() -> io::Result<()> {
     ]);
 
     Err(cmd.exec())
+}
+
+#[cfg(target_os = "linux")]
+fn sandbox() -> Command {
+    let mut cmd = Command::new("bwrap");
+    cmd.args([
+        "--die-with-parent",
+        "--unshare-all",
+        "--cap-drop", "ALL",
+        "--ro-bind", "/", "/",
+        "--dev-bind", "/dev/null", "/dev/null",
+        "--",
+    ]);
+    cmd
+}
+
+#[cfg(target_os = "macos")]
+fn sandbox() -> Command {
+    let mut cmd = Command::new("sandbox-exec");
+    cmd.args([
+        "-p",
+"(version 1)\
+(deny default)\
+(allow file-read*)\
+(allow sysctl-read)\
+(allow process-fork)\
+(allow process-exec)\
+(allow process-info* (target same-sandbox))\
+(allow file-write* (subpath \"/dev/null\"))",
+    ]);
+    cmd
 }
