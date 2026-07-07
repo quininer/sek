@@ -54,7 +54,7 @@ impl AsRef<layout::Tree> for Editor {
 
 impl Editor {
     pub fn new() -> anyhow::Result<Self> {
-        let ui = ui::Editor::new()?;
+        let ui = ui::Editor::default();
         let path_selector = PathSelector::new()?;
         let complete_selector = CompleteSelector::default();
 

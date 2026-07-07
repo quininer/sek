@@ -6,10 +6,12 @@ use crate::config::Config;
 use crate::shell::env::Environment;
 
 
+#[derive(Default)]
 pub struct Cache {
     pub exe_set: ExeSet,
 }
 
+#[derive(Default)]
 pub struct ExeSet {
     set: fst::Set<Vec<u8>>,
 }
@@ -18,9 +20,7 @@ pub fn load(config: &Config, env: &Environment)
     -> anyhow::Result<Cache>
 {
     let cache_dir = env.projdir.cache_dir();
-
     fs::create_dir_all(cache_dir)?;
-    
     let exe_set = ExeSet::load(config, env, &cache_dir.join("exeset.fst"))?;
 
     //

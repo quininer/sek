@@ -19,8 +19,8 @@ pub struct Editor {
     pub error: Id<layout::Node>,
 }
 
-impl Editor {
-    pub fn new() -> anyhow::Result<Editor> {
+impl Default for Editor {
+    fn default() -> Self {
         use ui::Element;
 
         const TAG_COMMAND: u32 = 1;
@@ -117,7 +117,7 @@ impl Editor {
             }
         }
 
-        Ok(editor)
+        editor
     }
 }
 

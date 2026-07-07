@@ -37,12 +37,25 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(config_path: Option<PathBuf>)
+    pub fn new(confpath: Option<PathBuf>)
         -> anyhow::Result<Self>
     {
+        let term = || io::stdout().lock();
+
         let mut env = Environment::new()?;
-        let config = config::load(&mut env, config_path)?;
-        let cache = cache::load(&config, &env)?;
+        let confpath = confpath
+            .unwrap_or_else(|| env.projdir.config_dir().join("config"));
+        let config = config::load(&mut env, &confpath)
+            .inspect_err(|err| {
+                let _ = warn(&term, "config load failed", &err);
+            })
+            .unwrap_or_else(|_| Config::with_confpath(confpath));
+        let cache = cache::load(&config, &env)
+            .inspect_err(|err| {
+                let _ = warn(&term, "cache load failed", &err);
+            })
+            .unwrap_or_default();
+
         let config = RefCell::new(config);
         let env = RefCell::new(env);
         let cache = RefCell::new(cache);

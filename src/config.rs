@@ -154,6 +154,7 @@ pub struct Complete {
     pub args: Vec<String>,
 }
 
+#[derive(Default)]
 pub struct AliasMap {
     list: Vec<String>,
     map: HashMap<BString, Range<usize>>,
@@ -171,15 +172,24 @@ impl AliasMap {
     }
 }
 
-pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
+impl Config {
+    pub fn with_confpath(path: PathBuf) -> Config {
+        Config {
+            path,
+            theme: Default::default(),
+            prompt: None,
+            complete: None,
+            alias: Default::default()
+        }
+    }
+}
+
+pub fn load(env: &mut Environment, confpath: &Path)
     -> anyhow::Result<Config>
 {
-    let confpath = confpath
-        .unwrap_or_else(|| env.projdir.config_dir().join("config"));
-    
     let buf;
     let config = if confpath.exists() {
-        let child = Command::new(&confpath)
+        let child = Command::new(confpath)
             .current_dir(env.pwd())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -234,7 +244,7 @@ pub fn load(env: &mut Environment, confpath: Option<PathBuf>)
     env.shrink_to_fit();    
 
     Ok(Config {
-        path: confpath,
+        path: confpath.into(),
         theme: config.theme,
         prompt: config.prompt,
         complete: config.complete,
@@ -258,7 +268,7 @@ pub fn reload(
     env.map = env::vars_os().collect();
     env.map.sort_by(|(x, _), (y, _)| x.cmp(y));
 
-    *config = load(&mut env, Some(config.path.clone()))?;
+    *config = load(&mut env, &config.path)?;
 
     let _ = fs::remove_dir_all(env.projdir.cache_dir());
     *cache = cache::load(&config, &env)?;
