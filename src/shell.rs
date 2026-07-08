@@ -35,7 +35,6 @@ pub struct Shell {
     pub parser: syntax::Parser,
     pub ast: Option<syntax::Command>,
     pub error: Option<String>,
-    pub wait_request: Option<ipc::RequestId>,
 }
 
 impl Shell {
@@ -71,7 +70,6 @@ impl Shell {
             ipc: None,
             morgue: Morgue::default(),
             prompt: Prompt::default(),
-            wait_request: None,
             env, editor, parser, config, cache,
         })        
     }
@@ -161,8 +159,9 @@ async fn runloop(
                     &mut ipcbuf,
                     shell.editor.insert.as_str()
                 ).await {
-                    Ok(Some(request_id)) =>
-                        shell.wait_request = Some(request_id),
+                    Ok(Some(request_id)) => {
+                        shell.editor.suggestion.set_requested(request_id);
+                    },
                     Ok(None) => (),
                     Err(err) => {
                         warn(&renderer.term, "ipc error; ", &err)?;
@@ -352,15 +351,13 @@ async fn process_msg(
     shell: &mut Shell,
     msg: ipc::ServerMessage<'_>,
 ) -> anyhow::Result<()> {
-    if shell.wait_request.is_none()
-        && shell.wait_request != msg.request_id
-    {
-        return Ok(());
-    }
-
     match msg.data {
         ipc::ServerMessageData::PushSuggest { command } => {
-            shell.editor.suggestion.set_value(command);
+            if shell.editor.suggestion.requested() == msg.request_id
+                    && msg.request_id.is_some()
+            {
+                shell.editor.suggestion.set_value(command);
+            }
         },
         ipc::ServerMessageData::PushHistory { .. } => {
             // TODO

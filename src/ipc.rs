@@ -266,5 +266,4 @@ pub async fn request_suggest(
         })
         .await
         .map(Some)
-
 }

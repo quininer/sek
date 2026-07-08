@@ -3,6 +3,7 @@ use std::ops::Range;
 use std::collections::VecDeque;
 use icu_segmenter::{ WordSegmenter, WordSegmenterBorrowed };
 use crate::util::MapWindows2;
+use crate::ipc;
 
 
 pub struct EditableLine {
@@ -30,6 +31,7 @@ pub struct Suggestion {
 enum SuggestionKind {
     #[default]
     Nothing,
+    Requested(ipc::RequestId),
     Value,
     History(usize),
 }
@@ -390,7 +392,7 @@ impl Suggestion {
     
     pub fn as_str<'a>(&'a self, line: &'a EditableLine) -> &'a str {
         match self.kind {
-            SuggestionKind::Nothing => "",
+            SuggestionKind::Nothing | SuggestionKind::Requested(_) => "",
             SuggestionKind::Value =>
                 self.buf.strip_prefix(&line.line.buf).unwrap_or_default(),
             SuggestionKind::History(idx) => {
@@ -403,6 +405,14 @@ impl Suggestion {
     pub fn clear(&mut self) {
         self.buf.clear();
         self.kind = SuggestionKind::Nothing;
+    }
+
+    pub fn requested(&self) -> Option<ipc::RequestId> {
+        matches2!(self.kind, SuggestionKind::Requested)
+    }
+
+    pub fn set_requested(&mut self, request_id: ipc::RequestId) {
+        self.kind = SuggestionKind::Requested(request_id);
     }
     
     pub fn set_value(&mut self, value: &str) {
@@ -424,7 +434,7 @@ impl Suggestion {
 
     pub fn apply(&mut self, line: &mut EditableLine) {
         match self.kind {
-            SuggestionKind::Nothing => (),
+            SuggestionKind::Nothing | SuggestionKind::Requested(_) => (),
             SuggestionKind::Value => {
                 line.clear();
                 line.push_str(&self.buf);
