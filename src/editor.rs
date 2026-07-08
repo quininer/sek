@@ -89,7 +89,11 @@ impl Editor {
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::ALT && code == KeyCode::Char(' '))
             => {
-                self.mode = Mode::Normal;
+                if self.command.is_empty() {
+                    self.mode = Mode::Normal;
+                } else {
+                   self.command.clear(); 
+                }
             },
 
             // Insert: apply suggestion
@@ -106,6 +110,7 @@ impl Editor {
             // Insert
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
+                    && !modifiers.intersects(KM::CONTROL | KM::ALT)
             => {
                 match code {
                     KeyCode::Char('\r') => (),
