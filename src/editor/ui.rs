@@ -15,18 +15,16 @@ pub struct Editor {
 
     pub complete_selector: Id<layout::Node>,
     pub path_selector: Id<layout::Node>,
-    pub command: Id<layout::Node>,
-    pub error: Id<layout::Node>,
+    pub tail: Id<layout::Node>,
 }
 
 impl Default for Editor {
     fn default() -> Self {
         use ui::Element;
 
-        const TAG_COMMAND: u32 = 1;
-        const TAG_PATH_SELECTOR: u32 = 2;
-        const TAG_COMPLETE_SELECTOR: u32 = 3;
-        const TAG_ERROR: u32 = 4;
+        const TAG_PATH_SELECTOR: u32 = 1;
+        const TAG_COMPLETE_SELECTOR: u32 = 2;
+        const TAG_TAIL: u32 = 3;
         
         let mut layout = layout::Tree::default();
         let root = layout.root();
@@ -87,32 +85,33 @@ impl Default for Editor {
             ui::Elem::new(MODE),
             ui::Elem::new(COMMAND_LINE).style(|style| style.justify(Justify::Stretch)),
             ui::Elem::new(TIPS).style(|style| style.justify(Justify::End)),
-        ))
-            .tag(TAG_COMMAND);
+        ));
 
-        let error = ui::Box::new(ui::Elem::new(ERROR))
-            .tag(TAG_ERROR);
+        let tail = ui::Box::new((
+            command,
+            ui::Box::new(ui::Elem::new(ERROR))
+        ))
+            .tag(TAG_TAIL)
+            .style(|style| style.axis(Axis::Vertical));
 
         let mut table = ui::Table::default();
         let mut map = Vec::new();
 
-        (insert, complete_selector, path_selector, command, error)
+        (insert, complete_selector, path_selector, tail)
             .walk(&mut layout, &mut table, &mut map, root);
 
         let mut editor = Editor {
             layout, table,
             complete_selector: Id::default(),
             path_selector: Id::default(),
-            command: Id::default(),
-            error: Id::default(),
+            tail: Id::default(),
         };
 
         for (tag, id) in map {
             match tag {
                 TAG_COMPLETE_SELECTOR => editor.complete_selector = id,
                 TAG_PATH_SELECTOR => editor.path_selector = id,
-                TAG_COMMAND => editor.command = id,
-                TAG_ERROR => editor.error = id,
+                TAG_TAIL => editor.tail = id,
                 _ => unreachable!()
             }
         }
@@ -331,12 +330,11 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
         };
 
         let config = shell.config.borrow();
+        let mut count = 0;
 
-        for (n, (hint, entry)) in list
-            .take(layout.size.1.into())
-            .enumerate()
-        {
-            let n: u16 = n.try_into().unwrap();
+        let mut iter = list.take(layout.size.1.into()).peekable();
+
+        while let Some((hint, entry)) = iter.next() {
             let name = entry.name();
 
             let color = match entry.type_() {
@@ -358,7 +356,7 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
             };
 
             queue!(term,
-                cursor::MoveTo(layout.range.start.x, layout.range.start.y + n),
+                cursor::MoveToColumn(layout.range.start.x),
                 style::SetColors(color),
                 style::Print(LimitAndFill(
                     name.as_encoded_bytes().chars(),
@@ -367,11 +365,17 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
                 )),
                 style::ResetColor,
             )?;
+
+            if iter.peek().is_some() {
+                queue!(term, style::Print('\n'))?;
+                count += 1;
+            }
         }
 
-        queue!(term, cursor::MoveTo(layout.range.end.x, layout.range.end.y))?;
+        queue!(term, cursor::MoveToColumn(layout.range.end.x))?;
 
-        *current = layout.range.end;
+        current.x = layout.range.end.x;
+        current.y += count;
         Ok(())      
     }
 

@@ -240,7 +240,9 @@ impl CompletionType {
             CompletionType::Item { .. } => (),
         }
 
-        if shell.editor.suggestion.as_str(&shell.editor.insert).is_empty() {
+        if shell.editor.suggestion.as_str(&shell.editor.insert).is_empty()
+            && shell.ipc.is_none()
+        {
             shell.editor.suggestion.set_history(&shell.editor.insert);
         }
 

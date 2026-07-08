@@ -524,23 +524,21 @@ impl Editor {
         Ok(Action::Continue)
     }
 
-    pub fn mode_switch<T: TermTarget>(&mut self, prev_mode: Mode, renderer: &mut Renderer<T>) -> anyhow::Result<()> {
+    pub fn mode_switch<T: TermTarget>(&mut self, prev_mode: Mode, _renderer: &mut Renderer<T>)
+        -> anyhow::Result<()>
+    {
         match (prev_mode, self.mode) {
             (x, y) if x == y => (),
             (_, Mode::PathSelector) => {
-                if self.ui.layout[self.ui.command].justify != layout::Justify::End {
-                    self.ui.layout[self.ui.command].justify = layout::Justify::End;
-                }
-
-                if self.ui.layout[self.ui.error].justify != layout::Justify::End {
-                    self.ui.layout[self.ui.error].justify = layout::Justify::End;
+                if self.ui.layout[self.ui.tail].justify != layout::Justify::Stretch {
+                    self.ui.layout[self.ui.tail].justify = layout::Justify::Stretch;
                 }                
                 
                 if self.ui.layout[self.ui.path_selector].hidden {
                     self.ui.layout[self.ui.path_selector].hidden = false;
                 }
 
-                renderer.enter_alternate()?;
+                // renderer.enter_alternate()?;
             },
             (_, Mode::CompleteSelector) => {
                 debug_assert_ne!(prev_mode, Mode::PathSelector);
@@ -550,12 +548,8 @@ impl Editor {
                 }
             },
             (..) => {
-                if self.ui.layout[self.ui.command].justify != layout::Justify::Start {
-                    self.ui.layout[self.ui.command].justify = layout::Justify::Start;
-                }
-
-                if self.ui.layout[self.ui.error].justify != layout::Justify::Start {
-                    self.ui.layout[self.ui.error].justify = layout::Justify::Start;
+                if self.ui.layout[self.ui.tail].justify != layout::Justify::Start {
+                    self.ui.layout[self.ui.tail].justify = layout::Justify::Start;
                 }
 
                 if !self.ui.layout[self.ui.path_selector].hidden {
@@ -572,7 +566,7 @@ impl Editor {
             (x, y) if x == y => (),
             (Mode::PathSelector, _) => {
                 self.path_selector.clear();
-                renderer.leave_alternate()?;
+                // renderer.leave_alternate()?;
             },
             (Mode::CompleteSelector, _) => {
                 self.complete_selector.clear();

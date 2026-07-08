@@ -241,7 +241,9 @@ async fn process_input<T: TermTarget>(
                 shell.editor.complete_selector.update();
             },
             _ => ()
-        }        
+        }
+
+        return Ok(true);
     }
 
     let mode = shell.editor.mode;

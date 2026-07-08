@@ -72,7 +72,7 @@ impl PathSelector {
     }
 
     pub fn set_space(&mut self, space: usize) {
-        self.space = space.saturating_sub(3);
+        self.space = space.saturating_sub(3).div_ceil(2);
     }
 
     pub fn set_glob(&mut self, glob: Option<glob::Pattern>) {

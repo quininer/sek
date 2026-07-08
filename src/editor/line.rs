@@ -438,9 +438,6 @@ impl Suggestion {
             SuggestionKind::Value => {
                 line.clear();
                 line.push_str(&self.buf);
-                let is_ascii = line.line.buf.is_ascii();
-                line.update(0, 0, || is_ascii);
-                line.move_end();
                 line.line.cursor.start = line.line.cursor.end;
             },
             SuggestionKind::History(idx) => {
