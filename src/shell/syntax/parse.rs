@@ -39,7 +39,6 @@ impl Parser {
             )
             .collect::<Result<Vec<_>, _>>()
             .map_err(|(_, span)| ParseFailed {
-                token: None,
                 span: Some(span),
                 kind: ErrorKind::InvalidToken
             })?;
@@ -98,9 +97,8 @@ macro_rules! lookup {
 fn failed(item: &TokenItem)
     -> ParseFailed
 {
-    let (token, span) = &item;
+    let (_token, span) = &item;
     ParseFailed {
-        token: Some(*token),
         span: Some(span.clone()),
         kind: ErrorKind::InvalidToken,
     }
@@ -227,7 +225,6 @@ impl State<'_> {
         let mut substate = {
             let token = self.iter.peek()
                 .ok_or_else(|| ParseFailed {
-                    token: None,
                     kind: ErrorKind::EmptyCommand,
                     span: self.iter.prev()
                         .map(|id| self.tokens[id].1.clone())
@@ -300,10 +297,9 @@ impl State<'_> {
             Token::Variable => |state, substate, token| {
                 state.iter.bump();
 
-                let (token2, span) = &state.tokens[token];
+                let (_token2, span) = &state.tokens[token];
                 if span.len() == 1 {
                     return Err(ParseFailed {
-                        token: Some(*token2),
                         span: Some(span.clone()),
                         kind: ErrorKind::ExpectedVariableName
                     });
@@ -456,10 +452,9 @@ impl State<'_> {
             Token::Variable => |state, substate, token| {
                 state.iter.bump();
 
-                let (token2, span) = &state.tokens[token];
+                let (_token2, span) = &state.tokens[token];
                 if span.len() == 1 {
                     return Err(ParseFailed {
-                        token: Some(*token2),
                         span: Some(span.clone()),
                         kind: ErrorKind::ExpectedVariableName
                     });

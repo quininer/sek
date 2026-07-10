@@ -80,12 +80,6 @@ impl<T> Extend<T> for Arena<T> {
     }
 }
 
-impl<T> Id<T> {
-    pub fn raw(&self) -> u32 {
-        self.0.get()
-    }
-}
-
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         *self
@@ -168,14 +162,6 @@ impl<T, V> ArenaMap<T, V> {
 
     pub fn get(&self, id: Id<T>) -> Option<&V> {
         self.map.get(id.get())?.as_ref()
-    }
-
-    pub fn remove(&mut self, id: Id<T>) -> Option<V> {
-        self.map.get_mut(id.get())?.take()
-    }
-
-    pub fn clear(&mut self) {
-        self.map.clear();
     }
 }
 

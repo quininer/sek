@@ -179,6 +179,7 @@ impl EditableLine {
         self.line.cursor.end += 1;
     }
 
+    #[allow(dead_code)]
     pub fn replace(&mut self, s: char) {
         self.make();
 
@@ -256,6 +257,7 @@ impl EditableLine {
         }
     }
 
+    #[allow(dead_code)]
     pub fn delete_to_end(&mut self, _cur: usize) {
         self.make();
 

@@ -1,12 +1,10 @@
 use std::fmt;
 use logos::Span;
 use annotate_snippets::{ Level, Snippet, Group, AnnotationKind };
-use super::token::Token;
 
 
 #[derive(Debug)]
 pub struct ParseFailed {
-    pub token: Option<Token>,
     pub span: Option<Span>,
     pub kind: ErrorKind,
 }

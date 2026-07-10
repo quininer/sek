@@ -114,6 +114,10 @@ impl Client {
         let msg = cbor4ii::serde::from_slice(buf)?;
         Ok(msg)
     }
+
+    pub async fn flush(&mut self) -> io::Result<()> {
+        self.socket.flush().await
+    }
 }
 
 #[cfg(not(unix))]
@@ -133,6 +137,10 @@ impl Client {
     {
         todo!()
     }
+
+    pub async fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }    
 }
 
 impl Client {
@@ -164,26 +172,12 @@ impl Client {
             }).await?;
         }
 
-        self.socket.flush().await?;
+        self.flush().await?;
         
         Ok(())
     }
 }
 
-#[cfg(unix)]
-pub async fn readable(client: Option<&RefCell<Client>>) -> anyhow::Result<()> {
-    use std::task::Poll;
-    use std::future::poll_fn;
-
-    poll_fn(|cx| match client {
-        Some(client) => client.borrow().socket.poll_read_ready(cx),
-        None => Poll::Pending
-    }).await?;
-
-    Ok(())
-}
-
-#[cfg(unix)]
 pub async fn read<'a>(client: Option<&RefCell<Client>>, ipcbuf: &'a mut Vec<u8>)
     -> anyhow::Result<ServerMessage<'a>>
 {
@@ -191,15 +185,6 @@ pub async fn read<'a>(client: Option<&RefCell<Client>>, ipcbuf: &'a mut Vec<u8>)
         Some(client) => client.borrow_mut().recv_msg(ipcbuf).await,
         None => std::future::pending().await
     }
-}
-
-#[cfg(not(unix))]
-pub async fn readable(client: Option<&Client>) -> anyhow::Result<()> {
-    use std::future;
-
-    future::pending::<()>().await;
-
-    Ok(())
 }
 
 pub async fn start_execute(

@@ -129,21 +129,6 @@ impl Tree {
         id
     }
 
-    pub fn children(&self, id: Id<Node>) -> &[Id<Node>] {
-        &self.nodes[id].children
-    }
-
-    pub fn clear(&mut self, parent: Id<Node>) {
-        let mut list = std::mem::take(&mut self.nodes[parent].children);
-
-        for &id in &list {
-            self.clear(id);
-        }
-        
-        self.freelist.extend(list.drain(..));
-        self.nodes[parent].children = list;
-    }
-
     pub fn layout(
         &self,
         space: &dyn Space,

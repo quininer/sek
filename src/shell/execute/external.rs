@@ -25,12 +25,14 @@ pub struct Child {
 
 #[derive(Clone)]
 pub struct Morgue {
+    #[cfg(unix)]
     pgid: libc::pid_t,
     queue: Rc<RefCell<Vec<(bool, process::Child)>>>
 }
 
 #[derive(Default, Clone, Debug)]
 pub struct Leader {
+    #[cfg(unix)]
     pgid: Rc<Cell<Option<libc::pid_t>>>
 }
 
@@ -162,6 +164,7 @@ impl Morgue {
         })
     }
 
+    #[cfg_attr(target_os = "windows", allow(unused_variables))]
     pub async fn wait(&self, leader: &Leader) -> io::Result<()> {
         let mut queue = self.queue.borrow_mut();
 

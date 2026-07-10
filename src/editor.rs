@@ -537,8 +537,6 @@ impl Editor {
                 if self.ui.layout[self.ui.path_selector].hidden {
                     self.ui.layout[self.ui.path_selector].hidden = false;
                 }
-
-                // renderer.enter_alternate()?;
             },
             (_, Mode::CompleteSelector) => {
                 debug_assert_ne!(prev_mode, Mode::PathSelector);
@@ -566,7 +564,6 @@ impl Editor {
             (x, y) if x == y => (),
             (Mode::PathSelector, _) => {
                 self.path_selector.clear();
-                // renderer.leave_alternate()?;
             },
             (Mode::CompleteSelector, _) => {
                 self.complete_selector.clear();

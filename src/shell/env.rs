@@ -78,14 +78,6 @@ impl Environment {
         Ok(())
     }
 
-    pub fn go_home(&mut self) -> io::Result<()> {
-        let newpath = path::dir(self.userdir.home_dir())?;
-        env::set_current_dir(&newpath)?;
-        self.prev_pwd = Some(mem::replace(&mut self.pwd, newpath));
-        self.set_pwd();
-        Ok(())
-    }
-
     pub fn go_back(&mut self) -> io::Result<()> {
         if let Some(pwd) = self.prev_pwd.take() {
             let newpath = path::dir(&pwd)?;

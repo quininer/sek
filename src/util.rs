@@ -2,7 +2,7 @@ pub mod arena;
 pub mod stdout;
 pub mod path;
 
-use std::{ io, fmt };
+use std::io;
 use std::pin::Pin;
 use std::future::Future;
 use std::task::{ Context, Poll };
@@ -99,15 +99,6 @@ where
     }
 
     deserializer.deserialize_str(Visitor)
-}
-
-#[derive(Clone, Copy)]
-pub struct FmtDebug<T>(pub T);
-
-impl<T: std::fmt::Debug> fmt::Display for FmtDebug<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        std::fmt::Debug::fmt(&self.0, f)
-    }
 }
 
 pub struct MapWindows2<I: Iterator, F> {

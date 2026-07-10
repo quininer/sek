@@ -9,7 +9,6 @@ use crate::editor::{ Editor, Mode };
 
 #[derive(Debug)]
 pub enum CompletionType {
-    None,
     Exe(Span),
     Env(Span),
     Path {
@@ -123,7 +122,6 @@ impl CompletionType {
         renderer: &mut Renderer<T>,
     ) -> anyhow::Result<()> {
         match self {
-            CompletionType::None => (),
             CompletionType::Exe(span) => {
                 let prefix = &shell.editor.insert.as_str()[span.clone()];
                 let cache = shell.cache.borrow();
@@ -207,7 +205,6 @@ impl CompletionType {
         shell.editor.suggestion.clear();
         
         match self {
-            CompletionType::None => (),
             CompletionType::Exe(span) => {
                 let prefix = &shell.editor.insert.as_str()[span.clone()];
                 let cache = shell.cache.borrow();

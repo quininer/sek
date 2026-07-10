@@ -85,10 +85,6 @@ impl Iterator for Link<'_> {
 }
 
 impl Command {
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
-    
     pub fn exe(self, parser: &Parser) -> Argument {
         let cmd = matches2!(&parser.nodes[self.0], raw::Node::Command).unwrap();
         matches2!(&parser.nodes[cmd.exe], raw::Node::Argument).unwrap();
@@ -124,10 +120,6 @@ impl Argument {
             .then_some(Argument(node_id))
     }
     
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
-
     pub fn span(self, parser: &Parser) -> Span {
         let args = matches2!(&parser.nodes[self.0], raw::Node::Argument).unwrap();
         args.span.clone()
@@ -151,10 +143,6 @@ impl Argument {
 }
 
 impl DoubleStr {
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
-
     pub fn start(self, parser: &Parser) -> Span {
         let s = matches2!(&parser.nodes[self.0], raw::Node::DoubleStr).unwrap();
         let (token, span) = &parser.tokens[s.start_token];
@@ -185,10 +173,6 @@ impl DoubleStr {
 }
 
 impl Literal {
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
-
     pub fn span(self, parser: &Parser) -> Span {
         let lit = matches2!(&parser.nodes[self.0], raw::Node::Literal).unwrap();
         lit.0.clone()
@@ -200,10 +184,6 @@ impl Variable {
         matches!(&parser.nodes[node_id], raw::Node::Variable(_))
             .then_some(Variable(node_id))
     }
-    
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
 
     pub fn span(self, parser: &Parser) -> Span {
         let var = matches2!(&parser.nodes[self.0], raw::Node::Variable).unwrap();
@@ -214,10 +194,6 @@ impl Variable {
 }
 
 impl Escape {
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
-
     pub fn backslash(self, parser: &Parser) -> Span {
         let escape = matches2!(&parser.nodes[self.0], raw::Node::Escape).unwrap();
         let (token, span) = &parser.tokens[escape.backslash];
@@ -233,10 +209,6 @@ impl Escape {
 }
 
 impl SingleStr {
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
-    
     pub fn start(self, parser: &Parser) -> Span {
         let s = matches2!(&parser.nodes[self.0], raw::Node::SingleStr).unwrap();
         let (token, span) = &parser.tokens[s.start_token];
@@ -256,10 +228,6 @@ impl SubShell {
     pub fn new(parser: &Parser, node_id: raw::NodeId) -> Option<Self> {
         matches!(&parser.nodes[node_id], raw::Node::SubShell(_))
             .then_some(SubShell(node_id))
-    }
-    
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
     }
         
     pub fn start(self, parser: &Parser) -> Span {
@@ -283,10 +251,6 @@ impl SubShell {
 }
 
 impl Chain {
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
-        
     pub fn token(self, parser: &Parser) -> Span {
         let chain = matches2!(&parser.nodes[self.0], raw::Node::Chain).unwrap();
         let (token, span) = &parser.tokens[chain.token];
@@ -306,10 +270,6 @@ impl Chain {
 }
 
 impl Redirect {
-    pub fn node_id(self) -> raw::NodeId {
-        self.0
-    }
-    
     pub fn token(self, parser: &Parser) -> Span {
         let redirect = matches2!(&parser.nodes[self.0], raw::Node::Redirect).unwrap();
         let (token, span) = &parser.tokens[redirect.token];
