@@ -124,6 +124,7 @@ impl PathSelector {
             &self.path,
             filename.as_deref(),
             &self.filter,
+            true,
             self.space
         )?;
 
@@ -133,6 +134,7 @@ impl PathSelector {
                 parent,
                 self.path.file_name(),
                 &self.filter,
+                false,
                 self.space
             )?;
         } else {
@@ -188,7 +190,14 @@ impl PathSelector {
         self.current.fill(&self.collator, &self.filter)?;
 
         if let Some(parent) = self.path.parent() {
-            self.parent.cd(&self.collator, parent, self.path.file_name(), &self.filter, self.space)?;
+            self.parent.cd(
+                &self.collator,
+                parent,
+                self.path.file_name(),
+                &self.filter,
+                false,
+                self.space
+            )?;
         } else {
             self.parent.clear();
         }
@@ -259,6 +268,7 @@ impl PathSelector {
                 &children.entry.path(),
                 None,
                 &self.filter,
+                false,
                 self.space
             )?;
         } else {
@@ -321,6 +331,7 @@ impl List {
         path: &Path,
         lookup: Option<&OsStr>,
         filter: &Filter,
+        is_current: bool,
         space: usize,
     ) -> anyhow::Result<()> {
         self.queue.clear();
@@ -329,7 +340,7 @@ impl List {
         for entry in readdir.by_ref()
             .filter_map(Result::ok)
             .filter(|entry| filter.matches(entry))
-            .take(MAX_ENTRY_CAP)
+            .take(if is_current { usize::MAX } else { MAX_ENTRY_CAP })
         {
             self.queue.push(Entry::new(entry));
         }
@@ -360,7 +371,6 @@ impl List {
         for entry in readdir
             .filter_map(Result::ok)
             .filter(|entry| filter.matches(entry))
-            .take(MAX_ENTRY_CAP - self.queue.len())
         {
             self.queue.push(Entry::new(entry));
         }
