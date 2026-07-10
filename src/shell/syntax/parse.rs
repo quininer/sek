@@ -520,8 +520,10 @@ impl State<'_> {
         let value = self.iter.peek()
             .ok_or_else(|| failed(&self.tokens[token]).with_kind(ErrorKind::IncompleteEscape))?;
 
-        if let (Token::Text, _) = &self.tokens[value] {
-            Err(failed(&self.tokens[token]).with_kind(ErrorKind::UnknownEscape))
+        if let (Token::Text, span) = &self.tokens[value] {
+            self.iter.bump();
+            let lit = Node::Literal(syntax::Literal(self.tokens[token].1.start..span.end));
+            Ok(self.nodes.alloc(lit))
         } else {
             self.iter.bump();
             Ok(self.nodes.alloc(Node::Escape(syntax::Escape { backslash: token, value })))
