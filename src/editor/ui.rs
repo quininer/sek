@@ -212,8 +212,8 @@ const COMMAND_LINE: ElementImpl = ElementImpl {
         match shell.editor.mode {
             editor::Mode::Normal
             | editor::Mode::Visual
-            | editor::Mode::PathSelector => (),
-            editor::Mode::CompleteSelector if !shell.editor.command.is_empty() => (),
+            | editor::Mode::Path => (),
+            editor::Mode::Complete if !shell.editor.command.is_empty() => (),
             _ => return None
         }
 
@@ -232,8 +232,8 @@ const COMMAND_LINE: ElementImpl = ElementImpl {
         let hint = match shell.editor.mode {
             editor::Mode::Normal
             | editor::Mode::Visual
-            | editor::Mode::PathSelector => true,
-            editor::Mode::CompleteSelector if !shell.editor.command.is_empty() => true,
+            | editor::Mode::Path => true,
+            editor::Mode::Complete if !shell.editor.command.is_empty() => true,
             _ => false
         };
         
@@ -277,7 +277,7 @@ const TIPS: ElementImpl = ElementImpl {
 
 const PATH_LINE: ElementImpl = ElementImpl {
     info: |shell| {
-        matches!(shell.editor.mode, editor::Mode::PathSelector)
+        matches!(shell.editor.mode, editor::Mode::Path)
             .then_some(())?;
 
         let length = shell.editor.path_selector.path()
@@ -300,7 +300,7 @@ const PATH_LINE: ElementImpl = ElementImpl {
 
 const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
     fn info(shell: &Shell, n: u8) -> Option<layout::SpaceInfo> {
-        matches!(shell.editor.mode, editor::Mode::PathSelector)
+        matches!(shell.editor.mode, editor::Mode::Path)
             .then_some(())?;
         let length = match n {
             0 => shell.editor.path_selector.parent.len(),
@@ -392,7 +392,7 @@ const PATH_SELECTOR: (ElementImpl, ElementImpl, ElementImpl) = {
 
 const COMPLETE_SELECTOR: ElementImpl = ElementImpl {
     info: |shell| {
-        matches!(shell.editor.mode, editor::Mode::CompleteSelector)
+        matches!(shell.editor.mode, editor::Mode::Complete)
             .then_some(())?;
 
         Some(layout::SpaceInfo {

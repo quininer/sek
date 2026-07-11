@@ -252,3 +252,23 @@ pub async fn request_suggest(
         .await
         .map(Some)
 }
+
+pub async fn request_history(
+    client: Option<&RefCell<Client>>,
+    ipcbuf: &mut Vec<u8>,
+    command: &str
+)
+    -> anyhow::Result<Option<RequestId>>
+{
+    let Some(client) = client
+        else {
+            return Ok(None)
+        };
+    client.borrow_mut()
+        .send_msg(ipcbuf, ClientMessageData::RequestHistory {
+            command,
+            num: 1024,
+        })
+        .await
+        .map(Some)
+}

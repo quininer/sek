@@ -233,10 +233,10 @@ async fn process_input<T: TermTarget>(
         }
 
         match shell.editor.mode {
-            Mode::PathSelector => {
+            Mode::Path => {
                 shell.editor.path_selector.set_space(renderer.size.1.into());
             },
-            Mode::CompleteSelector => {
+            Mode::Complete => {
                 shell.editor.complete_selector.set_space(renderer.size);
                 shell.editor.complete_selector.update();
             },
@@ -247,7 +247,11 @@ async fn process_input<T: TermTarget>(
     }
 
     let mode = shell.editor.mode;
-    let mut action = shell.editor.step(&shell.env, event);
+    // let mut action = shell.editor.step(&shell.env, event);
+    let mut action = {
+        let action = shell.editor.step(event);
+        shell.editor.apply(&shell.env, action)
+    };
     let is_execute = matches!(action, Ok(Action::Execute));
 
     match action {
@@ -289,6 +293,14 @@ async fn process_input<T: TermTarget>(
         }
     }
 
+    if matches!(action, Ok(Action::QueryHistory)) {
+        let input = shell.editor.insert.as_str();
+        let _request_id = ipc::request_history(shell.ipc.as_ref(), ipcbuf, input)
+            .await
+            .ok()
+            .flatten();
+    }
+
     shell.editor.mode_switch(mode, renderer)?;
     shell.error = action.err().map(|err| err.to_string());
 
@@ -317,6 +329,8 @@ async fn process_input<T: TermTarget>(
         renderer.new_line(&"")?;
         
         if let Some(cmd) = shell.ast.take() {
+            shell.editor.insert.submit();
+
             let input = shell.editor.insert.as_str();
             let request_id = ipc::start_execute(shell.ipc.as_ref(), ipcbuf, input)
                 .await

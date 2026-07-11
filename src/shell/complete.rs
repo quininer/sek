@@ -191,7 +191,7 @@ impl CompletionType {
                 shell.editor.path_selector.set_space(renderer.size.1.into());
                 shell.editor.path_selector.cd(dir)?;
                 shell.editor.insert.select_span(select);
-                shell.editor.mode = Mode::PathSelector;
+                shell.editor.mode = Mode::Path;
                 shell.editor.path_selector.search_down()?;
             },
             CompletionType::Item { command, select } =>
@@ -404,7 +404,7 @@ fn make_complete_selector(
             editor.complete_selector.set_space(size);
             editor.complete_selector.update();
             editor.insert.select_span(select);
-            editor.mode = Mode::CompleteSelector;
+            editor.mode = Mode::Complete;
             false
         }
     }

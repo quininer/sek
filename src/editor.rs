@@ -33,17 +33,61 @@ pub enum Mode {
     Insert,
     Normal,
     Visual,
-    PathSelector,
-    CompleteSelector,
+    Path,
+    Complete,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
     Continue,
     Completion,
+    QueryHistory,
     Reload,
     Execute,
     Break,
+}
+
+pub(super) enum EditAction {
+    Nop,
+    Input(char),
+    InputCommand(char),
+    Break,
+    Cancel,
+    Execute,
+    ExecuteSpace,
+    Completion,
+    ApplySuggestion,
+    EnterInsert,
+    EnterInsertAppend,
+    EnterVisual,
+    EnterNormal,
+    Backspace,
+    Delete,
+    MoveLeft,
+    MoveRight,
+    MoveHead,
+    MoveEnd,
+    HistoryUp,
+    HistoryDown,
+    SwapCursor,
+    SelectAll,
+    SelectNextWord,
+    SelectBackWord,
+    DeleteSelected,
+    DeleteAll,
+    Copy,
+    Paste,
+    SelectorUp,
+    SelectorDown,
+    SelectorLeft,
+    SelectorRight,
+    SelectorTop,
+    SelectorBottom,
+    SelectorHiddenToggle,
+    SelectorCaseSensitiveToggle,
+    SelectorRefresh,
+    SearchDown,
+    SearchUp,
 }
 
 impl AsRef<layout::Tree> for Editor {
@@ -69,417 +113,489 @@ impl Editor {
         })
     }
 
-    pub fn step(&mut self, env: &RefCell<Environment>, event: Event)
-        -> anyhow::Result<Action>
+    pub fn step(&mut self, event: Event)
+        -> EditAction
     {
         match (self.mode, event) {
-            // Quit
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers == KM::CONTROL
                     && code == KeyCode::Char('d')
                     && self.insert.is_empty()
-            => return Ok(Action::Break),
-
-            // Insert to Normal
+            => EditAction::Break,
             (
-                Mode::Insert | Mode::PathSelector | Mode::CompleteSelector,
+                Mode::Insert | Mode::Path | Mode::Complete,
                 Event::Key(KeyEvent { modifiers, code, .. })
             )
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::ALT && code == KeyCode::Char(' '))
-            => {
-                if self.command.is_empty() {
-                    self.mode = Mode::Normal;
-                } else {
-                   self.command.clear(); 
-                }
-            },
-
-            // Insert: apply suggestion
+            => EditAction::Cancel,
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::ALT)
                     && code == KeyCode::Char('l')
                     && self.insert.is_editing()
                     && self.insert.is_point_end()
                     && self.suggestion.has_suggest()
-            => {
-                self.suggestion.apply(&mut self.insert);
-            },            
+            => EditAction::ApplySuggestion,
 
-            // Insert
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
                     && !modifiers.intersects(KM::CONTROL | KM::ALT)
-            => {
-                match code {
-                    KeyCode::Char('\r') => (),
-                    KeyCode::Char(c) => self.insert.push(c),
-                    KeyCode::Right if
-                        self.insert.is_editing()
-                        && self.insert.is_point_end()
-                        && self.suggestion.has_suggest()
-                    => {
-                        self.suggestion.apply(&mut self.insert);
-                    },
-                    KeyCode::Backspace => self.insert.backspace(),
-                    KeyCode::Delete => self.insert.delete(),
-                    KeyCode::Left => self.insert.move_left(),
-                    KeyCode::Right => self.insert.move_right(),
-                    KeyCode::Home => self.insert.move_head(),
-                    KeyCode::End => self.insert.move_end(),
-                    KeyCode::Up => self.insert.up(),
-                    KeyCode::Down => self.insert.down(),
-                    KeyCode::Tab => {
-                        return Ok(Action::Completion)
-                    }
-                    KeyCode::Enter => {
-                        self.insert.submit();
-                        return Ok(Action::Execute)
-                    },
-                    _ => ()
-                }
-
-                self.suggestion.clear();
-
-                let cursor = self.insert.cursor_mut();
-                cursor.start = cursor.end;
+            => match code {
+                KeyCode::Char('\r') => EditAction::Nop,
+                KeyCode::Char(c) => EditAction::Input(c),
+                KeyCode::Right if 
+                    self.insert.is_editing()
+                    && self.insert.is_point_end()
+                    && self.suggestion.has_suggest()
+                => EditAction::ApplySuggestion,
+                KeyCode::Backspace => EditAction::Backspace,
+                KeyCode::Delete => EditAction::Delete,
+                KeyCode::Left => EditAction::MoveLeft,
+                KeyCode::Right => EditAction::MoveRight,
+                KeyCode::Home => EditAction::MoveHead,
+                KeyCode::End => EditAction::MoveEnd,
+                KeyCode::Up => EditAction::HistoryUp,
+                KeyCode::Down => EditAction::HistoryDown,
+                KeyCode::Tab => EditAction::Completion,
+                KeyCode::Enter => EditAction::Execute,
+                _ => EditAction::Nop,
             },
-
-            // Noraml && Visual: swap cursor
             (Mode::Normal | Mode::Visual, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::ALT) && code == KeyCode::Char(';')
-            => {
-                let cursor = self.insert.cursor_mut();
-                mem::swap(&mut cursor.start, &mut cursor.end);
-            }
+            => EditAction::SwapCursor,
 
-            // Normal && PathSelector && CompleteSelector with command
             (
-                Mode::Normal | Mode::PathSelector | Mode::CompleteSelector,
+                Mode::Normal | Mode::Path | Mode::Complete,
                 Event::Key(KeyEvent { modifiers, code, .. })
             )
                 if modifiers.contains(KM::SHIFT & KM::NONE) && !self.command.is_empty()
-            => {
-                match (self.mode, self.command.first(), code) {
-                    // command input
-                    (_, _, KeyCode::Char('\r')) => (),
-                    (_, Some(_), KeyCode::Char(c))
-                        => self.command.push(c),
-                    (_, Some(_), KeyCode::Backspace)
-                        => self.command.backspace(),
-                    (_, Some(_), KeyCode::Delete)
-                        => self.command.delete(),
-                    (_, Some(_), KeyCode::Left)
-                        => self.command.move_left(),
-                    (_, Some(_), KeyCode::Right)
-                        => self.command.move_right(),
-                    (_, Some(_), KeyCode::Esc)
-                        => self.command.clear(),
-                    (Mode::Normal, Some(':'), KeyCode::Enter)
-                        => match self.command.as_str() {
-                            ":quit" => return Ok(Action::Break),
-                            ":reload" => {
-                                self.command.clear();
-                                return Ok(Action::Reload);
-                            },
-                            _ => self.command.clear(),
-                        }
-                    (Mode::PathSelector, Some('/'), KeyCode::Enter)
-                        => {
-                            if let Some(cmd) = self.command.as_str().strip_prefix('/') {
-                                self.path_selector.search = cmd.into();
-                            }
+            => match (self.command.first(), code) {
+                (_, KeyCode::Char('\r')) => EditAction::Nop,
+                (Some(_), KeyCode::Char(c)) => EditAction::Input(c),
+                (Some(_), KeyCode::Backspace) => EditAction::Backspace,
+                (Some(_), KeyCode::Delete) => EditAction::Delete,
+                (Some(_), KeyCode::Left) => EditAction::MoveLeft,
+                (Some(_), KeyCode::Right) => EditAction::MoveRight,
+                (Some(_), KeyCode::Home) => EditAction::MoveHead,
+                (Some(_), KeyCode::End) => EditAction::MoveEnd,
+                (Some(_), KeyCode::Esc) => EditAction::Cancel,
+                (Some(_), KeyCode::Enter) => EditAction::Execute,
+                _ => EditAction::Nop,
+            }
 
-                            self.command.clear();
-                            self.path_selector.cd(Path::new("."))?;
-                            self.path_selector.search_down()?;
-                        }
-                    (Mode::PathSelector, Some(':'), KeyCode::Enter)
-                        => {
-                            if let Some(cmd) = self.command.as_str().strip_prefix(":glob") {
-                                let cmd = cmd.trim_start();
-
-                                if cmd.is_empty() {
-                                    self.path_selector.set_glob(None);
-                                } else {
-                                    self.path_selector.set_glob(Some(glob::Pattern::new(cmd)?));
-                                }
-
-                                self.path_selector.cd(Path::new("."))?;
-                            }
-
-                            self.command.clear();
-                        }
-                    (Mode::CompleteSelector, Some('/'), KeyCode::Enter)
-                        => {
-                            if let Some(cmd) = self.command.as_str().strip_prefix('/') {
-                                self.complete_selector.search = cmd.into();
-                            }
-
-                            self.command.clear();
-                            self.complete_selector.search_down();
-                        },
-                    (_, Some(_), KeyCode::Enter) => {
-                        self.command.clear();
-                    }
-                    _ => (),      
-                }
-            },
-
-            // Normal && Visual && PathSelector && CompleteSelector
             (
-                Mode::Normal | Mode::Visual | Mode::PathSelector | Mode::CompleteSelector,
+                Mode::Normal | Mode::Visual | Mode::Path | Mode::Complete,
                 Event::Key(KeyEvent { modifiers, code, .. })
             )
                 if modifiers.contains(KM::SHIFT & KM::NONE) && self.command.is_empty()
-            => match (self.mode, self.ready.take(), code) {
-                // command mode
-                (Mode::Normal | Mode::PathSelector, None, KeyCode::Char(':' | ';'))
-                    => self.command.push(':'),
-                (
-                    Mode::Normal | Mode::PathSelector | Mode::CompleteSelector,
-                    None,
-                    KeyCode::Char('/')
-                )
-                    => self.command.push('/'),
+            => match (self.ready.take(), code) {
+                (None, KeyCode::Char(':' | ';')) => EditAction::InputCommand(':'),
+                (None, KeyCode::Char('/')) => EditAction::InputCommand('/'),
+                (None, KeyCode::Char('i')) => EditAction::EnterInsert,
+                (None, KeyCode::Char('a')) => EditAction::EnterInsertAppend,
+                (None, KeyCode::Char('v')) if matches!(self.mode, Mode::Normal)
+                    => EditAction::EnterVisual,
+                (None, KeyCode::Char('v')) if matches!(self.mode, Mode::Visual)
+                    => EditAction::EnterNormal,
 
-                // normal and visual
-                (_, None, KeyCode::Char('i'))
-                    => self.mode = Mode::Insert,
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('a')) => {
-                    self.insert.move_right();
-                    self.mode = Mode::Insert;
+                (None, KeyCode::Char('h')) if matches!(self.mode, Mode::Normal | Mode::Visual)
+                    => EditAction::MoveLeft,
+                (None, KeyCode::Char('l')) if matches!(self.mode, Mode::Normal | Mode::Visual)
+                    => EditAction::MoveRight,
+                (None, KeyCode::Char('j')) if matches!(self.mode, Mode::Normal | Mode::Visual)
+                    => EditAction::HistoryDown,
+                (None, KeyCode::Char('k')) if matches!(self.mode, Mode::Normal | Mode::Visual)
+                    => EditAction::HistoryUp,
+
+                (None, KeyCode::Char('h')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::SelectorLeft,
+                (None, KeyCode::Char('l')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::SelectorRight,
+                (None, KeyCode::Char('j')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::SelectorDown,
+                (None, KeyCode::Char('k')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::SelectorUp,
+
+                (None, KeyCode::Char('x')) if matches!(self.mode, Mode::Normal | Mode::Visual)
+                    => EditAction::SelectAll,
+                (None, KeyCode::Char('w')) if matches!(self.mode, Mode::Normal | Mode::Visual)
+                    => EditAction::SelectNextWord,
+                (None, KeyCode::Char('b')) if matches!(self.mode, Mode::Normal | Mode::Visual)
+                    => EditAction::SelectBackWord,
+                (None, KeyCode::Char('d')) if matches!(self.mode, Mode::Visual)
+                    => EditAction::DeleteSelected,
+
+                (None, KeyCode::Enter) => EditAction::Execute,
+
+                (None, KeyCode::Char('y')) if matches!(self.mode, Mode::Normal | Mode::Visual | Mode::Path)
+                    => EditAction::Copy,
+                (None, KeyCode::Char('p')) if matches!(self.mode, Mode::Normal | Mode::Visual)
+                    => EditAction::Paste,                
+
+                // dd
+                (None, KeyCode::Char('d')) if matches!(self.mode, Mode::Normal)
+                    => {
+                        self.ready = Some('d');
+                        EditAction::Nop
+                    },
+                (Some('d'), KeyCode::Char('d')) if matches!(self.mode, Mode::Normal)
+                    => EditAction::DeleteAll,
+
+                // gh gl gg ge
+                (None, KeyCode::Char('g')) if matches!(self.mode, Mode::Normal)
+                    => {
+                        self.ready = Some('g');
+                        EditAction::Nop
+                    },
+                (Some('g'), KeyCode::Char('h')) if matches!(self.mode, Mode::Normal)
+                    => EditAction::MoveHead,
+                (Some('g'), KeyCode::Char('l')) if matches!(self.mode, Mode::Normal)
+                    => EditAction::MoveEnd,
+                (Some('g'), KeyCode::Char('g')) if matches!(self.mode, Mode::Normal)
+                    => EditAction::SelectorTop,
+                (Some('g'), KeyCode::Char('e')) if matches!(self.mode, Mode::Normal)
+                    => EditAction::SelectorBottom,
+
+                // ,,
+                (None, KeyCode::Char(',')) => {
+                    self.ready = Some(',');
+                    EditAction::Nop
                 },
-                (Mode::Normal, None, KeyCode::Char('v')) =>
-                    self.mode = Mode::Visual,
-                (Mode::Visual, None, KeyCode::Char('v')) =>
-                    self.mode = Mode::Normal,
+                (Some(','), KeyCode::Char(',')) => EditAction::Cancel,
 
-                // move
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('0')) => {
-                    self.insert.move_head();
+                (None, KeyCode::Char('.')) if matches!(self.mode, Mode::Path)
+                    => EditAction::SelectorHiddenToggle,
+                (None, KeyCode::Char('c')) if matches!(self.mode, Mode::Path)
+                    => EditAction::SelectorCaseSensitiveToggle,
+                (None, KeyCode::Char('r')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::SelectorRefresh,
+                (None, KeyCode::Char('q')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::Cancel,
+                (None, KeyCode::Char('n')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::SearchDown,
+                (None, KeyCode::Char('N')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::SearchUp,
 
-                    if matches!(self.mode, Mode::Normal) {
-                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
-                    }
-                },
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('h')) => {
-                    self.insert.move_left();
+                (None, KeyCode::Char(' ')) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::ExecuteSpace,
 
-                    if matches!(self.mode, Mode::Normal) {
-                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
-                    }
-                },
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('l')) => {
-                    self.insert.move_right();
+                (None, KeyCode::Backspace) if matches!(self.mode, Mode::Path | Mode::Complete)
+                    => EditAction::Backspace,
+                                    
+                _ => EditAction::Nop,
+            }
+                        
+            _ => EditAction::Nop
+        }
+    }
 
-                    if matches!(self.mode, Mode::Normal) {
-                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
-                    }
-                },
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('x')) => {
-                    let end = self.insert.char_len();
-                    let cursor = self.insert.cursor_mut();
-                    cursor.start = 0;
-                    cursor.end = end;
-                },
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('w')) => {
-                    let span = self.insert.move_right_word();
-                    let cursor = self.insert.cursor_mut();
-                    match self.mode {
-                        Mode::Normal => *cursor = span,
-                        Mode::Visual => cursor.end = span.end,
-                        _ => unreachable!()
-                    }
-                },
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('b')) => {
-                    let span = self.insert.move_left_word();
-                    let cursor = self.insert.cursor_mut();
-                    match self.mode {
-                        Mode::Normal => {
-                            cursor.start = span.end;
-                            cursor.end = span.start;
-                        },
-                        Mode::Visual => cursor.end = span.start,
-                        _ => unreachable!()
-                    }
-                },
+    pub fn apply(&mut self, env: &RefCell<Environment>, action: EditAction)
+        -> anyhow::Result<Action>
+    {
+        use EditAction::*;
 
-                // history
-                (Mode::Normal | Mode::Visual, None, KeyCode::Up | KeyCode::Char('k')) => {
-                    self.insert.up();
-                    self.suggestion.clear();
-                },
-                (Mode::Normal | Mode::Visual, None, KeyCode::Down | KeyCode::Char('j')) => {
-                    self.insert.down();
-                    self.suggestion.clear();
-                },
-
-                // execute
-                (Mode::Normal | Mode::Visual, None, KeyCode::Enter) => {
-                    self.insert.submit();
-                    self.mode = Mode::Insert;
-                    return Ok(Action::Execute)
-                }
-
-                // delete selection
-                (Mode::Visual, None, KeyCode::Char('d')) => {
-                    self.insert.replace_str_inclusive("", Some(&mut self.clipboard));
-                    self.suggestion.clear();
-                    self.mode = Mode::Normal;
-                },
-
-                // ready
-                (Mode::Normal, None, KeyCode::Char('d')) => self.ready = Some('d'),
-                (Mode::Normal, Some('d'), KeyCode::Char('d')) => {
-                    self.clipboard.clear();
-                    self.clipboard.push_str(self.insert.as_str());
-                    self.insert.clear();
-                    self.suggestion.clear();
-                },
-
-                // gh
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('g')) => self.ready = Some('g'),
-                (Mode::Normal | Mode::Visual, Some('g'), KeyCode::Char('h')) => {
-                    self.insert.move_head();
-
-                    if matches!(self.mode, Mode::Normal) {
-                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
-                    }
-                },
-                // gl
-                (Mode::Normal | Mode::Visual, Some('g'), KeyCode::Char('l')) => {
-                    self.insert.move_end();
-
-                    if matches!(self.mode, Mode::Normal) {
-                        self.insert.cursor_mut().start = self.insert.cursor_mut().end;
-                    }
-                },
-
-                // clipboard
-                (Mode::Normal | Mode::Visual, None, KeyCode::Char('y')) => {
-                    self.clipboard.clear();
-                    self.clipboard.push_str(self.insert.selected());
-                },
-                (Mode::Normal, None, KeyCode::Char('p')) => {
-                    let char_len = self.insert.char_len();
-                    let cursor = self.insert.cursor_mut();
-                    cursor.end = char_len.min(cursor.end.saturating_add(1));
-
-                    self.insert.push_str(&self.clipboard);
-                    self.suggestion.clear();
-
-                    let cursor = self.insert.cursor_mut();
-                    cursor.end = cursor.start.max(cursor.end.saturating_sub(1));
-                }
-                (Mode::Visual, None, KeyCode::Char('p')) => {
-                    let cursor = self.insert.cursor();
-                    let start = cursor.start.min(cursor.end);
-                    self.insert.replace_str_inclusive(&self.clipboard, None);
-                    *self.insert.cursor_mut() =
-                        start..(start + self.clipboard.chars().count().saturating_sub(1));
-                    self.suggestion.clear();
-                },
-
-                // visual cancel
-                (_, None, KeyCode::Char(',')) => self.ready = Some(','),
-                (_, Some(','), KeyCode::Char(',')) => {
+        match action {
+            Nop => (),
+            Input(c) if self.command.is_empty()
+                => self.insert.push(c),
+            Input(c) | InputCommand(c)
+                => self.command.push(c),
+            Break
+                => return Ok(Action::Break),
+            Cancel if self.command.is_empty()
+                => {
                     self.mode = Mode::Normal;
                     self.insert.cursor_mut().start = self.insert.cursor_mut().end;
                 },
+            Cancel
+                => self.command.clear(),
+            ApplySuggestion
+                => self.suggestion.apply(&mut self.insert),
+            Completion
+                => return Ok(Action::Completion),
+            Execute if matches!(self.mode, Mode::Insert) && self.command.is_empty()
+                => return Ok(Action::Execute),
+            Execute if matches!(self.mode, Mode::Normal | Mode::Visual) && self.command.is_empty()
+                => {
+                    self.mode = Mode::Insert;
+                    return Ok(Action::Execute)
+                },
 
-                // path selector
-                (Mode::PathSelector, None,KeyCode::Char('j')) =>
-                    self.path_selector.down()?,
-                (Mode::PathSelector, None, KeyCode::Char('k')) =>
-                    self.path_selector.up()?,
-                (Mode::PathSelector, None, KeyCode::Char('h')) =>
-                    self.path_selector.left()?,
-                (Mode::PathSelector, None, KeyCode::Char('l')) =>
-                    self.path_selector.right()?,
-                (Mode::PathSelector, None, KeyCode::Char('.')) => {
+            Backspace if self.command.is_empty() => {
+                self.insert.backspace();
+
+                if matches!(self.mode, Mode::Normal) {
+                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                }
+
+                if matches!(self.mode, Mode::Path | Mode::Complete) {
+                    self.mode = Mode::Insert;
+                }
+            },
+            Delete if self.command.is_empty() => {
+                self.insert.delete();
+
+                if matches!(self.mode, Mode::Normal) {
+                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                }
+
+                if matches!(self.mode, Mode::Path | Mode::Complete) {
+                    self.mode = Mode::Insert;
+                }                
+            },
+            MoveLeft if self.command.is_empty() => {
+                self.insert.move_left();
+
+                if matches!(self.mode, Mode::Normal) {
+                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                }
+            },
+            MoveRight if self.command.is_empty() => {
+                self.insert.move_right();
+
+                if matches!(self.mode, Mode::Normal) {
+                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                }
+            },
+            MoveHead if self.command.is_empty() => {
+                self.insert.move_head();
+
+                if matches!(self.mode, Mode::Normal) {
+                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                }
+            },
+            MoveEnd if self.command.is_empty() => {
+                self.insert.move_end();
+
+                if matches!(self.mode, Mode::Normal) {
+                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                }
+            },
+
+            Backspace => self.command.backspace(),
+            Delete => self.command.delete(),
+            MoveLeft => self.command.move_left(),
+            MoveRight => self.command.move_right(),
+            MoveHead => self.command.move_head(),
+            MoveEnd => self.command.move_end(),
+
+            SelectAll => {
+                let end = self.insert.char_len();
+                let cursor = self.insert.cursor_mut();
+                cursor.start = 0;
+                cursor.end = end;
+            },
+            SelectNextWord => {
+                let span = self.insert.move_right_word();
+                let cursor = self.insert.cursor_mut();
+                match self.mode {
+                    Mode::Normal => *cursor = span,
+                    Mode::Visual => cursor.end = span.end,
+                    _ => unreachable!()
+                }
+            },
+            SelectBackWord => {
+                let span = self.insert.move_left_word();
+                let cursor = self.insert.cursor_mut();
+                match self.mode {
+                    Mode::Normal => {
+                        cursor.start = span.end;
+                        cursor.end = span.start;
+                    },
+                    Mode::Visual => cursor.end = span.start,
+                    _ => unreachable!()
+                }
+            },
+
+            DeleteSelected => {
+                self.insert.replace_str_inclusive("", Some(&mut self.clipboard));
+                self.suggestion.clear();
+
+                if matches!(self.mode, Mode::Visual) {
+                    self.mode = Mode::Normal;
+                }
+            },
+            DeleteAll => {
+                self.clipboard.clear();
+                self.clipboard.push_str(self.insert.as_str());
+                self.insert.clear();
+                self.suggestion.clear();
+            },
+
+            HistoryUp => {
+                // TODO query history
+                self.insert.up();
+            },
+            HistoryDown => self.insert.down(),
+
+            SwapCursor => {
+                let cursor = self.insert.cursor_mut();
+                mem::swap(&mut cursor.start, &mut cursor.end);
+            },
+
+            Execute if matches!(self.mode, Mode::Normal | Mode::Visual) && !self.command.is_empty()
+                => match self.command.as_str() {
+                    ":quit" => return Ok(Action::Break),
+                    ":reload" => {
+                        self.command.clear();
+                        return Ok(Action::Reload);
+                    },
+                    _ => self.command.clear(),
+                },
+
+            Execute if matches!(self.mode, Mode::Path) && !self.command.is_empty() => {
+                if let Some(cmd) = self.command.as_str().strip_prefix('/') {
+                    self.path_selector.search = cmd.into();
+                    self.path_selector.cd(Path::new("."))?;
+                    self.path_selector.search_down()?;                    
+                }
+
+                if let Some(cmd) = self.command.as_str().strip_prefix(":glob") {
+                    let cmd = cmd.trim_start();
+
+                    if cmd.is_empty() {
+                        self.path_selector.set_glob(None);
+                    } else {
+                        self.path_selector.set_glob(Some(glob::Pattern::new(cmd)?));
+                    }
+
+                    self.path_selector.cd(Path::new("."))?;
+                }                
+
+                self.command.clear();
+            },
+
+            Execute if matches!(self.mode, Mode::Complete) && !self.command.is_empty() => {
+                if let Some(cmd) = self.command.as_str().strip_prefix('/') {
+                    self.complete_selector.search = cmd.into();
+                    self.complete_selector.search_down();
+                }
+
+                self.command.clear();
+            },
+
+            Execute if matches!(self.mode, Mode::Path) => {
+                use crate::util::path::EscapePath;
+                
+                if let Some(path) = self.path_selector.selected() {
+                    let env = env.borrow();
+                    let path = path
+                        .strip_prefix(env.pwd())
+                        .unwrap_or(&path)
+                        .to_str()
+                        .context("non-utf8 path are unsupported")?;
+                    let path = if !path.is_empty() {
+                        EscapePath(path).to_string()
+                    } else {
+                        ".".into()
+                    };
+                    if self.insert.cursor().is_empty() {
+                        self.insert.push_str(&path);
+                    } else {
+                        self.insert.replace_str_inclusive(&path, None);
+                    }
+                    self.suggestion.clear();
+                    self.mode = Mode::Insert;
+                }                
+            },
+
+            Execute if matches!(self.mode, Mode::Complete) => {
+                let s = &self.complete_selector.list[self.complete_selector.cur];
+                self.insert.replace_str_inclusive(s, None);
+                self.suggestion.clear();
+                self.mode = Mode::Insert;
+            },
+            ExecuteSpace if matches!(self.mode, Mode::Complete) => {
+                let s = &self.complete_selector.list[self.complete_selector.cur];
+                self.insert.replace_str_inclusive(s, None);
+                self.insert.push(' ');
+                self.suggestion.clear();
+                self.mode = Mode::Insert;
+            },
+
+            EnterInsert => self.mode = Mode::Insert,
+            EnterInsertAppend => {
+                self.insert.move_right();
+                self.mode = Mode::Insert;
+            },
+            EnterNormal => self.mode = Mode::Normal,
+            EnterVisual => self.mode = Mode::Visual,
+            
+            Copy if matches!(self.mode, Mode::Normal | Mode::Visual) => {
+                self.clipboard.clear();
+                self.clipboard.push_str(self.insert.selected());
+            },
+            Copy if matches!(self.mode, Mode::Path) => {
+                if let Some(path) = self.path_selector.selected() {
+                    let env = env.borrow();
+                    let path = path
+                        .strip_prefix(env.pwd())
+                        .unwrap_or(&path)
+                        .to_str()
+                        .context("non-utf8 path are unsupported")?;
+                    let path = if !path.is_empty() {
+                        path
+                    } else {
+                        "."
+                    };
+                    self.clipboard.clear();
+                    self.clipboard.push_str(path);
+                }                
+            },
+            Paste if matches!(self.mode, Mode::Normal) => {
+                let char_len = self.insert.char_len();
+                let cursor = self.insert.cursor_mut();
+                cursor.end = char_len.min(cursor.end.saturating_add(1));
+
+                self.insert.push_str(&self.clipboard);
+                self.suggestion.clear();
+
+                let cursor = self.insert.cursor_mut();
+                cursor.end = cursor.start.max(cursor.end.saturating_sub(1));
+            },
+            Paste if matches!(self.mode, Mode::Visual) => {
+                let cursor = self.insert.cursor();
+                let start = cursor.start.min(cursor.end);
+                self.insert.replace_str_inclusive(&self.clipboard, None);
+                *self.insert.cursor_mut() =
+                    start..(start + self.clipboard.chars().count().saturating_sub(1));
+                self.suggestion.clear();                
+            },
+
+            SelectorUp if matches!(self.mode, Mode::Path)
+                => self.path_selector.up()?,
+            SelectorDown if matches!(self.mode, Mode::Path)
+                => self.path_selector.down()?,
+            SelectorLeft if matches!(self.mode, Mode::Path)
+                => self.path_selector.left()?,
+            SelectorRight if matches!(self.mode, Mode::Path)
+                => self.path_selector.right()?,
+            SelectorTop if matches!(self.mode, Mode::Path)
+                => self.path_selector.move_top()?,
+            SelectorBottom if matches!(self.mode, Mode::Path)
+                => self.path_selector.move_bottom()?,
+
+            SearchDown if matches!(self.mode, Mode::Path)
+                => self.path_selector.search_down()?,
+            SearchUp if matches!(self.mode, Mode::Path)
+                => self.path_selector.search_up()?,
+
+            SelectorHiddenToggle if matches!(self.mode, Mode::Path)
+                => {
                     self.path_selector.toggle_hidden_file();
                     self.path_selector.cd(Path::new("."))?;
                 },
-                (Mode::PathSelector, None, KeyCode::Char('c')) => {
+            SelectorCaseSensitiveToggle if matches!(self.mode, Mode::Path)
+                => {
                     self.path_selector.toggle_case_sensitive();
                     self.path_selector.cd(Path::new("."))?;
                 },
-                (Mode::PathSelector, None, KeyCode::Char('r')) =>
-                    self.path_selector.cd(Path::new("."))?,
-                (Mode::PathSelector, None, KeyCode::Char('q')) => {
-                    self.mode = Mode::Insert;
-                },
-                (Mode::PathSelector, None, KeyCode::Char('n')) =>
-                    self.path_selector.search_down()?,
-                (Mode::PathSelector, None, KeyCode::Char('N')) =>
-                    self.path_selector.search_up()?,
+            SelectorCaseSensitiveToggle if matches!(self.mode, Mode::Path)
+                => self.path_selector.cd(Path::new("."))?,
 
-                // gg
-                (Mode::PathSelector, None, KeyCode::Char('g')) => self.ready = Some('g'),
-                (Mode::PathSelector, Some('g'), KeyCode::Char('g')) =>
-                    self.path_selector.move_top()?,
-                // ge
-                (Mode::PathSelector, Some('g'), KeyCode::Char('e')) =>
-                    self.path_selector.move_bottom()?,
-                                
-                (Mode::PathSelector, None, KeyCode::Char('y')) => {
-                    if let Some(path) = self.path_selector.selected() {
-                        let env = env.borrow();
-                        let path = path
-                            .strip_prefix(env.pwd())
-                            .unwrap_or(&path)
-                            .to_str()
-                            .context("non-utf8 path are unsupported")?;
-                        let path = if !path.is_empty() {
-                            path
-                        } else {
-                            "."
-                        };
-                        self.clipboard.clear();
-                        self.clipboard.push_str(path);
-                    }
-                },
-                (Mode::PathSelector, None, KeyCode::Enter) => {
-                    use crate::util::path::EscapePath;
-                    
-                    if let Some(path) = self.path_selector.selected() {
-                        let env = env.borrow();
-                        let path = path
-                            .strip_prefix(env.pwd())
-                            .unwrap_or(&path)
-                            .to_str()
-                            .context("non-utf8 path are unsupported")?;
-                        let path = if !path.is_empty() {
-                            EscapePath(path).to_string()
-                        } else {
-                            ".".into()
-                        };
-                        if self.insert.cursor().is_empty() {
-                            self.insert.push_str(&path);
-                        } else {
-                            self.insert.replace_str_inclusive(&path, None);
-                        }
-                        self.suggestion.clear();
-                        self.mode = Mode::Insert;
-                    }
-                },
-
-                (Mode::CompleteSelector, None, KeyCode::Char('h')) => {
-                    if let Some(cur) = self.complete_selector.cur.checked_sub(1) {
-                        self.complete_selector.cur = cur;
-                        self.complete_selector.update_window();
-                    }
-                },
-                (Mode::CompleteSelector, None, KeyCode::Char('j')) => {
-                    let cur = self.complete_selector.cur + self.complete_selector.column;
-                    if cur < self.complete_selector.list.len() {
-                        self.complete_selector.cur = cur;
-                        self.complete_selector.update_window();
-                    }
-                },
-                (Mode::CompleteSelector, None, KeyCode::Char('k')) => {
+            SelectorUp if matches!(self.mode, Mode::Complete)
+                => {
                     if let Some(cur) = self.complete_selector.cur
                         .checked_sub(self.complete_selector.column)
                     {
@@ -487,38 +603,45 @@ impl Editor {
                         self.complete_selector.update_window();
                     }
                 },
-                (Mode::CompleteSelector, None, KeyCode::Char('l')) => {
+            SelectorDown if matches!(self.mode, Mode::Complete)
+                => {
+                    let cur = self.complete_selector.cur + self.complete_selector.column;
+                    if cur < self.complete_selector.list.len() {
+                        self.complete_selector.cur = cur;
+                        self.complete_selector.update_window();
+                    }
+                },
+            SelectorLeft if matches!(self.mode, Mode::Complete)
+                => {
+                    if let Some(cur) = self.complete_selector.cur.checked_sub(1) {
+                        self.complete_selector.cur = cur;
+                        self.complete_selector.update_window();
+                    }
+                },
+            SelectorRight if matches!(self.mode, Mode::Complete)
+                => {
                     let cur = self.complete_selector.cur + 1;
                     if cur < self.complete_selector.list.len() {
                         self.complete_selector.cur = cur;
                         self.complete_selector.update_window();
                     }
                 },
-                (Mode::CompleteSelector, None, KeyCode::Char('n')) =>
-                    self.complete_selector.search_down(),
-                (Mode::CompleteSelector, None, KeyCode::Char('N')) =>
-                    self.complete_selector.search_up(),
-                (Mode::CompleteSelector, None, KeyCode::Enter) => {
-                    let s = &self.complete_selector.list[self.complete_selector.cur];
-                    self.insert.replace_str_inclusive(s, None);
-                    self.suggestion.clear();
-                    self.mode = Mode::Insert;
-                },
-                (Mode::CompleteSelector, None, KeyCode::Char(' ')) => {
-                    let s = &self.complete_selector.list[self.complete_selector.cur];
-                    self.insert.replace_str_inclusive(s, None);
-                    self.insert.push(' ');
-                    self.suggestion.clear();
-                    self.mode = Mode::Insert;
-                },
+            SelectorTop if matches!(self.mode, Mode::Complete)
+                => (), // TODO
+            SelectorBottom if matches!(self.mode, Mode::Complete)
+                => (), // TODO
+                
+            SearchDown if matches!(self.mode, Mode::Complete)
+                => self.complete_selector.search_down(),
+            SearchUp if matches!(self.mode, Mode::Complete)
+                => self.complete_selector.search_up(),
 
-                (Mode::PathSelector | Mode::CompleteSelector, None, KeyCode::Backspace) => {
-                    self.insert.backspace();
-                    self.mode = Mode::Insert;
-                },                
-                _ => ()
-            },
             _ => ()
+        }
+
+        if matches!(self.mode, Mode::Insert) {
+            let cursor = self.insert.cursor_mut();
+            cursor.start = cursor.end;
         }
 
         Ok(Action::Continue)
@@ -529,7 +652,7 @@ impl Editor {
     {
         match (prev_mode, self.mode) {
             (x, y) if x == y => (),
-            (_, Mode::PathSelector) => {
+            (_, Mode::Path) => {
                 if self.ui.layout[self.ui.tail].justify != layout::Justify::Stretch {
                     self.ui.layout[self.ui.tail].justify = layout::Justify::Stretch;
                 }                
@@ -538,8 +661,8 @@ impl Editor {
                     self.ui.layout[self.ui.path_selector].hidden = false;
                 }
             },
-            (_, Mode::CompleteSelector) => {
-                debug_assert_ne!(prev_mode, Mode::PathSelector);
+            (_, Mode::Complete) => {
+                debug_assert_ne!(prev_mode, Mode::Path);
                 
                 if self.ui.layout[self.ui.complete_selector].hidden {
                     self.ui.layout[self.ui.complete_selector].hidden = false;
@@ -562,10 +685,10 @@ impl Editor {
 
         match (prev_mode, self.mode) {
             (x, y) if x == y => (),
-            (Mode::PathSelector, _) => {
+            (Mode::Path, _) => {
                 self.path_selector.clear();
             },
-            (Mode::CompleteSelector, _) => {
+            (Mode::Complete, _) => {
                 self.complete_selector.clear();
             },
             (..) => (),
