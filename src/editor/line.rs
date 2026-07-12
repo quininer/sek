@@ -1,15 +1,14 @@
 use std::{ cmp, fmt };
 use std::ops::Range;
-use std::collections::VecDeque;
 use icu_segmenter::{ WordSegmenter, WordSegmenterBorrowed };
 use crate::util::MapWindows2;
 use crate::ipc;
 
 
 pub struct EditableLine {
+    history: Vec<Line>,
     segmenter: WordSegmenterBorrowed<'static>,
     line: Line,
-    list: VecDeque<Line>,
     // empty when buf is ascii
     indices: Vec<usize>,
     current: usize,
@@ -43,7 +42,7 @@ impl Default for EditableLine {
         EditableLine {
             segmenter: WordSegmenter::new_auto(Default::default()),
             line: Line::default(),
-            list: VecDeque::new(),
+            history: Vec::new(),
             indices: Vec::new(),
             current: 0,
         }
@@ -124,15 +123,16 @@ impl EditableLine {
     }
 
     fn line(&self) -> &Line {
-        self.list.get(self.current()).unwrap_or(&self.line)
+        self.history.get(self.current()).unwrap_or(&self.line)
     }
 
     fn line_mut(&mut self) -> &mut Line {
-        self.list.get_mut(self.current()).unwrap_or(&mut self.line)
+        let idx = self.current();
+        self.history.get_mut(idx).unwrap_or(&mut self.line)
     }
 
     fn current(&self) -> usize {
-        self.list.len() - self.current
+        self.history.len() - self.current
     }
 
     fn index(&self, cur: usize) -> usize {
@@ -148,7 +148,7 @@ impl EditableLine {
         let is_ascii = self.indices.is_empty() && is_ascii();
         
         if !is_ascii {
-            let buf = &self.list.get(self.current()).unwrap_or(&self.line).buf;
+            let buf = &self.history.get(self.current()).unwrap_or(&self.line).buf;
             if self.indices.is_empty() {
                 self.indices.extend(buf.char_indices().map(|(offset, _)| offset));
             } else {
@@ -160,12 +160,13 @@ impl EditableLine {
 
     fn make(&mut self) {
         if self.current != 0 {
-            let idx = self.list.len() - self.current;
-            let line = &self.list[idx];
+            let idx = self.history.len() - self.current;
+            let line = &self.history[idx];
             self.line.cursor = line.cursor.clone();
             self.line.buf.clear();
             self.line.buf.push_str(&line.buf);
             self.current = 0;
+            self.history.clear();
         }
     }
 
@@ -330,7 +331,7 @@ impl EditableLine {
     }
 
     pub fn up(&mut self) {
-        self.current = std::cmp::min(self.current + 1, self.list.len());
+        self.current = std::cmp::min(self.current + 1, self.history.len());
         let is_ascii = self.as_str().is_ascii();
         self.update(0, 0, || is_ascii);
     }
@@ -341,37 +342,19 @@ impl EditableLine {
         self.update(0, 0, || is_ascii);
     }
 
+    pub fn set_history(&mut self, commands: Vec<&str>) {
+        let iter = commands.into_iter()
+            .rev()
+            .map(|s| {
+                let len = s.chars().count();
+                Line { buf: s.into(), cursor: len..len }
+            })
+            .take(MAX_HISTORY);
+        self.history.extend(iter);
+    }
+
     pub fn submit(&mut self) {
-        if let Some(line) = self.list.get(self.current()) {
-            self.line.buf.clear();
-            self.line.buf.push_str(&line.buf);
-            self.line.cursor = line.cursor.clone();
-            let is_ascii = self.line.buf.is_ascii();
-            self.update(0, 0, || is_ascii);
-        }
-                
-        if self.list.back().map(|line| line.buf.as_str()) == Some(&self.line.buf) {
-            // TODO cursor
-
-            self.current = 0;
-            return
-        }
-        
-        let line = if self.list.len() >= MAX_HISTORY {
-            self.list.pop_front()
-        } else {
-            None
-        };
-        let line = if let Some(mut line) = line {
-            line.buf.clear();
-            line.buf.push_str(&self.line.buf);
-            line.cursor = self.line.cursor.clone();
-            line
-        } else {
-            self.line.clone()
-        };
-
-        self.list.push_back(line);
+        self.history.clear();
         self.current = 0;
     }
 
@@ -398,7 +381,7 @@ impl Suggestion {
             SuggestionKind::Value =>
                 self.buf.strip_prefix(&line.line.buf).unwrap_or_default(),
             SuggestionKind::History(idx) => {
-                let history = &line.list[idx];
+                let history = &line.history[idx];
                 history.buf.strip_prefix(&line.line.buf).unwrap_or_default()
             }
         }
@@ -424,7 +407,7 @@ impl Suggestion {
     }
 
     pub fn set_history(&mut self, line: &EditableLine) {
-        if let Some((idx, _)) = line.list.iter()
+        if let Some((idx, _)) = line.history.iter()
             .map(|line| line.buf.as_str())
             .enumerate()
             .rev()
@@ -444,7 +427,7 @@ impl Suggestion {
             },
             SuggestionKind::History(idx) => {
                 line.line.buf.clear();
-                line.line.buf.push_str(&line.list[idx].buf);
+                line.line.buf.push_str(&line.history[idx].buf);
                 let is_ascii = line.line.buf.is_ascii();
                 line.update(0, 0, || is_ascii);
                 line.move_end();

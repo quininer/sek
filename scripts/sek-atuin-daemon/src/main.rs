@@ -259,8 +259,6 @@ async fn handle(
                 }
             },
             ClientMessageData::RequestHistory { command, num } => {
-                info!(request=?msg.request_id, "request history");
-
                 let commands = state.history.search(
                     SearchMode::Fuzzy,
                     FilterMode::Global,
@@ -272,6 +270,8 @@ async fn handle(
                         ..Default::default()
                     }
                 ).await?;
+
+                info!(request=?msg.request_id, len=?commands.len(), "request history");
                 
                 let commands = commands.iter()
                     .map(|cmd| cmd.command.as_str())

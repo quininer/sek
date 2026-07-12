@@ -16,7 +16,7 @@ use crate::config::{ self, Config };
 use crate::ui::layout;
 use crate::ui::render::{ Renderer, TermTarget, warn };
 use crate::editor::{ Editor, Action, Mode };
-use crate::util::ScopeGuard;
+use crate::util::{ Select, Either, ScopeGuard };
 use crate::util::stdout::Stdout;
 use env::Environment;
 use execute::external::Morgue;
@@ -101,7 +101,6 @@ async fn runloop(
     shell: &mut Shell,
     stdout: &Stdout,
 ) -> anyhow::Result<()> {
-    use crate::util::{ Select, Either };
     use crate::ipc;
 
     let size = terminal::size()?;
@@ -247,23 +246,51 @@ async fn process_input<T: TermTarget>(
     }
 
     let mode = shell.editor.mode;
-    // let mut action = shell.editor.step(&shell.env, event);
     let mut action = {
         let action = shell.editor.step(event);
         shell.editor.apply(&shell.env, action)
     };
     let is_execute = matches!(action, Ok(Action::Execute));
 
-    match action {
-        Ok(Action::Break) => return Ok(false),
-        Ok(Action::Reload) => {
-            match config::reload(&shell.env, &shell.config, &shell.cache) {
-                Ok(()) => return Ok(true),
-                Err(err) => action = Err(err)
-            }
-        },
-        _ => (),
+    if matches!(action, Ok(Action::Break)) {
+        return Ok(false);
     }
+
+    if matches!(action, Ok(Action::Reload)) {
+        match config::reload(&shell.env, &shell.config, &shell.cache) {
+            Ok(()) => return Ok(true),
+            Err(err) => action = Err(err)
+        }
+    }
+
+    if matches!(action, Ok(Action::QueryHistory)) {
+        let command = shell.editor.insert.as_str();
+
+        match ipc::request_history(shell.ipc.as_ref(), ipcbuf, command).await {
+            Ok(Some(request_id)) => match wait_history(
+                    shell.ipc.as_ref(),
+                    |cmds| shell.editor.insert.set_history(cmds),
+                    ipcbuf,
+                    request_id
+                ).await
+            {
+                Ok(Some(())) => {
+                    shell.editor.insert.up();
+                    shell.editor.suggestion.clear();
+                },
+                Ok(None) => (),
+                Err(err) => {
+                    action = Err(err);
+                    shell.ipc = None;                        
+                }
+            },
+            Ok(None) => return Ok(true),
+            Err(err) => {
+                action = Err(err);
+                shell.ipc = None;
+            }
+        }
+    }    
 
     let line = shell.editor.insert.as_str();
     let result = if is_execute {
@@ -291,14 +318,6 @@ async fn process_input<T: TermTarget>(
                 action = Err(err);
             }
         }
-    }
-
-    if matches!(action, Ok(Action::QueryHistory)) {
-        let input = shell.editor.insert.as_str();
-        let _request_id = ipc::request_history(shell.ipc.as_ref(), ipcbuf, input)
-            .await
-            .ok()
-            .flatten();
     }
 
     shell.editor.mode_switch(mode, renderer)?;
@@ -370,16 +389,60 @@ async fn process_msg(
     match msg.data {
         ipc::ServerMessageData::PushSuggest { command } => {
             if shell.editor.suggestion.requested() == msg.request_id
-                    && msg.request_id.is_some()
+                && msg.request_id.is_some()
             {
                 shell.editor.suggestion.set_value(command);
             }
         },
-        ipc::ServerMessageData::PushHistory { .. } => {
+        ipc::ServerMessageData::PushPrompt { .. } => {
             // TODO
         },
         _ => ()
     }
 
     Ok(())
+}
+
+async fn wait_history<F>(
+    client: Option<&RefCell<ipc::Client>>,
+    mut push_history: F,
+    ipcbuf: &mut Vec<u8>,
+    request_id: ipc::RequestId,
+)
+    -> anyhow::Result<Option<()>>
+where
+    F: FnMut(Vec<&str>)
+{
+    use tokio::signal::ctrl_c;
+    
+    let Some(client) = client
+        else {
+            return Ok(None);
+        };
+    let mut client = client.borrow_mut();
+    loop {
+        let msg = Select::new(
+            client.recv_msg(&mut *ipcbuf),
+            ctrl_c()
+        ).await;
+
+        let msg = match msg {
+            Either::Left(msg) => msg?,
+            Either::Right(Err(err)) => return Err(err.into()),
+            Either::Right(Ok(())) => return Ok(None),
+        };
+
+        if msg.request_id != Some(request_id) {
+            continue
+        }
+
+        if let ipc::ServerMessageData::PushHistory { commands } = msg.data {
+            push_history(commands);
+            break
+        } else {
+            anyhow::bail!("bad message data");
+        }
+    }
+
+    Ok(Some(()))
 }

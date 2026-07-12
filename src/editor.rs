@@ -47,7 +47,7 @@ pub enum Action {
     Break,
 }
 
-pub(super) enum EditAction {
+pub enum StepAction {
     Nop,
     Input(char),
     InputCommand(char),
@@ -114,14 +114,14 @@ impl Editor {
     }
 
     pub fn step(&mut self, event: Event)
-        -> EditAction
+        -> StepAction
     {
         match (self.mode, event) {
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers == KM::CONTROL
                     && code == KeyCode::Char('d')
                     && self.insert.is_empty()
-            => EditAction::Break,
+            => StepAction::Break,
             (
                 Mode::Insert | Mode::Path | Mode::Complete,
                 Event::Key(KeyEvent { modifiers, code, .. })
@@ -129,41 +129,41 @@ impl Editor {
                 if (modifiers == KM::CONTROL && code == KeyCode::Char('c'))
                     || (modifiers == KM::NONE && code == KeyCode::Esc)
                     || (modifiers == KM::ALT && code == KeyCode::Char(' '))
-            => EditAction::Cancel,
+            => StepAction::Cancel,
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::ALT)
                     && code == KeyCode::Char('l')
                     && self.insert.is_editing()
                     && self.insert.is_point_end()
                     && self.suggestion.has_suggest()
-            => EditAction::ApplySuggestion,
+            => StepAction::ApplySuggestion,
 
             (Mode::Insert, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::SHIFT & KM::NONE)
                     && !modifiers.intersects(KM::CONTROL | KM::ALT)
             => match code {
-                KeyCode::Char('\r') => EditAction::Nop,
-                KeyCode::Char(c) => EditAction::Input(c),
+                KeyCode::Char('\r') => StepAction::Nop,
+                KeyCode::Char(c) => StepAction::Input(c),
                 KeyCode::Right if 
                     self.insert.is_editing()
                     && self.insert.is_point_end()
                     && self.suggestion.has_suggest()
-                => EditAction::ApplySuggestion,
-                KeyCode::Backspace => EditAction::Backspace,
-                KeyCode::Delete => EditAction::Delete,
-                KeyCode::Left => EditAction::MoveLeft,
-                KeyCode::Right => EditAction::MoveRight,
-                KeyCode::Home => EditAction::MoveHead,
-                KeyCode::End => EditAction::MoveEnd,
-                KeyCode::Up => EditAction::HistoryUp,
-                KeyCode::Down => EditAction::HistoryDown,
-                KeyCode::Tab => EditAction::Completion,
-                KeyCode::Enter => EditAction::Execute,
-                _ => EditAction::Nop,
+                => StepAction::ApplySuggestion,
+                KeyCode::Backspace => StepAction::Backspace,
+                KeyCode::Delete => StepAction::Delete,
+                KeyCode::Left => StepAction::MoveLeft,
+                KeyCode::Right => StepAction::MoveRight,
+                KeyCode::Home => StepAction::MoveHead,
+                KeyCode::End => StepAction::MoveEnd,
+                KeyCode::Up => StepAction::HistoryUp,
+                KeyCode::Down => StepAction::HistoryDown,
+                KeyCode::Tab => StepAction::Completion,
+                KeyCode::Enter => StepAction::Execute,
+                _ => StepAction::Nop,
             },
             (Mode::Normal | Mode::Visual, Event::Key(KeyEvent { modifiers, code, .. }))
                 if modifiers.contains(KM::ALT) && code == KeyCode::Char(';')
-            => EditAction::SwapCursor,
+            => StepAction::SwapCursor,
 
             (
                 Mode::Normal | Mode::Path | Mode::Complete,
@@ -171,17 +171,17 @@ impl Editor {
             )
                 if modifiers.contains(KM::SHIFT & KM::NONE) && !self.command.is_empty()
             => match (self.command.first(), code) {
-                (_, KeyCode::Char('\r')) => EditAction::Nop,
-                (Some(_), KeyCode::Char(c)) => EditAction::Input(c),
-                (Some(_), KeyCode::Backspace) => EditAction::Backspace,
-                (Some(_), KeyCode::Delete) => EditAction::Delete,
-                (Some(_), KeyCode::Left) => EditAction::MoveLeft,
-                (Some(_), KeyCode::Right) => EditAction::MoveRight,
-                (Some(_), KeyCode::Home) => EditAction::MoveHead,
-                (Some(_), KeyCode::End) => EditAction::MoveEnd,
-                (Some(_), KeyCode::Esc) => EditAction::Cancel,
-                (Some(_), KeyCode::Enter) => EditAction::Execute,
-                _ => EditAction::Nop,
+                (_, KeyCode::Char('\r')) => StepAction::Nop,
+                (Some(_), KeyCode::Char(c)) => StepAction::Input(c),
+                (Some(_), KeyCode::Backspace) => StepAction::Backspace,
+                (Some(_), KeyCode::Delete) => StepAction::Delete,
+                (Some(_), KeyCode::Left) => StepAction::MoveLeft,
+                (Some(_), KeyCode::Right) => StepAction::MoveRight,
+                (Some(_), KeyCode::Home) => StepAction::MoveHead,
+                (Some(_), KeyCode::End) => StepAction::MoveEnd,
+                (Some(_), KeyCode::Esc) => StepAction::Cancel,
+                (Some(_), KeyCode::Enter) => StepAction::Execute,
+                _ => StepAction::Nop,
             }
 
             (
@@ -190,110 +190,110 @@ impl Editor {
             )
                 if modifiers.contains(KM::SHIFT & KM::NONE) && self.command.is_empty()
             => match (self.ready.take(), code) {
-                (None, KeyCode::Char(':' | ';')) => EditAction::InputCommand(':'),
-                (None, KeyCode::Char('/')) => EditAction::InputCommand('/'),
-                (None, KeyCode::Char('i')) => EditAction::EnterInsert,
-                (None, KeyCode::Char('a')) => EditAction::EnterInsertAppend,
+                (None, KeyCode::Char(':' | ';')) => StepAction::InputCommand(':'),
+                (None, KeyCode::Char('/')) => StepAction::InputCommand('/'),
+                (None, KeyCode::Char('i')) => StepAction::EnterInsert,
+                (None, KeyCode::Char('a')) => StepAction::EnterInsertAppend,
                 (None, KeyCode::Char('v')) if matches!(self.mode, Mode::Normal)
-                    => EditAction::EnterVisual,
+                    => StepAction::EnterVisual,
                 (None, KeyCode::Char('v')) if matches!(self.mode, Mode::Visual)
-                    => EditAction::EnterNormal,
+                    => StepAction::EnterNormal,
 
                 (None, KeyCode::Char('h')) if matches!(self.mode, Mode::Normal | Mode::Visual)
-                    => EditAction::MoveLeft,
+                    => StepAction::MoveLeft,
                 (None, KeyCode::Char('l')) if matches!(self.mode, Mode::Normal | Mode::Visual)
-                    => EditAction::MoveRight,
+                    => StepAction::MoveRight,
                 (None, KeyCode::Char('j')) if matches!(self.mode, Mode::Normal | Mode::Visual)
-                    => EditAction::HistoryDown,
+                    => StepAction::HistoryDown,
                 (None, KeyCode::Char('k')) if matches!(self.mode, Mode::Normal | Mode::Visual)
-                    => EditAction::HistoryUp,
+                    => StepAction::HistoryUp,
 
                 (None, KeyCode::Char('h')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::SelectorLeft,
+                    => StepAction::SelectorLeft,
                 (None, KeyCode::Char('l')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::SelectorRight,
+                    => StepAction::SelectorRight,
                 (None, KeyCode::Char('j')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::SelectorDown,
+                    => StepAction::SelectorDown,
                 (None, KeyCode::Char('k')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::SelectorUp,
+                    => StepAction::SelectorUp,
 
                 (None, KeyCode::Char('x')) if matches!(self.mode, Mode::Normal | Mode::Visual)
-                    => EditAction::SelectAll,
+                    => StepAction::SelectAll,
                 (None, KeyCode::Char('w')) if matches!(self.mode, Mode::Normal | Mode::Visual)
-                    => EditAction::SelectNextWord,
+                    => StepAction::SelectNextWord,
                 (None, KeyCode::Char('b')) if matches!(self.mode, Mode::Normal | Mode::Visual)
-                    => EditAction::SelectBackWord,
+                    => StepAction::SelectBackWord,
                 (None, KeyCode::Char('d')) if matches!(self.mode, Mode::Visual)
-                    => EditAction::DeleteSelected,
+                    => StepAction::DeleteSelected,
 
-                (None, KeyCode::Enter) => EditAction::Execute,
+                (None, KeyCode::Enter) => StepAction::Execute,
 
                 (None, KeyCode::Char('y')) if matches!(self.mode, Mode::Normal | Mode::Visual | Mode::Path)
-                    => EditAction::Copy,
+                    => StepAction::Copy,
                 (None, KeyCode::Char('p')) if matches!(self.mode, Mode::Normal | Mode::Visual)
-                    => EditAction::Paste,                
+                    => StepAction::Paste,                
 
                 // dd
                 (None, KeyCode::Char('d')) if matches!(self.mode, Mode::Normal)
                     => {
                         self.ready = Some('d');
-                        EditAction::Nop
+                        StepAction::Nop
                     },
                 (Some('d'), KeyCode::Char('d')) if matches!(self.mode, Mode::Normal)
-                    => EditAction::DeleteAll,
+                    => StepAction::DeleteAll,
 
                 // gh gl gg ge
                 (None, KeyCode::Char('g')) if matches!(self.mode, Mode::Normal)
                     => {
                         self.ready = Some('g');
-                        EditAction::Nop
+                        StepAction::Nop
                     },
                 (Some('g'), KeyCode::Char('h')) if matches!(self.mode, Mode::Normal)
-                    => EditAction::MoveHead,
+                    => StepAction::MoveHead,
                 (Some('g'), KeyCode::Char('l')) if matches!(self.mode, Mode::Normal)
-                    => EditAction::MoveEnd,
+                    => StepAction::MoveEnd,
                 (Some('g'), KeyCode::Char('g')) if matches!(self.mode, Mode::Normal)
-                    => EditAction::SelectorTop,
+                    => StepAction::SelectorTop,
                 (Some('g'), KeyCode::Char('e')) if matches!(self.mode, Mode::Normal)
-                    => EditAction::SelectorBottom,
+                    => StepAction::SelectorBottom,
 
                 // ,,
                 (None, KeyCode::Char(',')) => {
                     self.ready = Some(',');
-                    EditAction::Nop
+                    StepAction::Nop
                 },
-                (Some(','), KeyCode::Char(',')) => EditAction::Cancel,
+                (Some(','), KeyCode::Char(',')) => StepAction::Cancel,
 
                 (None, KeyCode::Char('.')) if matches!(self.mode, Mode::Path)
-                    => EditAction::SelectorHiddenToggle,
+                    => StepAction::SelectorHiddenToggle,
                 (None, KeyCode::Char('c')) if matches!(self.mode, Mode::Path)
-                    => EditAction::SelectorCaseSensitiveToggle,
+                    => StepAction::SelectorCaseSensitiveToggle,
                 (None, KeyCode::Char('r')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::SelectorRefresh,
+                    => StepAction::SelectorRefresh,
                 (None, KeyCode::Char('q')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::Cancel,
+                    => StepAction::Cancel,
                 (None, KeyCode::Char('n')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::SearchDown,
+                    => StepAction::SearchDown,
                 (None, KeyCode::Char('N')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::SearchUp,
+                    => StepAction::SearchUp,
 
                 (None, KeyCode::Char(' ')) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::ExecuteSpace,
+                    => StepAction::ExecuteSpace,
 
                 (None, KeyCode::Backspace) if matches!(self.mode, Mode::Path | Mode::Complete)
-                    => EditAction::Backspace,
+                    => StepAction::Backspace,
                                     
-                _ => EditAction::Nop,
+                _ => StepAction::Nop,
             }
                         
-            _ => EditAction::Nop
+            _ => StepAction::Nop
         }
     }
 
-    pub fn apply(&mut self, env: &RefCell<Environment>, action: EditAction)
+    pub fn apply(&mut self, env: &RefCell<Environment>, action: StepAction)
         -> anyhow::Result<Action>
     {
-        use EditAction::*;
+        use StepAction::*;
 
         match action {
             Nop => (),
@@ -423,10 +423,9 @@ impl Editor {
                 self.suggestion.clear();
             },
 
-            HistoryUp => {
-                // TODO query history
-                self.insert.up();
-            },
+            HistoryUp if self.insert.is_editing()
+                => return Ok(Action::QueryHistory),
+            HistoryUp => self.insert.up(),
             HistoryDown => self.insert.down(),
 
             SwapCursor => {
