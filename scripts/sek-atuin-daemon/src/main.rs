@@ -97,7 +97,6 @@ async fn daemon(projdir: &ProjectDirs, path: &Path) -> anyhow::Result<()> {
 
 struct Session {
     session_id: String,
-    cwd: Vec<u8>,
     envs: Vec<(Vec<u8>, Vec<u8>)>,
     running: Vec<Command>,
     context: AtuinContext,
@@ -158,7 +157,6 @@ impl Session {
 
         Ok(Session {
             session_id, context,
-            cwd: (&**cwd).into(),
             envs: envs.into_iter()
                 .map(|(k ,v)| ((&**k).into(), (&**v).into()))
                 .collect(),
@@ -184,7 +182,8 @@ async fn handle(
         };
 
         match msg.data {
-            ClientMessageData::ChangeDir { cwd } => session.cwd = (&**cwd).into(),
+            ClientMessageData::ChangeDir { cwd }
+                => session.context.cwd = String::from_utf8_lossy(cwd).into_owned(),
             ClientMessageData::ChangeEnv { key, value } => {
                 match session.envs.binary_search_by_key(&&**key, |(k, _)| k.as_slice()) {
                     Ok(idx) => match value {
@@ -205,7 +204,7 @@ async fn handle(
                 let mut item: History = History::capture()
                     .timestamp(time)
                     .command(command)
-                    .cwd(String::from_utf8_lossy(&session.cwd))
+                    .cwd(&session.context.cwd)
                     .build()
                     .into();
                 item.id = format!("{}-{}", session.session_id, msg.request_id).into();
@@ -222,8 +221,6 @@ async fn handle(
                 if let Ok(idx) = session.running
                     .binary_search_by_key(&request_id, |cmd| cmd.request_id)
                 {
-                    info!(?request_id, "execute command");
-                    
                     let mut cmd = session.running.remove(idx);
                     let duration = msg.time.as_duration() - cmd.when_run.as_duration();
 
@@ -269,7 +266,12 @@ async fn handle(
                     }
                 ).await?;
 
-                info!(request=?msg.request_id, len=?commands.len(), "request history");
+                info!(
+                    session=?session.session_id,
+                    request=?msg.request_id,
+                    len=?commands.len(),
+                    "request history"
+                );
                 
                 let commands = commands.iter()
                     .map(|cmd| cmd.command.as_str())
