@@ -80,6 +80,7 @@ pub async fn complete(shell: &Shell, cmd: Command)
                     || buf.starts_with_str("./")
                     || buf.ends_with_str("/")
                     || buf.as_slice() == b"."
+                    || buf.as_slice() == b".."
                 {
                     return CompletionType::Path {
                         select: args.span(&shell.parser),

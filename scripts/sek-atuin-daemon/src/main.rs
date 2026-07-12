@@ -234,8 +234,6 @@ async fn handle(
                 }
             },
             ClientMessageData::RequestSuggest { command } => {
-                info!(request=?msg.request_id, "request suggest");
-
                 let commands = state.history.search(
                     SearchMode::Prefix,
                     FilterMode::Global,
@@ -265,8 +263,8 @@ async fn handle(
                     &session.context,
                     command,
                     OptFilters {
-                        exit: Some(0),
                         limit: Some(num.into()),
+                        cwd: Some(session.context.cwd.clone()),
                         ..Default::default()
                     }
                 ).await?;

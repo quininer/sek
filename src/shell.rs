@@ -257,7 +257,16 @@ async fn process_input<T: TermTarget>(
     }
 
     if matches!(action, Ok(Action::Reload)) {
-        match config::reload(&shell.env, &shell.config, &shell.cache) {
+        let mut result = config::reload(&shell.env, &shell.config, &shell.cache);
+
+        match ipc::Client::connect(&shell.env).await {
+            Ok(Some(client)) => shell.ipc = Some(RefCell::new(client)),
+            Ok(None) => (),
+            Err(err) if result.is_ok() => result = Err(err),
+            Err(_) => (),
+        }
+        
+        match result {
             Ok(()) => return Ok(true),
             Err(err) => action = Err(err)
         }
