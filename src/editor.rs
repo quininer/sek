@@ -325,6 +325,7 @@ impl Editor {
 
             Backspace if self.command.is_empty() => {
                 self.insert.backspace();
+                self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
                     self.insert.cursor_mut().start = self.insert.cursor_mut().end;
@@ -336,6 +337,7 @@ impl Editor {
             },
             Delete if self.command.is_empty() => {
                 self.insert.delete();
+                self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
                     self.insert.cursor_mut().start = self.insert.cursor_mut().end;
@@ -347,6 +349,7 @@ impl Editor {
             },
             MoveLeft if self.command.is_empty() => {
                 self.insert.move_left();
+                self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
                     self.insert.cursor_mut().start = self.insert.cursor_mut().end;
@@ -354,6 +357,7 @@ impl Editor {
             },
             MoveRight if self.command.is_empty() => {
                 self.insert.move_right();
+                self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
                     self.insert.cursor_mut().start = self.insert.cursor_mut().end;
@@ -361,6 +365,7 @@ impl Editor {
             },
             MoveHead if self.command.is_empty() => {
                 self.insert.move_head();
+                self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
                     self.insert.cursor_mut().start = self.insert.cursor_mut().end;
@@ -368,6 +373,7 @@ impl Editor {
             },
             MoveEnd if self.command.is_empty() => {
                 self.insert.move_end();
+                self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
                     self.insert.cursor_mut().start = self.insert.cursor_mut().end;
