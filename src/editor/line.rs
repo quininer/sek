@@ -324,6 +324,7 @@ impl EditableLine {
     }
 
     pub fn clear(&mut self) {
+        self.history.clear();
         self.current = 0;
         self.indices.clear();
         self.line_mut().cursor = 0..0;
@@ -351,11 +352,6 @@ impl EditableLine {
             })
             .take(MAX_HISTORY);
         self.history.extend(iter);
-    }
-
-    pub fn submit(&mut self) {
-        self.history.clear();
-        self.current = 0;
     }
 
     pub fn split(&self, mid: usize) -> (&str, &str) {

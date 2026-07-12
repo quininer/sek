@@ -348,8 +348,6 @@ async fn process_input<T: TermTarget>(
         renderer.new_line(&"")?;
         
         if let Some(cmd) = shell.ast.take() {
-            shell.editor.insert.submit();
-
             let input = shell.editor.insert.as_str();
             let request_id = ipc::start_execute(shell.ipc.as_ref(), ipcbuf, input)
                 .await
