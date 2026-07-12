@@ -21,10 +21,10 @@ pub struct Editor {
     pub mode: Mode,
     pub insert: EditableLine,
     pub command: EditableLine,
-    pub ready: Option<char>,
     pub path_selector: PathSelector,
     pub complete_selector: CompleteSelector,
     pub suggestion: Suggestion,
+    ready: Option<char>,
     clipboard: String,
 }
 
@@ -243,7 +243,7 @@ impl Editor {
                     => StepAction::DeleteAll,
 
                 // gh gl gg ge
-                (None, KeyCode::Char('g')) if matches!(self.mode, Mode::Normal)
+                (None, KeyCode::Char('g'))
                     => {
                         self.ready = Some('g');
                         StepAction::Nop
@@ -252,9 +252,10 @@ impl Editor {
                     => StepAction::MoveHead,
                 (Some('g'), KeyCode::Char('l')) if matches!(self.mode, Mode::Normal)
                     => StepAction::MoveEnd,
-                (Some('g'), KeyCode::Char('g')) if matches!(self.mode, Mode::Normal)
+
+                (Some('g'), KeyCode::Char('g')) if matches!(self.mode, Mode::Path | Mode::Complete)
                     => StepAction::SelectorTop,
-                (Some('g'), KeyCode::Char('e')) if matches!(self.mode, Mode::Normal)
+                (Some('g'), KeyCode::Char('e')) if matches!(self.mode, Mode::Path | Mode::Complete)
                     => StepAction::SelectorBottom,
 
                 // ,,
@@ -626,9 +627,16 @@ impl Editor {
                     }
                 },
             SelectorTop if matches!(self.mode, Mode::Complete)
-                => (), // TODO
+                => {
+                    self.complete_selector.cur = 0;
+                    self.complete_selector.update_window();
+                },
             SelectorBottom if matches!(self.mode, Mode::Complete)
-                => (), // TODO
+                => {
+                    self.complete_selector.cur =
+                        self.complete_selector.list.len().saturating_sub(1);
+                    self.complete_selector.update_window();
+                },
                 
             SearchDown if matches!(self.mode, Mode::Complete)
                 => self.complete_selector.search_down(),
