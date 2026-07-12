@@ -252,7 +252,7 @@ async fn process_input<T: TermTarget>(
     };
     let is_execute = matches!(action, Ok(Action::Execute));
 
-    if matches!(action, Ok(Action::Break)) {
+    if matches!(action, Ok(Action::Quit)) {
         return Ok(false);
     }
 

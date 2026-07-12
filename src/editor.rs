@@ -44,7 +44,7 @@ pub enum Action {
     QueryHistory,
     Reload,
     Execute,
-    Break,
+    Quit,
 }
 
 pub enum StepAction {
@@ -303,7 +303,7 @@ impl Editor {
             Input(c) | InputCommand(c)
                 => self.command.push(c),
             Break
-                => return Ok(Action::Break),
+                => return Ok(Action::Quit),
             Cancel if self.command.is_empty()
                 => {
                     self.mode = Mode::Normal;
@@ -441,13 +441,17 @@ impl Editor {
             },
 
             Execute if matches!(self.mode, Mode::Normal | Mode::Visual) && !self.command.is_empty()
-                => match self.command.as_str() {
-                    ":quit" => return Ok(Action::Break),
-                    ":reload" => {
-                        self.command.clear();
-                        return Ok(Action::Reload);
-                    },
-                    _ => self.command.clear(),
+                => {
+                    self.mode = Mode::Insert;
+
+                    match self.command.as_str() {
+                        ":quit" => return Ok(Action::Quit),
+                        ":reload" => {
+                            self.command.clear();
+                            return Ok(Action::Reload);
+                        },
+                        _ => self.command.clear(),
+                    }
                 },
 
             Execute if matches!(self.mode, Mode::Path) && !self.command.is_empty() => {

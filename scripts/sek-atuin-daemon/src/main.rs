@@ -259,7 +259,7 @@ async fn handle(
             ClientMessageData::RequestHistory { command, num } => {
                 let commands = state.history.search(
                     SearchMode::Fuzzy,
-                    FilterMode::Global,
+                    FilterMode::Directory,
                     &session.context,
                     command,
                     OptFilters {
