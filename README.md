@@ -87,7 +87,7 @@ On the contrary, it is designed to satisfy my personal use.
 + [x] Prompt
 + [x] History-based suggestion
 + [x] Shell completion
-+ [ ] Persistent history daemon
++ [x] Persistent history daemon
 
 ### External feature
 
@@ -96,11 +96,6 @@ especially since features like command completion require a lot of ecosystem,
 which means it’s impossible to have a good user experience in the early stages.
 
 Fortunately, tools like `fish` and `starship` provide excellent support for this.
-
-As a result, we gain an additional benefit.
-because our complex feature run in separate processes, they can be sandboxed.
-This means we won’t be vulnerable to attacks from an untrusted codebase simply
-because the `prompt` function executes a `git` or the `complete` executes a `cargo` command.
 
 As a result, we gain an additional benefit.
 because our complex feature runs in separate processes, it can be sandboxed.
