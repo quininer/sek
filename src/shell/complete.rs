@@ -217,7 +217,7 @@ impl CompletionType {
                     && iter.next().is_none()
                     && let Some(item) = item.strip_prefix(prefix)
                 {
-                    shell.editor.suggestion.set_value(item);
+                    shell.editor.suggestion.set_suffix(item);
                 }
             },
             CompletionType::Env(span) => {
@@ -231,7 +231,7 @@ impl CompletionType {
                     && iter.next().is_none()
                     && let Some(item) = item.strip_prefix(prefix)
                 {
-                    shell.editor.suggestion.set_value(item);
+                    shell.editor.suggestion.set_suffix(item);
                 }
             },
             CompletionType::Path { .. } => (),

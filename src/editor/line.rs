@@ -31,7 +31,7 @@ enum SuggestionKind {
     #[default]
     Nothing,
     Requested(ipc::RequestId),
-    Value,
+    Suffix,
     History(usize),
 }
 
@@ -374,8 +374,7 @@ impl Suggestion {
     pub fn as_str<'a>(&'a self, line: &'a EditableLine) -> &'a str {
         match self.kind {
             SuggestionKind::Nothing | SuggestionKind::Requested(_) => "",
-            SuggestionKind::Value =>
-                self.buf.strip_prefix(&line.line.buf).unwrap_or_default(),
+            SuggestionKind::Suffix => &self.buf,
             SuggestionKind::History(idx) => {
                 let history = &line.history[idx];
                 history.buf.strip_prefix(&line.line.buf).unwrap_or_default()
@@ -396,10 +395,10 @@ impl Suggestion {
         self.kind = SuggestionKind::Requested(request_id);
     }
     
-    pub fn set_value(&mut self, value: &str) {
+    pub fn set_suffix(&mut self, value: &str) {
         self.buf.clear();
         self.buf.push_str(value);
-        self.kind = SuggestionKind::Value;
+        self.kind = SuggestionKind::Suffix;
     }
 
     pub fn set_history(&mut self, line: &EditableLine) {
@@ -416,8 +415,7 @@ impl Suggestion {
     pub fn apply(&mut self, line: &mut EditableLine) {
         match self.kind {
             SuggestionKind::Nothing | SuggestionKind::Requested(_) => (),
-            SuggestionKind::Value => {
-                line.clear();
+            SuggestionKind::Suffix => {
                 line.push_str(&self.buf);
                 line.line.cursor.start = line.line.cursor.end;
             },

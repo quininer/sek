@@ -397,8 +397,9 @@ async fn process_msg(
         ipc::ServerMessageData::PushSuggest { command } => {
             if shell.editor.suggestion.requested() == msg.request_id
                 && msg.request_id.is_some()
+                && let Some(value) = command.strip_prefix(shell.editor.insert.as_str())
             {
-                shell.editor.suggestion.set_value(command);
+                shell.editor.suggestion.set_suffix(value);
             }
         },
         ipc::ServerMessageData::PushPrompt { .. } => {
