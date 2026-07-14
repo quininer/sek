@@ -398,6 +398,7 @@ fn make_complete_selector(
             editor.insert.select_span(select);
             editor.insert.replace_str_inclusive(s, None);
             editor.insert.push(' ');
+            editor.suggestion.clear();
             true
         },
         _ => {

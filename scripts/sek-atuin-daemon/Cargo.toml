@@ -1,5 +1,5 @@
 [package]
-name = "sek-autin-daemon"
+name = "sek-atuin-daemon"
 version = "0.1.0"
 edition = "2024"
 

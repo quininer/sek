@@ -1,0 +1,8 @@
+[Unit]
+Description=The Sek Shell Daemon
+
+[Service]
+ExecStart=%h/.cargo/bin/sek-atuin-daemon
+
+[Install]
+WantedBy=default.target
