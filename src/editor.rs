@@ -486,13 +486,29 @@ impl Editor {
             },
 
             Execute if matches!(self.mode, Mode::Path) => {
+                use std::iter;
+                use std::path::Component;
                 use crate::util::path::EscapePath;
-                
+
                 if let Some(path) = self.path_selector.selected() {
                     let env = env.borrow();
+                    let pathbuf;
+
+                    let path = if let Ok(subpath) = path.strip_prefix(env.pwd()) {
+                        subpath
+                    } else if env.pwd().components()
+                        .zip(path.components().chain(iter::repeat(Component::CurDir)))
+                        .skip_while(|(x, y)| x == y)
+                        .count() <= 2
+                        && let Some(diff) = pathdiff::diff_paths(&path, env.pwd())
+                    {
+                        pathbuf = diff;
+                        &pathbuf
+                    } else {
+                        &path
+                    };
+                    
                     let path = path
-                        .strip_prefix(env.pwd())
-                        .unwrap_or(&path)
                         .to_str()
                         .context("non-utf8 path are unsupported")?;
                     let path = if !path.is_empty() {
