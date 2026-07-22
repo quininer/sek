@@ -109,7 +109,7 @@ impl PathSelector {
 
     pub fn cd(&mut self, path: &Path) -> anyhow::Result<()> {
         if path != Path::new(".") {
-            self.path.push(path);
+            self.path = self.path.join(path).canonicalize()?;
         }
 
         let filename = if path == Path::new(".") {
