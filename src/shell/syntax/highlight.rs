@@ -142,7 +142,7 @@ impl State {
         -> anyhow::Result<()>
     {
         let insert_cursor = matches!(input.shell.editor.mode, Mode::Visual)
-            .then(|| input.shell.editor.insert.cursor_inclusive())
+            .then(|| input.shell.editor.insert.text_range())
             .unwrap_or_else(|| input.shell.editor.insert.cursor());
         let selected = input.shell.editor.insert.span(insert_cursor);
         self.fill(input.theme, span.start, selected.clone(), term.reborrow())?;

@@ -1,5 +1,5 @@
 use std::{ cmp, fmt };
-use std::ops::Range;
+use super::selection::Range;
 use icu_segmenter::{ WordSegmenter, WordSegmenterBorrowed };
 use crate::util::MapWindows2;
 use crate::ipc;
@@ -14,10 +14,19 @@ pub struct EditableLine {
     current: usize,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Line {
     buf: String,
-    cursor: Range<usize>,
+    cursor: Range,
+}
+
+impl Default for Line {
+    fn default() -> Self {
+        Line {
+            buf: String::new(),
+            cursor: Range::point(0),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -74,24 +83,17 @@ impl EditableLine {
         self.as_str().chars().next()
     }
 
-    pub fn cursor_inclusive(&self) -> Range<usize> {
-        let cursor = self.line().cursor.clone();
-        let (start, end) = if cursor.end > cursor.start {
-            (cursor.start, cursor.end)
-        } else {
-            (cursor.end, cursor.start)
-        };
-        start..cmp::min(end + 1, self.char_len())
+    /// The range the text operations act on, a zero width cursor covers the
+    /// char at its head.
+    pub fn text_range(&self) -> Range {
+        self.line().cursor.min_width_1(self.char_len())
     }
 
-    pub fn span(&self, cursor: Range<usize>) -> Range<usize> {
-        let start = self.index(cursor.start);
-        let end = self.index(cursor.end);
-        if start <= end {
-            start..end
-        } else {
-            end..start
-        }
+    pub fn span(&self, cursor: Range) -> std::ops::Range<usize> {
+        let start = self.index(cursor.from());
+        let end = self.index(cursor.to());
+
+        start..end
     }
 
     pub fn is_editing(&self) -> bool {
@@ -99,26 +101,37 @@ impl EditableLine {
     }
 
     pub fn is_point_end(&self) -> bool {
-        let end = self.line().cursor.end;
+        let end = self.line().cursor.head;
         end == self.char_len()
     }
 
-    pub fn cursor(&self) -> Range<usize> {
-        self.line().cursor.clone()
+    /// The insert position of the cursor.
+    pub fn point(&self) -> usize {
+        self.line().cursor.head
     }
 
-    pub fn cursor_mut(&mut self) -> &mut Range<usize> {
+    pub fn cursor(&self) -> Range {
+        self.line().cursor
+    }
+
+    pub fn cursor_mut(&mut self) -> &mut Range {
         &mut self.line_mut().cursor
     }
 
-    pub fn select_span(&mut self, span: Range<usize>) {
+    /// Collapse the cursor onto its head.
+    pub fn collapse(&mut self) {
+        let head = self.line_mut().cursor.head;
+        self.line_mut().cursor = Range::point(head);
+    }
+
+    pub fn select_span(&mut self, span: std::ops::Range<usize>) {
         let start = self.as_str()[..span.start].chars().count();
         let end = start + self.as_str()[span].chars().count();
-        *self.cursor_mut() = start..end
+        *self.cursor_mut() = Range::new(start, end)
     }
 
     pub fn selected(&self) -> &str {
-        let span = self.span(self.cursor());
+        let span = self.span(self.text_range());
         &self.as_str()[span]
     }
 
@@ -162,7 +175,7 @@ impl EditableLine {
         if self.current != 0 {
             let idx = self.history.len() - self.current;
             let line = &self.history[idx];
-            self.line.cursor = line.cursor.clone();
+            self.line.cursor = line.cursor;
             self.line.buf.clear();
             self.line.buf.push_str(&line.buf);
             self.current = 0;
@@ -173,18 +186,18 @@ impl EditableLine {
     pub fn push(&mut self, c: char) {
         self.make();
 
-        let cur = self.line.cursor.end;
+        let cur = self.line.cursor.head;
         let idx = self.index(cur);
         self.line.buf.insert(idx, c);
         self.update(cur, idx, || c.is_ascii());
-        self.line.cursor.end += 1;
+        self.line.cursor.head += 1;
     }
 
     #[allow(dead_code)]
     pub fn replace(&mut self, s: char) {
         self.make();
 
-        let cur = self.line.cursor.end;
+        let cur = self.line.cursor.head;
         let idx = self.index(cur);
         let next_len = self.line
             .buf[idx..]
@@ -201,12 +214,13 @@ impl EditableLine {
         }
     }
 
-    pub fn replace_str_inclusive(&mut self, s: &str, clipboard: Option<&mut String>) {
+    /// The cursor then covers the new text.
+    pub fn replace_in_selection(&mut self, s: &str, clipboard: Option<&mut String>) {
         self.make();
 
-        let cursor = self.cursor_inclusive();
+        let range = self.text_range();
 
-        let bytes_range = self.index(cursor.start)..self.index(cursor.end);
+        let bytes_range = self.index(range.from())..self.index(range.to());
         let line = &mut self.line;
 
         if let Some(buf) = clipboard {
@@ -216,32 +230,40 @@ impl EditableLine {
         
         line.buf.replace_range(bytes_range.clone(), s);
 
-        self.update(cursor.start, bytes_range.start, || s.is_ascii());
-        self.line.cursor.start = cursor.start;
-        self.line.cursor.end = cursor.start + s.chars().count();
+        self.update(range.from(), bytes_range.start, || s.is_ascii());
+        self.line.cursor = Range::new(range.from(), range.from() + s.chars().count());
     }
 
     pub fn push_str(&mut self, s: &str) {
         self.make();
 
-        let cur = self.line.cursor.end;
-        let idx = self.index(cur);
+        let cur = self.line.cursor.head;
+        self.insert_str_at(cur, s);
+    }
+
+    pub fn push_str_at(&mut self, at: usize, s: &str) {
+        self.make();
+
+        self.insert_str_at(at, s);
+    }
+
+    fn insert_str_at(&mut self, at: usize, s: &str) {
+        let idx = self.index(at);
         self.line.buf.insert_str(idx, s);
-        self.update(cur, idx, || s.is_ascii());
-        self.line.cursor.start = cur;
-        self.line.cursor.end = cur + s.chars().count();
+        self.update(at, idx, || s.is_ascii());
+        self.line.cursor = Range::point(at + s.chars().count());
     }
 
     pub fn backspace(&mut self) {
         self.make();
 
-        let cur = self.line.cursor.end;
+        let cur = self.line.cursor.head;
         if cur != 0 {
             let idx = self.index(cur);
             if let Some(prev_char) = self.as_str()[..idx].chars().last() {
                 let idx = idx - prev_char.len_utf8();
                 self.line.buf.remove(idx);
-                self.line.cursor.end -= 1;
+                self.line.cursor.head -= 1;
                 self.update(cur - 1, idx, || true);
             }
         }
@@ -250,7 +272,7 @@ impl EditableLine {
     pub fn delete(&mut self) {
         self.make();
 
-        let cur = self.line.cursor.end;
+        let cur = self.line.cursor.head;
         let idx = self.index(cur);
         if self.bytes_len() > idx {
             self.line.buf.remove(idx);
@@ -262,7 +284,7 @@ impl EditableLine {
     pub fn delete_to_end(&mut self, _cur: usize) {
         self.make();
 
-        let cur = self.line.cursor.end;
+        let cur = self.line.cursor.head;
         let idx = self.index(cur);
         if self.bytes_len() > idx {
             self.line.buf.truncate(idx);
@@ -271,26 +293,26 @@ impl EditableLine {
     }
 
     pub fn move_head(&mut self) {
-        self.line_mut().cursor.end = 0;
+        self.line_mut().cursor.head = 0;
     }
 
     pub fn move_end(&mut self) {
-        self.line_mut().cursor.end = self.char_len();
+        self.line_mut().cursor.head = self.char_len();
     }
 
     pub fn move_left(&mut self) {
-        let cur = &mut self.line_mut().cursor.end;
+        let cur = &mut self.line_mut().cursor.head;
         *cur = cur.saturating_sub(1);
     }
 
     pub fn move_right(&mut self) {
         let len = self.char_len();
-        let cur = &mut self.line_mut().cursor.end;
+        let cur = &mut self.line_mut().cursor.head;
         *cur = cmp::min(*cur + 1, len);
     }
 
-    pub fn move_left_word(&self) -> Range<usize> {
-        let cur = self.line().cursor.end;
+    pub fn move_left_word(&self) -> Range {
+        let cur = self.line().cursor.head;
         let idx = self.index(cur);
         let buf = &self.as_str()[..idx];
 
@@ -300,14 +322,14 @@ impl EditableLine {
         if let Some(span) = iter.last() {
             let start = buf[..span.start].chars().count();
             let end = start + buf[span].chars().count();
-            start..end
+            Range::new(start, end)
         } else {
-            cur..cur
+            Range::point(cur)
         }
     }
 
-    pub fn move_right_word(&self) -> Range<usize> {
-        let cur = self.line().cursor.end;
+    pub fn move_right_word(&self) -> Range {
+        let cur = self.line().cursor.head;
         let idx = self.index(cur);
         let buf = &self.as_str()[idx..];
 
@@ -317,9 +339,9 @@ impl EditableLine {
         if let Some(span) = iter.next() {
             let start = cur + buf[..span.start].chars().count();
             let end = start + buf[span].chars().count();
-            start..end
+            Range::new(start, end)
         } else {
-            cur..cur
+            Range::point(cur)
         }
     }
 
@@ -327,7 +349,7 @@ impl EditableLine {
         self.history.clear();
         self.current = 0;
         self.indices.clear();
-        self.line_mut().cursor = 0..0;
+        self.line_mut().cursor = Range::point(0);
         self.line_mut().buf.clear();
     }
 
@@ -348,7 +370,7 @@ impl EditableLine {
             .rev()
             .map(|s| {
                 let len = s.chars().count();
-                Line { buf: s.into(), cursor: len..len }
+                Line { buf: s.into(), cursor: Range::point(len) }
             })
             .take(MAX_HISTORY);
         self.history.extend(iter);
@@ -417,7 +439,7 @@ impl Suggestion {
             SuggestionKind::Nothing | SuggestionKind::Requested(_) => (),
             SuggestionKind::Suffix => {
                 line.push_str(&self.buf);
-                line.line.cursor.start = line.line.cursor.end;
+                line.collapse();
             },
             SuggestionKind::History(idx) => {
                 line.line.buf.clear();
@@ -425,7 +447,7 @@ impl Suggestion {
                 let is_ascii = line.line.buf.is_ascii();
                 line.update(0, 0, || is_ascii);
                 line.move_end();
-                line.line.cursor.start = line.line.cursor.end;
+                line.collapse();
             }
         }
 
@@ -440,30 +462,30 @@ fn test_buffer() {
     buf.push('b');
     buf.push('c');
     assert_eq!(buf.as_str(), "abc");
-    assert_eq!(buf.cursor().end, 3);
+    assert_eq!(buf.cursor().head, 3);
 
     buf.backspace();
     assert_eq!(buf.as_str(), "ab");
-    assert_eq!(buf.cursor().end, 2);
+    assert_eq!(buf.cursor().head, 2);
 
     buf.delete();
     assert_eq!(buf.as_str(), "ab");
-    assert_eq!(buf.cursor().end, 2);
+    assert_eq!(buf.cursor().head, 2);
 
     buf.move_left();
     buf.move_left();
     buf.delete();
     assert_eq!(buf.as_str(), "b");
-    assert_eq!(buf.cursor().end, 0);
+    assert_eq!(buf.cursor().head, 0);
 
     buf.backspace();
     assert_eq!(buf.as_str(), "b");
-    assert_eq!(buf.cursor().end, 0);
+    assert_eq!(buf.cursor().head, 0);
 
     buf.move_right();
     buf.backspace();
     assert_eq!(buf.as_str(), "");
-    assert_eq!(buf.cursor().end, 0);
+    assert_eq!(buf.cursor().head, 0);
 
     buf.push('中');
     buf.push('文');
@@ -475,7 +497,7 @@ fn test_buffer() {
     buf.move_right();
     buf.move_right();
 
-    let (x, y) = buf.split(buf.cursor().end);
+    let (x, y) = buf.split(buf.cursor().head);
     assert_eq!(x, "aaa中文");
     assert_eq!(y, "");
 
@@ -484,30 +506,27 @@ fn test_buffer() {
     buf.push('文');
     buf.move_left();
 
-    let (x, y) = buf.split(buf.cursor().end);
+    let (x, y) = buf.split(buf.cursor().head);
     assert_eq!(x, "中");
     assert_eq!(y, "文");
 
     buf.push_str("hello world");
     buf.move_head();
-    {
-        let cursor = buf.cursor_mut();
-        cursor.start = cursor.end;
-    }
+    buf.collapse();
 
     let range = buf.move_right_word();
     *buf.cursor_mut() = range;
-    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], "中");
+    assert_eq!(buf.selected(), "中");
     let range = buf.move_right_word();
     *buf.cursor_mut() = range;
-    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], "hello");
+    assert_eq!(buf.selected(), "hello");
     let range = buf.move_right_word();
     *buf.cursor_mut() = range;
-    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], " ");
+    assert_eq!(buf.selected(), " ");
     let range = buf.move_right_word();
     *buf.cursor_mut() = range;
-    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], "world");
+    assert_eq!(buf.selected(), "world");
     let range = buf.move_right_word();
     *buf.cursor_mut() = range;
-    assert_eq!(&buf.as_str()[buf.span(buf.cursor())], "文");
+    assert_eq!(buf.selected(), "文");
 }

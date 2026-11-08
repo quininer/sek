@@ -24,7 +24,7 @@ pub enum CompletionType {
 pub async fn complete(shell: &Shell, cmd: Command)
     -> CompletionType
 {
-    let point = shell.editor.insert.cursor().end;
+    let point = shell.editor.insert.point();
 
     // check exe
     let exe = cmd.exe(&shell.parser);
@@ -404,7 +404,7 @@ fn make_complete_selector(
         1 => {
             let s = &editor.complete_selector.list[0];
             editor.insert.select_span(select);
-            editor.insert.replace_str_inclusive(s, None);
+            editor.insert.replace_in_selection(s, None);
             editor.insert.push(' ');
             editor.suggestion.clear();
             true

@@ -1,15 +1,16 @@
 pub mod line;
+pub mod selection;
 pub mod ui;
 pub mod path_selector;
 pub mod complete;
 
-use std::mem;
 use std::path::Path;
 use std::cell::RefCell;
 use anyhow::Context;
 use crossterm::event::{ Event, KeyCode, KeyEvent, KeyModifiers as KM };
 use line::EditableLine;
 use line::Suggestion;
+use self::selection::Range;
 use path_selector::PathSelector;
 use complete::CompleteSelector;
 use crate::ui::layout;
@@ -26,6 +27,9 @@ pub struct Editor {
     pub suggestion: Suggestion,
     ready: Option<char>,
     clipboard: String,
+    // the insert mode position was entered with `a`, leaving insert mode
+    // moves the cursor back onto the char `a` appended to
+    restore_cursor: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -110,6 +114,7 @@ impl Editor {
             ready: None,
             suggestion: Suggestion::default(),
             clipboard: String::new(),
+            restore_cursor: false,
         })
     }
 
@@ -307,7 +312,7 @@ impl Editor {
             Cancel if self.command.is_empty()
                 => {
                     self.mode = Mode::Normal;
-                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    self.insert.collapse();
                 },
             Cancel
                 => self.command.clear(),
@@ -328,7 +333,7 @@ impl Editor {
                 self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
-                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    self.insert.collapse();
                 }
 
                 if matches!(self.mode, Mode::Path | Mode::Complete) {
@@ -340,7 +345,7 @@ impl Editor {
                 self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
-                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    self.insert.collapse();
                 }
 
                 if matches!(self.mode, Mode::Path | Mode::Complete) {
@@ -352,7 +357,7 @@ impl Editor {
                 self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
-                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    self.insert.collapse();
                 }
             },
             MoveRight if self.command.is_empty() => {
@@ -360,7 +365,7 @@ impl Editor {
                 self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
-                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    self.insert.collapse();
                 }
             },
             MoveHead if self.command.is_empty() => {
@@ -368,7 +373,7 @@ impl Editor {
                 self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
-                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    self.insert.collapse();
                 }
             },
             MoveEnd if self.command.is_empty() => {
@@ -376,7 +381,7 @@ impl Editor {
                 self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Normal) {
-                    self.insert.cursor_mut().start = self.insert.cursor_mut().end;
+                    self.insert.collapse();
                 }
             },
 
@@ -389,34 +394,38 @@ impl Editor {
 
             SelectAll => {
                 let end = self.insert.char_len();
-                let cursor = self.insert.cursor_mut();
-                cursor.start = 0;
-                cursor.end = end;
+                *self.insert.cursor_mut() = Range::new(0, end);
             },
             SelectNextWord => {
+                let char_len = self.insert.char_len();
                 let span = self.insert.move_right_word();
-                let cursor = self.insert.cursor_mut();
-                match self.mode {
-                    Mode::Normal => *cursor = span,
-                    Mode::Visual => cursor.end = span.end,
+                let cursor = self.insert.cursor();
+
+                *self.insert.cursor_mut() = match self.mode {
+                    Mode::Normal => Range::new(span.from(), span.to()),
+                    // extend to the head side block cursor of the motion,
+                    // `w` walks forward so the span is its own direction
+                    Mode::Visual =>
+                        cursor.put_cursor(char_len, span.cursor(char_len), true),
                     _ => unreachable!()
-                }
+                };
             },
             SelectBackWord => {
+                let char_len = self.insert.char_len();
                 let span = self.insert.move_left_word();
-                let cursor = self.insert.cursor_mut();
-                match self.mode {
-                    Mode::Normal => {
-                        cursor.start = span.end;
-                        cursor.end = span.start;
-                    },
-                    Mode::Visual => cursor.end = span.start,
+                let cursor = self.insert.cursor();
+
+                *self.insert.cursor_mut() = match self.mode {
+                    Mode::Normal => Range::new(span.to(), span.from()),
+                    // `b` walks backward, its head side is the left edge
+                    Mode::Visual =>
+                        cursor.put_cursor(char_len, span.flip().cursor(char_len), true),
                     _ => unreachable!()
-                }
+                };
             },
 
             DeleteSelected => {
-                self.insert.replace_str_inclusive("", Some(&mut self.clipboard));
+                self.insert.replace_in_selection("", Some(&mut self.clipboard));
                 self.suggestion.clear();
 
                 if matches!(self.mode, Mode::Visual) {
@@ -436,8 +445,7 @@ impl Editor {
             HistoryDown => self.insert.down(),
 
             SwapCursor => {
-                let cursor = self.insert.cursor_mut();
-                mem::swap(&mut cursor.start, &mut cursor.end);
+                *self.insert.cursor_mut() = self.insert.cursor().flip();
             },
 
             Execute if matches!(self.mode, Mode::Normal | Mode::Visual) && !self.command.is_empty()
@@ -519,7 +527,7 @@ impl Editor {
                     if self.insert.cursor().is_empty() {
                         self.insert.push_str(&path);
                     } else {
-                        self.insert.replace_str_inclusive(&path, None);
+                        self.insert.replace_in_selection(&path, None);
                     }
                     self.suggestion.clear();
                     self.mode = Mode::Insert;
@@ -528,21 +536,35 @@ impl Editor {
 
             Execute if matches!(self.mode, Mode::Complete) => {
                 let s = &self.complete_selector.list[self.complete_selector.cur];
-                self.insert.replace_str_inclusive(s, None);
+                self.insert.replace_in_selection(s, None);
                 self.suggestion.clear();
                 self.mode = Mode::Insert;
             },
             ExecuteSpace if matches!(self.mode, Mode::Complete) => {
                 let s = &self.complete_selector.list[self.complete_selector.cur];
-                self.insert.replace_str_inclusive(s, None);
+                self.insert.replace_in_selection(s, None);
                 self.insert.push(' ');
                 self.suggestion.clear();
                 self.mode = Mode::Insert;
             },
 
-            EnterInsert => self.mode = Mode::Insert,
+            EnterInsert => {
+                // the selectors leave the token being completed as the
+                // cursor, `i` there keeps typing there instead of going to
+                // the start of that token
+                let at = match self.mode {
+                    Mode::Complete | Mode::Path => self.insert.point(),
+                    _ => self.insert.cursor().from(),
+                };
+
+                *self.insert.cursor_mut() = Range::point(at);
+                self.mode = Mode::Insert;
+            },
             EnterInsertAppend => {
-                self.insert.move_right();
+                let char_len = self.insert.char_len();
+                let to = self.insert.cursor().min_width_1(char_len).to();
+                *self.insert.cursor_mut() = Range::point(to);
+                self.restore_cursor = true;
                 self.mode = Mode::Insert;
             },
             EnterNormal => self.mode = Mode::Normal,
@@ -569,24 +591,32 @@ impl Editor {
                     self.clipboard.push_str(path);
                 }                
             },
+            // paste_after
             Paste if matches!(self.mode, Mode::Normal) => {
                 let char_len = self.insert.char_len();
-                let cursor = self.insert.cursor_mut();
-                cursor.end = char_len.min(cursor.end.saturating_add(1));
+                let cursor = self.insert.cursor();
+                let at = cursor.min_width_1(char_len).to();
+                let direction = cursor.direction();
+                let len = self.clipboard.chars().count();
 
-                self.insert.push_str(&self.clipboard);
+                self.insert.push_str_at(at, &self.clipboard);
+
+                if len != 0 {
+                    *self.insert.cursor_mut() =
+                        Range::new(at, at + len).with_direction(direction);
+                }
+                self.suggestion.clear();
+            },
+            // delete_selection_noyank then paste_before, the `p` of select mode
+            Paste if matches!(self.mode, Mode::Visual) => {
+                let start = self.insert.text_range().from();
+                let len = self.clipboard.chars().count();
+
+                self.insert.replace_in_selection(&self.clipboard, None);
+                *self.insert.cursor_mut() = Range::new(start, start + len);
                 self.suggestion.clear();
 
-                let cursor = self.insert.cursor_mut();
-                cursor.end = cursor.start.max(cursor.end.saturating_sub(1));
-            },
-            Paste if matches!(self.mode, Mode::Visual) => {
-                let cursor = self.insert.cursor();
-                let start = cursor.start.min(cursor.end);
-                self.insert.replace_str_inclusive(&self.clipboard, None);
-                *self.insert.cursor_mut() =
-                    start..(start + self.clipboard.chars().count().saturating_sub(1));
-                self.suggestion.clear();                
+                self.mode = Mode::Normal;
             },
 
             SelectorUp if matches!(self.mode, Mode::Path)
@@ -673,8 +703,7 @@ impl Editor {
         }
 
         if matches!(self.mode, Mode::Insert) {
-            let cursor = self.insert.cursor_mut();
-            cursor.start = cursor.end;
+            self.insert.collapse();
         }
 
         Ok(Action::Continue)
@@ -683,6 +712,18 @@ impl Editor {
     pub fn mode_switch<T: TermTarget>(&mut self, prev_mode: Mode, _renderer: &mut Renderer<T>)
         -> anyhow::Result<()>
     {
+        if matches!((prev_mode, self.mode), (Mode::Insert, Mode::Normal))
+            && self.restore_cursor
+        {
+            let char_len = self.insert.char_len();
+            let head = self.insert.cursor().head.min(char_len).saturating_sub(1);
+            *self.insert.cursor_mut() = Range::point(head);
+        }
+
+        if !matches!(self.mode, Mode::Insert) {
+            self.restore_cursor = false;
+        }
+
         match (prev_mode, self.mode) {
             (x, y) if x == y => (),
             (_, Mode::Path) => {

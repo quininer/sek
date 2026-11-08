@@ -3,6 +3,7 @@ use std::io::{ self, Write };
 use crossterm::{ queue, cursor, style, terminal };
 use crate::util::RefWriter;
 use crate::util::arena::{ Id, ArenaMap };
+use crate::editor::Mode;
 use crate::shell::Shell;
 use super::layout::{ self, Layout };
 
@@ -13,6 +14,7 @@ pub struct Renderer<T> {
     current: layout::Point,
     max_y: u16,
     queue: Vec<(Id<layout::Node>, Layout)>,
+    cursor_bar: Option<bool>,
 }
 
 pub trait TermTarget {
@@ -45,6 +47,7 @@ where
             current: layout::Point { x: 0, y: 0 },
             max_y: 0,
             queue: Vec::new(),
+            cursor_bar: None,
         }
     }
 
@@ -62,6 +65,14 @@ where
             y: 0
         };
 
+        term.flush()
+    }
+
+    pub fn reset_cursor_style(&mut self) -> io::Result<()> {
+        self.cursor_bar = None;
+
+        let mut term = self.term.access();
+        queue!(term, cursor::SetCursorStyle::DefaultUserShape)?;
         term.flush()
     }
 
@@ -120,6 +131,19 @@ where
         }
 
         if let Some(cursor) = cursor {
+            let editor = &shell.editor;
+            let bar = matches!(editor.mode, Mode::Insert) || !editor.command.is_empty();
+
+            if self.cursor_bar != Some(bar) {
+                self.cursor_bar = Some(bar);
+
+                queue!(term, if bar {
+                    cursor::SetCursorStyle::SteadyBar
+                } else {
+                    cursor::SetCursorStyle::SteadyBlock
+                })?;
+            }
+
             queue!(term, cursor::Show)?;
             move_to(&mut term, &mut self.current, self.max_y, cursor)?;
         } else {

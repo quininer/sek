@@ -182,6 +182,8 @@ async fn runloop(
         }
     }
 
+    renderer.reset_cursor_style()?;
+
     Ok(())
 }
 

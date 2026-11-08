@@ -144,7 +144,7 @@ const PROMPT: ElementImpl = ElementImpl {
 
 const INSERT_LINE: ElementImpl = ElementImpl {
     info: |shell| {
-        let (s0, s1) = shell.editor.insert.split(shell.editor.insert.cursor().end);
+        let (s0, s1) = shell.editor.insert.split(shell.editor.insert.point());
         let s0_len = s0.width();
         let s1_len = s1.width();
         let s2_len = shell.editor.suggestion.as_str(&shell.editor.insert).width();
@@ -217,7 +217,7 @@ const COMMAND_LINE: ElementImpl = ElementImpl {
             _ => return None
         }
 
-        let (s0, s1) = shell.editor.command.split(shell.editor.command.cursor().end);
+        let (s0, s1) = shell.editor.command.split(shell.editor.command.point());
         let s0_len = s0.width();
         let s1_len = s1.width();
 
