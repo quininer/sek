@@ -282,12 +282,16 @@ pub async fn do_complete<T: TermTarget>(
     let mut list = Vec::new();
     let mut index = None;
 
+    // the whole line is passed to the engine,
+    // it is the engine who trims the tokens behind the cursor at `@index`
     for arg in iter::once(command.exe(&shell.parser))
         .chain(command.args(&shell.parser))
     {
         let span = arg.span(&shell.parser);
 
-        if span.start >= select.end {
+        // the cursor is on the whitespace before this token,
+        // mark the position with an empty token, only once
+        if index.is_none() && span.start >= select.end {
             index = Some(list.len());
             list.push(buf.len()..buf.len());
         }
@@ -299,13 +303,22 @@ pub async fn do_complete<T: TermTarget>(
             Ok(())
         }).await?;
 
-        if span == select {
-            index = Some(list.len());
-        }        
-
         let end = buf.len();
         list.push(start..end);
+
+        if index.is_none() && span == select {
+            index = Some(list.len() - 1);
+        }
     }
+
+    let index = match index {
+        Some(index) => index,
+        // the cursor is behind the last token, complete a new empty token
+        None => {
+            list.push(buf.len()..buf.len());
+            list.len() - 1
+        }
+    };
 
     let env = shell.env.borrow();
     let mut cmd = Command::new(&complete.exe);
@@ -320,7 +333,6 @@ pub async fn do_complete<T: TermTarget>(
     for arg in &complete.args {
         match arg.as_str() {
             "@index" => {
-                let index = index.unwrap_or(list.len() + 1);
                 cmd.arg(index.to_string());
             },
             _ => {
@@ -336,10 +348,6 @@ pub async fn do_complete<T: TermTarget>(
     for span in list {
         let arg = &buf[span];
         cmd.arg(arg);
-    }
-
-    if index.is_none() {
-        cmd.arg(" ");
     }
 
     let output = cmd.output()?;
