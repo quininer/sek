@@ -502,7 +502,9 @@ impl Editor {
                     let env = env.borrow();
                     let pathbuf;
 
-                    let path = if let Ok(subpath) = path.strip_prefix(env.pwd()) {
+                    let path = if path.is_absolute() {
+                        &path
+                    } else if let Ok(subpath) = path.strip_prefix(env.pwd()) {
                         subpath
                     } else if env.pwd().components()
                         .zip(path.components().chain(iter::repeat(Component::CurDir)))
