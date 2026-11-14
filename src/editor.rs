@@ -501,8 +501,9 @@ impl Editor {
                 if let Some(path) = self.path_selector.selected() {
                     let env = env.borrow();
                     let pathbuf;
+                    let selected = self.insert.selected();
 
-                    let path = if path.is_absolute() {
+                    let path = if selected.starts_with('$') || selected.starts_with('/') {
                         &path
                     } else if let Ok(subpath) = path.strip_prefix(env.pwd()) {
                         subpath
