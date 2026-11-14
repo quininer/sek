@@ -8,7 +8,7 @@ use crate::shell::Shell;
 use super::layout::{ self, Layout };
 
 
-pub struct Renderer<T> {
+pub struct Renderer<T: TermTarget> {
     pub size: (u16, u16),
     pub term: T,
     current: layout::Point,
@@ -60,6 +60,7 @@ where
         )?;
 
         self.max_y = 0;
+        self.cursor_bar = None;
         self.current = layout::Point {
             x: 0,
             y: 0
@@ -153,6 +154,12 @@ where
         term.flush()?;
 
         Ok(())
+    }
+}
+
+impl<T: TermTarget> Drop for Renderer<T> {
+    fn drop(&mut self) {
+        let _ = self.reset_cursor_style();
     }
 }
 
